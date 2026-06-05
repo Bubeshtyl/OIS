@@ -5,6 +5,7 @@ import {
   litresToPackets,
   parsePackageCountFromNote,
   transactionPacketCount,
+  type PackagingProduct,
 } from "@/lib/packaging";
 
 const inrFormatter = new Intl.NumberFormat("en-IN", {
@@ -66,8 +67,6 @@ export function formatPackets(value: number | string): string {
       });
   return `${formatted} packet${num === 1 ? "" : "s"}`;
 }
-
-type PackagingProduct = Pick<OilProduct, "packetsPerBox" | "volumePerPacket">;
 
 export function formatTransactionQuantity(
   type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL",

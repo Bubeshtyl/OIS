@@ -64,10 +64,10 @@ export function parsePackageCountFromNote(note?: string | null): number | null {
   return Number.isInteger(count) && count > 0 ? count : null;
 }
 
-type PackagingProduct = Pick<
-  OilProduct,
-  "packetsPerBox" | "volumePerPacket"
->;
+export type PackagingProduct = {
+  packetsPerBox?: string | null;
+  volumePerPacket?: string | null;
+};
 
 export function transactionPacketCount(
   type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL",

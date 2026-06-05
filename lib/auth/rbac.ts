@@ -76,7 +76,9 @@ export type NavIcon =
   | "products"
   | "users";
 
-export function getNavItems(role: UserRole) {
+export function getNavItems(
+  role: UserRole
+): Array<{ href: string; label: string; icon: NavIcon }> {
   const items: Array<{ href: string; label: string; icon: NavIcon }> = [
     { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
     { href: "/receive", label: "Stock Received", icon: "receive" },
@@ -97,9 +99,9 @@ export function getNavItems(role: UserRole) {
       {
         href: "/admin/products",
         label: "Oil Products",
-        icon: "products",
+        icon: "products" as const,
       },
-      { href: "/admin/users", label: "Managers", icon: "users" },
+      { href: "/admin/users", label: "Managers", icon: "users" as const },
     ];
   }
 
