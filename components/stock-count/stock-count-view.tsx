@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { StockCountFilters } from "@/components/stock-count/stock-count-filters";
 import { useStockDisplayUnit } from "@/components/shared/use-stock-display-unit";
@@ -32,7 +32,6 @@ export function StockCountView({
   products,
   totals,
   lowStockIds,
-  search,
   productId,
   location = "all",
   unit = "packets",
@@ -47,18 +46,18 @@ export function StockCountView({
     managerValue: number;
   };
   lowStockIds: string[];
-  search?: string;
   productId?: string;
   location?: string;
   unit?: StockDisplayUnit;
 }) {
   const { unit: displayUnit, setDisplayUnit } = useStockDisplayUnit(unit);
+  const [searchDraft, setSearchDraft] = useState("");
   const locationFilter =
     location === "depot" || location === "manager" ? location : "all";
   const lowStockSet = new Set(lowStockIds);
 
   const filteredRows = useMemo(() => {
-    const term = search?.trim().toLowerCase();
+    const term = searchDraft.trim().toLowerCase();
 
     return products
       .filter((product) => {
@@ -80,7 +79,7 @@ export function StockCountView({
           isLowStock: lowStockSet.has(product.id),
         })
       );
-  }, [products, productId, locationFilter, search, lowStockSet]);
+  }, [products, productId, locationFilter, searchDraft, lowStockSet]);
 
   const filteredTotals = useMemo(() => {
     let depotQty = 0;
@@ -145,7 +144,9 @@ export function StockCountView({
         <CardContent className="space-y-4 p-4">
           <StockCountFilters
             products={products.map((p) => ({ id: p.id, name: p.name }))}
-            search={search}
+            searchValue={searchDraft}
+            onSearchChange={setSearchDraft}
+            onSearchSubmit={() => {}}
             productId={productId}
             location={location}
             unit={displayUnit}

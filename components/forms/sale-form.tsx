@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -28,6 +29,7 @@ import {
   getVolumePerPacketLitres,
   hasPacketPackaging,
   litresFromPackets,
+  maxPacketsFromLitres,
 } from "@/lib/packaging";
 import {
   convertDisplayQuantity,
@@ -53,9 +55,14 @@ export function SaleForm({
   );
   const [productId, setProductId] = useState(products[0]?.id ?? "");
   const [managerBalance, setManagerBalance] = useState(0);
+  const [consumptionType, setConsumptionType] = useState<
+    "SALE" | "RETURNED" | "DAMAGED"
+  >("SALE");
   const [oilQty, setOilQty] = useState("");
   const [packetCount, setPacketCount] = useState("");
   const [volumeUnit, setVolumeUnit] = useState<VolumeUnit>("litre");
+  const today = getIstTodayString();
+  const [transactionDate, setTransactionDate] = useState(today);
   const qtyRef = useRef<HTMLInputElement>(null);
 
   const selectedProduct = products.find((p) => p.id === productId);
@@ -111,17 +118,45 @@ export function SaleForm({
     usesVolumeUnits && volumeUnit === "ml" ? "1" : "0.001";
   const volumeMin =
     usesVolumeUnits && volumeUnit === "ml" ? "1" : "0.001";
-  const volumeMax = usesVolumeUnits
-    ? maxDisplayQuantity(managerBalance, volumeUnit)
-    : managerBalance || undefined;
 
   const perPacket = selectedProduct
     ? getVolumePerPacketLitres(selectedProduct)
     : null;
 
+  const isReturned = consumptionType === "RETURNED";
+  const hasManagerStock = managerBalance > 0;
+
+  const volumeMax = usesVolumeUnits
+    ? hasManagerStock
+      ? maxDisplayQuantity(managerBalance, volumeUnit)
+      : undefined
+    : undefined;
+
+  const packetMax =
+    usesPacketPackaging && selectedProduct && hasManagerStock
+      ? maxPacketsFromLitres(managerBalance, selectedProduct) ?? undefined
+      : undefined;
+
+  const quantityNum = quantityInLitres ? Number(quantityInLitres) : 0;
+  const exceedsManagerStock =
+    hasManagerStock && quantityNum > managerBalance;
+  const blockedByNoStock = !hasManagerStock;
+
+  const submitLabel =
+    consumptionType === "SALE"
+      ? "Record Sale"
+      : consumptionType === "RETURNED"
+        ? "Record Return"
+        : "Record Damage";
+
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="productId" value={productId} />
+      <input
+        type="hidden"
+        name="consumptionType"
+        value={consumptionType}
+      />
       <input type="hidden" name="quantity" value={quantityInLitres} />
       <div className="space-y-2">
         <Label htmlFor="product">Product *</Label>
@@ -142,10 +177,42 @@ export function SaleForm({
           </SelectContent>
         </Select>
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="consumptionType">Category *</Label>
+        <Select
+          value={consumptionType}
+          onValueChange={(value) =>
+            value &&
+            setConsumptionType(value as "SALE" | "RETURNED" | "DAMAGED")
+          }
+        >
+          <SelectTrigger className="min-h-11 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="SALE" disabled={!hasManagerStock}>
+              Sale
+            </SelectItem>
+            <SelectItem value="RETURNED" disabled={!hasManagerStock}>
+              Returned
+            </SelectItem>
+            <SelectItem value="DAMAGED" disabled={!hasManagerStock}>
+              Damaged
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       {productId && (
         <Badge variant="secondary" className="w-full justify-center py-2">
-          Available at Manager:{" "}
-          {formatStockAvailability(managerBalance, selectedProduct)}
+          {hasManagerStock ? (
+            <>
+              Available at Manager:{" "}
+              {formatStockAvailability(managerBalance, selectedProduct)}
+              {isReturned ? " · returns to Depot" : null}
+            </>
+          ) : (
+            "No stock at Oil Manager — issue stock before recording consumption"
+          )}
         </Badge>
       )}
 
@@ -153,9 +220,14 @@ export function SaleForm({
         <>
           <PackageCountField
             label="Packets"
-            description="Number of pouches or sachets sold"
+            description={
+              isReturned
+                ? "Number of pouches or sachets returned to Depot"
+                : "Number of pouches or sachets sold"
+            }
             value={packetCount}
             onChange={setPacketCount}
+            max={packetMax}
           />
           {perPacket != null ? (
             <p className="text-xs text-muted-foreground">
@@ -212,13 +284,13 @@ export function SaleForm({
 
       <div className="space-y-2">
         <Label htmlFor="transactionDate">Date *</Label>
-        <Input
+        <DatePicker
           id="transactionDate"
           name="transactionDate"
-          type="date"
+          value={transactionDate}
+          onChange={setTransactionDate}
+          today={today}
           required
-          defaultValue={getIstTodayString()}
-          className="min-h-11"
         />
       </div>
       <div className="space-y-2">
@@ -227,10 +299,16 @@ export function SaleForm({
       </div>
       <Button
         type="submit"
-        disabled={pending || !productId || !quantityInLitres}
+        disabled={
+          pending ||
+          !productId ||
+          !quantityInLitres ||
+          blockedByNoStock ||
+          exceedsManagerStock
+        }
         className="w-full"
       >
-        {pending ? "Recording..." : "Record Sale"}
+        {pending ? "Recording..." : submitLabel}
       </Button>
     </form>
   );

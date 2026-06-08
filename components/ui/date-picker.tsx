@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { CalendarDays } from "lucide-react";
-import { formatInTimeZone } from "date-fns-tz";
-import { IST_TIMEZONE } from "@/lib/timezone";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -11,81 +9,91 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  calendarDateFromIstString,
+  formatRangeLabel,
+  istDateStringFromCalendarDate,
+} from "@/lib/date-range";
 import { cn } from "@/lib/utils";
-
-function parseDateString(value: string) {
-  return new Date(`${value}T12:00:00`);
-}
-
-function toDateString(date: Date) {
-  return formatInTimeZone(date, IST_TIMEZONE, "yyyy-MM-dd");
-}
-
-function formatDisplayDate(date: string) {
-  return formatInTimeZone(parseDateString(date), IST_TIMEZONE, "d MMM yyyy");
-}
 
 export function DatePicker({
   value,
   onChange,
   today,
+  id,
+  name,
+  required,
   className,
 }: {
   value: string;
   onChange: (date: string) => void;
   today?: string;
+  id?: string;
+  name?: string;
+  required?: boolean;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = parseDateString(value);
+  const selected = calendarDateFromIstString(value);
 
   function handleSelect(date: Date | undefined) {
     if (!date) return;
-    onChange(toDateString(date));
+    onChange(istDateStringFromCalendarDate(date));
     setOpen(false);
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn(
-              "h-9 gap-2 bg-card font-normal shadow-sm",
-              className
-            )}
-          >
-            <CalendarDays className="size-4 text-muted-foreground" />
-            {formatDisplayDate(value)}
-          </Button>
-        }
-      />
-      <PopoverContent align="end" className="w-auto p-0">
-        <Calendar
-          mode="single"
-          selected={selected}
-          onSelect={handleSelect}
-          defaultMonth={selected}
+    <>
+      {name ? (
+        <input
+          type="hidden"
+          name={name}
+          value={value}
+          required={required}
         />
-        {today && value !== today && (
-          <div className="border-t p-2">
+      ) : null}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          id={id}
+          render={
             <Button
               type="button"
               variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={() => {
-                onChange(today);
-                setOpen(false);
-              }}
+              className={cn(
+                "h-11 w-full justify-start gap-2 bg-card font-normal shadow-sm",
+                className
+              )}
             >
-              Go to today
+              <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{formatRangeLabel(value, value)}</span>
             </Button>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+          }
+        />
+        <PopoverContent align="start" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={selected}
+            onSelect={handleSelect}
+            defaultMonth={selected}
+          />
+          {today && value !== today && (
+            <div className="border-t p-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => {
+                  onChange(today);
+                  setOpen(false);
+                }}
+              >
+                Go to today
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+    </>
   );
 }

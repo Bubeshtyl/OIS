@@ -1,4 +1,4 @@
-import type { TransactionListRow } from "@/lib/queries/transactions";
+import type { TransactionListRow } from "@/lib/transactions/types";
 import {
   parsePackageCountFromNote,
   transactionPacketCount,
@@ -6,7 +6,7 @@ import {
 } from "@/lib/packaging";
 
 type PacketRow = {
-  type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL";
+  type: "RECEIVE" | "TRANSFER" | "SALE" | "RETURNED" | "DAMAGED" | "REVERSAL";
   quantity: string | number;
   referenceNote?: string | null;
   packetsPerBox?: string | null;

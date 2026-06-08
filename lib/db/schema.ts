@@ -20,6 +20,8 @@ export const transactionTypeEnum = pgEnum("transaction_type", [
   "RECEIVE",
   "TRANSFER",
   "SALE",
+  "RETURNED",
+  "DAMAGED",
   "REVERSAL",
 ]);
 

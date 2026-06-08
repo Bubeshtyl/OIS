@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Select,
   SelectContent,
@@ -53,6 +53,8 @@ export function ReceiveForm({
   const [oilQty, setOilQty] = useState("");
   const [boxCount, setBoxCount] = useState("");
   const [volumeUnit, setVolumeUnit] = useState<VolumeUnit>("litre");
+  const today = getIstTodayString();
+  const [transactionDate, setTransactionDate] = useState(today);
 
   const selectedProduct = products.find((p) => p.id === productId);
   const unit = selectedProduct?.unit ?? "litre";
@@ -193,23 +195,33 @@ export function ReceiveForm({
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="transactionDate">Date *</Label>
+        <Label htmlFor="supplier">Supplier</Label>
         <Input
-          id="transactionDate"
-          name="transactionDate"
-          type="date"
-          required
-          defaultValue={getIstTodayString()}
+          id="supplier"
+          name="supplier"
+          placeholder="Supplier name"
           className="min-h-11"
         />
       </div>
+
       <div className="space-y-2">
-        <Label htmlFor="referenceNote">Reference note</Label>
-        <Textarea
-          id="referenceNote"
-          name="referenceNote"
-          placeholder="Invoice #INV-2041"
-          rows={2}
+        <Label htmlFor="transactionDate">Date *</Label>
+        <DatePicker
+          id="transactionDate"
+          name="transactionDate"
+          value={transactionDate}
+          onChange={setTransactionDate}
+          today={today}
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="invoice">Invoice No.</Label>
+        <Input
+          id="invoice"
+          name="invoice"
+          placeholder="INV-2041"
+          className="min-h-11"
         />
       </div>
       <Button

@@ -7,8 +7,8 @@ import {
 import { parseStockDisplayUnit } from "@/lib/format";
 import { getActiveProducts, getReversedTransactionIdsFor } from "@/lib/queries/inventory";
 import {
+  getAllTransactionRows,
   getDistinctCreatorsForType,
-  getTransactionList,
   type TransactionListType,
 } from "@/lib/queries/transactions";
 import type { TransactionPageKind } from "@/lib/transactions/page-config";
@@ -20,10 +20,7 @@ export async function loadTransactionPage(
   searchParams: {
     start?: string;
     end?: string;
-    search?: string;
-    product?: string;
     recordedBy?: string;
-    page?: string;
     unit?: string;
   }
 ) {
@@ -35,11 +32,12 @@ export async function loadTransactionPage(
     isValidDateString(searchParams.end) ? searchParams.end : defaultEnd
   );
 
-  const type: TransactionListType = PAGE_KIND_TO_TYPE[pageKind];
-  const page = Math.max(1, Number(searchParams.page) || 1);
-  const productId = searchParams.product || undefined;
+  const types: TransactionListType[] =
+    pageKind === "consumption"
+      ? (["SALE", "RETURNED", "DAMAGED"] as TransactionListType[])
+      : [PAGE_KIND_TO_TYPE[pageKind]];
+
   const recordedBy = searchParams.recordedBy || undefined;
-  const search = searchParams.search || undefined;
   const unit = parseStockDisplayUnit(searchParams.unit);
 
   const needsCreators = pageKind === "receive";
@@ -47,16 +45,13 @@ export async function loadTransactionPage(
   const [products, creators, list] = await Promise.all([
     getActiveProducts(),
     needsCreators
-      ? getDistinctCreatorsForType(type, start, end)
+      ? getDistinctCreatorsForType(types[0], start, end)
       : Promise.resolve([]),
-    getTransactionList({
-      type,
+    getAllTransactionRows({
+      types,
       startDate: start,
       endDate: end,
-      productId,
       recordedBy,
-      search,
-      page,
     }),
   ]);
 
@@ -69,17 +64,12 @@ export async function loadTransactionPage(
     products,
     creators,
     rows: list.rows,
-    total: list.total,
-    page: list.page,
-    pageSize: list.pageSize,
     summary: list.summary,
     startDate: start,
     endDate: end,
     defaultStart,
     defaultEnd,
-    productId,
     recordedBy,
-    search,
     reversedIds: Array.from(reversedIds),
     unit,
   };

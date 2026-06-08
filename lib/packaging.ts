@@ -49,6 +49,15 @@ export function litresFromPackets(
   return packetCount * perPacket;
 }
 
+export function maxPacketsFromLitres(
+  litres: number,
+  product: OilProduct
+): number | null {
+  const perPacket = getVolumePerPacketLitres(product);
+  if (perPacket == null || litres <= 0) return null;
+  return Math.floor(litres / perPacket);
+}
+
 export function hasBoxPackaging(product: OilProduct | undefined): boolean {
   return product != null && getVolumePerBoxLitres(product) != null;
 }
@@ -74,7 +83,39 @@ export function parseUserNoteFromReference(note?: string | null): string {
     .slice(1)
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((line) => !/^Supplier:\s*/i.test(line) && !/^Invoice:\s*/i.test(line))
     .join(" · ");
+}
+
+export function parseSupplierFromReference(note?: string | null): string {
+  if (!note) return "";
+  const match = note.match(/^Supplier:\s*(.+)$/im);
+  return match?.[1]?.trim() ?? "";
+}
+
+export function parseInvoiceFromReference(note?: string | null): string {
+  if (!note) return "";
+  const match = note.match(/^Invoice:\s*(.+)$/im);
+  if (match) return match[1].trim();
+  return parseUserNoteFromReference(note);
+}
+
+export function buildReceiveReferenceNote({
+  packageCount,
+  supplier,
+  invoice,
+}: {
+  packageCount: number;
+  supplier: string;
+  invoice: string;
+}) {
+  return [
+    `Packages: ${packageCount}`,
+    supplier ? `Supplier: ${supplier}` : null,
+    invoice ? `Invoice: ${invoice}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export type PackagingProduct = {
@@ -83,7 +124,13 @@ export type PackagingProduct = {
 };
 
 export function transactionPacketCount(
-  type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL",
+  type:
+    | "RECEIVE"
+    | "TRANSFER"
+    | "SALE"
+    | "RETURNED"
+    | "DAMAGED"
+    | "REVERSAL",
   quantityLitres: number,
   packageCount: number | null,
   product: PackagingProduct
@@ -101,7 +148,7 @@ export function transactionPacketCount(
     return 0;
   }
 
-  if (type === "SALE") {
+  if (type === "SALE" || type === "RETURNED" || type === "DAMAGED") {
     if (packageCount != null) return packageCount;
     if (volumePerPacket != null) {
       return quantityLitres / volumePerPacket;

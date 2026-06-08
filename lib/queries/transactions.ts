@@ -1,10 +1,10 @@
 import {
   and,
-  count,
   desc,
   eq,
   gte,
   ilike,
+  inArray,
   lte,
   or,
 } from "drizzle-orm";
@@ -14,62 +14,32 @@ import {
   oilProducts,
   users,
 } from "@/lib/db/schema";
+import { istDaySpan } from "@/lib/date-range";
 import {
   parsePackageCountFromNote,
   transactionPacketCount,
 } from "@/lib/packaging";
+import type {
+  ConsumptionSummary,
+  IssuedSummary,
+  ReceiveSummary,
+  TransactionListRow,
+  TransactionListSummary,
+  TransactionListType,
+} from "@/lib/transactions/types";
 
-export type TransactionListType = "RECEIVE" | "TRANSFER" | "SALE";
-
-export type TransactionListRow = {
-  id: string;
-  type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL";
-  quantity: string;
-  transactionDate: string;
-  referenceNote: string | null;
-  productId: string;
-  productName: string;
-  unit: string;
-  costPrice: string;
-  sellingPrice: string;
-  packetsPerBox: string | null;
-  volumePerPacket: string | null;
-  volumePerBox: string | null;
-  createdByName: string;
-  createdById: string;
-  reversesTransactionId: string | null;
-};
-
-export type ReceiveSummary = {
-  totalLitres: number;
-  totalPackets: number;
-  totalCost: number;
-  avgCostPerLitre: number;
-  count: number;
-};
-
-export type IssuedSummary = {
-  totalLitres: number;
-  totalPackets: number;
-  count: number;
-  activeCreators: number;
-};
-
-export type ConsumptionSummary = {
-  totalLitres: number;
-  totalPackets: number;
-  count: number;
-  dailyAverage: number;
-  dailyAveragePackets: number;
-};
-
-export type TransactionListSummary =
-  | ReceiveSummary
-  | IssuedSummary
-  | ConsumptionSummary;
+export type {
+  ConsumptionSummary,
+  IssuedSummary,
+  ReceiveSummary,
+  TransactionListRow,
+  TransactionListSummary,
+  TransactionListType,
+} from "@/lib/transactions/types";
+export { TRANSACTION_LIST_PAGE_SIZE } from "@/lib/transactions/types";
 
 function buildConditions(filters: {
-  type: TransactionListType;
+  types: TransactionListType[];
   startDate: string;
   endDate: string;
   productId?: string;
@@ -77,7 +47,7 @@ function buildConditions(filters: {
   search?: string;
 }) {
   const conditions = [
-    eq(inventoryTransactions.type, filters.type),
+    inArray(inventoryTransactions.type, filters.types),
     gte(inventoryTransactions.transactionDate, filters.startDate),
     lte(inventoryTransactions.transactionDate, filters.endDate),
   ];
@@ -112,6 +82,7 @@ function baseQuery() {
       type: inventoryTransactions.type,
       quantity: inventoryTransactions.quantity,
       transactionDate: inventoryTransactions.transactionDate,
+      createdAt: inventoryTransactions.createdAt,
       referenceNote: inventoryTransactions.referenceNote,
       productId: inventoryTransactions.productId,
       productName: oilProducts.name,
@@ -157,14 +128,17 @@ export async function getDistinctCreatorsForType(
 }
 
 async function computeSummary(
-  type: TransactionListType,
+  types: TransactionListType[],
   whereClause: ReturnType<typeof and>,
   startDate: string,
   endDate: string
 ): Promise<TransactionListSummary> {
   const db = getDb();
+  const type = types[0];
+
   const rows = await db
     .select({
+      type: inventoryTransactions.type,
       quantity: inventoryTransactions.quantity,
       transactionDate: inventoryTransactions.transactionDate,
       referenceNote: inventoryTransactions.referenceNote,
@@ -193,7 +167,7 @@ async function computeSummary(
     return transactionPacketCount(type, litres, packageCount, product);
   }
 
-  if (type === "RECEIVE") {
+  if (types.length === 1 && type === "RECEIVE") {
     let totalLitres = 0;
     let totalPackets = 0;
     let totalCost = 0;
@@ -212,7 +186,7 @@ async function computeSummary(
     };
   }
 
-  if (type === "TRANSFER") {
+  if (types.length === 1 && type === "TRANSFER") {
     const creators = new Set<string>();
     let totalLitres = 0;
     let totalPackets = 0;
@@ -230,22 +204,26 @@ async function computeSummary(
     };
   }
 
+  // Consumption net: sold + damaged at Oil Manager (returns to Depot are tracked separately).
   let totalLitres = 0;
   let totalPackets = 0;
   for (const row of rows) {
+    if (row.type === "RETURNED") continue;
+
     const litres = Number(row.quantity);
+    const packageCount = parsePackageCountFromNote(row.referenceNote);
+    const packetsAbs = transactionPacketCount(
+      "SALE",
+      litres,
+      packageCount,
+      row
+    );
+
     totalLitres += litres;
-    totalPackets += rowPackets(litres, row.referenceNote, row);
+    totalPackets += packetsAbs;
   }
 
-  const daySpan = Math.max(
-    1,
-    Math.round(
-      (new Date(`${endDate}T12:00:00`).getTime() -
-        new Date(`${startDate}T12:00:00`).getTime()) /
-        (1000 * 60 * 60 * 24)
-    ) + 1
-  );
+  const daySpan = istDaySpan(startDate, endDate);
 
   return {
     totalLitres,
@@ -256,44 +234,23 @@ async function computeSummary(
   };
 }
 
-export async function getTransactionList(filters: {
-  type: TransactionListType;
+export async function getAllTransactionRows(filters: {
+  types: TransactionListType[];
   startDate: string;
   endDate: string;
-  productId?: string;
   recordedBy?: string;
-  search?: string;
-  page?: number;
-  pageSize?: number;
 }) {
-  const page = Math.max(1, filters.page ?? 1);
-  const pageSize = filters.pageSize ?? 10;
-  const offset = (page - 1) * pageSize;
   const whereClause = buildConditions(filters);
-
-  const [countRow] = await getDb()
-    .select({ total: count() })
-    .from(inventoryTransactions)
-    .innerJoin(
-      oilProducts,
-      eq(inventoryTransactions.productId, oilProducts.id)
-    )
-    .innerJoin(users, eq(inventoryTransactions.createdBy, users.id))
-    .where(whereClause);
-
-  const total = Number(countRow?.total ?? 0);
 
   const rows = await baseQuery()
     .where(whereClause)
     .orderBy(
       desc(inventoryTransactions.transactionDate),
       desc(inventoryTransactions.createdAt)
-    )
-    .limit(pageSize)
-    .offset(offset);
+    );
 
   const summary = await computeSummary(
-    filters.type,
+    filters.types,
     whereClause,
     filters.startDate,
     filters.endDate
@@ -301,9 +258,6 @@ export async function getTransactionList(filters: {
 
   return {
     rows: rows as TransactionListRow[],
-    total,
-    page,
-    pageSize,
     summary,
   };
 }

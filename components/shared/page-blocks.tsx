@@ -27,7 +27,13 @@ export function TransactionHistory({
     quantity: string;
     unit: string;
     transactionDate: string;
-    type?: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL";
+    type?:
+      | "RECEIVE"
+      | "TRANSFER"
+      | "SALE"
+      | "RETURNED"
+      | "DAMAGED"
+      | "REVERSAL";
     referenceNote?: string | null;
     packetsPerBox?: string | null;
     volumePerPacket?: string | null;
@@ -116,12 +122,20 @@ export function PageHeader({
 export function SegmentBadge({
   type,
 }: {
-  type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL";
+  type:
+    | "RECEIVE"
+    | "TRANSFER"
+    | "SALE"
+    | "RETURNED"
+    | "DAMAGED"
+    | "REVERSAL";
 }) {
   const labels = {
     RECEIVE: "Receive",
     TRANSFER: "Transfer",
     SALE: "Sale",
+    RETURNED: "Returned",
+    DAMAGED: "Damaged",
     REVERSAL: "Reversal",
   };
 

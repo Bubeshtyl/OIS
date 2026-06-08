@@ -1,10 +1,9 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { useCallback, useEffect } from "react";
 import { StockUnitToggle } from "@/components/shared/stock-unit-toggle";
-import { Input } from "@/components/ui/input";
+import { SearchFilterInput } from "@/components/shared/search-filter-input";
 import type { StockDisplayUnit } from "@/lib/format";
 import {
   Select,
@@ -15,26 +14,24 @@ import {
 } from "@/components/ui/select";
 import type { TransactionPageKind } from "@/lib/transactions/page-config";
 import { PAGE_CONFIG } from "@/lib/transactions/page-config";
+import { applyUrlFilterUpdates } from "@/lib/url-filters";
 
-type ProductOption = { id: string; name: string };
 type CreatorOption = { id: string; name: string };
 
 export function TransactionFilters({
   pageKind,
-  products,
   creators,
-  productId,
   recordedBy,
-  search,
+  searchValue,
+  onSearchChange,
   unit = "packets",
   onUnitChange,
 }: {
   pageKind: TransactionPageKind;
-  products: ProductOption[];
   creators: CreatorOption[];
-  productId?: string;
   recordedBy?: string;
-  search?: string;
+  searchValue: string;
+  onSearchChange: (value: string) => void;
   unit?: StockDisplayUnit;
   onUnitChange: (unit: StockDisplayUnit) => void;
 }) {
@@ -42,47 +39,55 @@ export function TransactionFilters({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const config = PAGE_CONFIG[pageKind];
-  const [searchDraft, setSearchDraft] = useState(search ?? "");
+
+  const pushParams = useCallback(
+    (updates: Record<string, string | undefined>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      applyUrlFilterUpdates(params, updates, { resetPage: true });
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname);
+    },
+    [pathname, router, searchParams]
+  );
 
   useEffect(() => {
-    setSearchDraft(search ?? "");
-  }, [search]);
-
-  function pushParams(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(searchParams.toString());
-    params.delete("page");
+    let changed = false;
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (value) {
-        params.set(key, value);
-      } else {
-        params.delete(key);
-      }
+    if (params.has("product")) {
+      params.delete("product");
+      changed = true;
+    }
+    if (params.has("search")) {
+      params.delete("search");
+      changed = true;
+    }
+    if (params.has("page")) {
+      params.delete("page");
+      changed = true;
     }
 
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
-  }
+    if (!changed) return;
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    pushParams({ search: searchDraft.trim() || undefined });
-  }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }, [pathname, router, searchParams]);
 
   return (
     <div className="flex flex-col gap-3">
-      <form onSubmit={handleSearchSubmit} className="relative min-w-0">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={searchDraft}
-          onChange={(e) => setSearchDraft(e.target.value)}
-          placeholder={config.searchPlaceholder}
-          className="h-10 bg-card pl-9"
-        />
-      </form>
+      <SearchFilterInput
+        value={searchValue}
+        onChange={onSearchChange}
+        onSubmit={() => {}}
+        placeholder={config.searchPlaceholder}
+      />
 
       <div
-        className={`grid min-w-0 gap-3 ${config.showStaffFilter ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
+        className={
+          config.showStaffFilter
+            ? "grid min-w-0 gap-3 sm:grid-cols-2"
+            : "min-w-0"
+        }
       >
         {config.showStaffFilter && (
           <Select
@@ -110,31 +115,6 @@ export function TransactionFilters({
             </SelectContent>
           </Select>
         )}
-
-        <Select
-          value={productId ?? "all"}
-          onValueChange={(value) =>
-            pushParams({
-              product: value && value !== "all" ? value : undefined,
-            })
-          }
-          items={[
-            { value: "all", label: "All Oil Types" },
-            ...products.map((p) => ({ value: p.id, label: p.name })),
-          ]}
-        >
-          <SelectTrigger className="h-10 w-full min-w-0 bg-card">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Oil Types</SelectItem>
-            {products.map((product) => (
-              <SelectItem key={product.id} value={product.id}>
-                {product.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
 
         <StockUnitToggle
           unit={unit}

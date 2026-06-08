@@ -1,5 +1,5 @@
-import type { TransactionListRow } from "@/lib/queries/transactions";
-import { formatDate, formatStockQuantity, type StockDisplayUnit } from "@/lib/format";
+import type { DisplayTransactionRow } from "@/lib/transactions/types";
+import { formatDateTime, formatStockQuantity, type StockDisplayUnit } from "@/lib/format";
 import { transactionRowPackets } from "@/lib/transactions/quantity";
 import { parseUserNoteFromReference } from "@/lib/packaging";
 import { TransactionActions } from "@/components/transactions/transaction-actions";
@@ -18,7 +18,7 @@ export function IssuedTransactionTable({
   reversedIds,
   unit = "packets",
 }: {
-  rows: TransactionListRow[];
+  rows: DisplayTransactionRow[];
   isAdmin: boolean;
   reversedIds: string[];
   unit?: StockDisplayUnit;
@@ -37,11 +37,9 @@ export function IssuedTransactionTable({
     <Table>
       <TableHeader>
         <TableRow className="bg-muted/40 hover:bg-muted/40">
-          <TableHead>Date</TableHead>
-          <TableHead>Manager</TableHead>
+          <TableHead>Recorded</TableHead>
           <TableHead>Oil Type</TableHead>
           <TableHead className="min-w-[4.5rem]">Qty</TableHead>
-          <TableHead>Issued By</TableHead>
           <TableHead>Notes</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>
@@ -49,9 +47,17 @@ export function IssuedTransactionTable({
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.id}>
-            <TableCell>{formatDate(row.transactionDate)}</TableCell>
-            <TableCell>Oil Manager</TableCell>
-            <TableCell className="font-medium">{row.productName}</TableCell>
+            <TableCell className="whitespace-nowrap text-muted-foreground">
+              {formatDateTime(row.createdAt)}
+            </TableCell>
+            <TableCell className="font-medium">
+              {row.productName}
+              {row.isAggregated ? (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  ({row.entryCount} entries)
+                </span>
+              ) : null}
+            </TableCell>
             <TableCell>
               {formatStockQuantity(
                 unit,
@@ -59,16 +65,21 @@ export function IssuedTransactionTable({
                 Number(row.quantity)
               )}
             </TableCell>
-            <TableCell>{row.createdByName}</TableCell>
             <TableCell className="max-w-[12rem] truncate text-muted-foreground">
-              {parseUserNoteFromReference(row.referenceNote) || "—"}
+              {row.isAggregated
+                ? "—"
+                : parseUserNoteFromReference(row.referenceNote) || "—"}
             </TableCell>
             <TableCell>
-              <TransactionActions
-                row={row}
-                isAdmin={isAdmin}
-                reversedIds={reversedSet}
-              />
+              {row.isAggregated ? (
+                <span className="text-xs text-muted-foreground">—</span>
+              ) : (
+                <TransactionActions
+                  row={row}
+                  isAdmin={isAdmin}
+                  reversedIds={reversedSet}
+                />
+              )}
             </TableCell>
           </TableRow>
         ))}

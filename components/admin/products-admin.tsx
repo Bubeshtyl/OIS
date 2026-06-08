@@ -7,8 +7,9 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Pencil, RotateCcw, Search, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { SearchFilterInput } from "@/components/shared/search-filter-input";
 import { toast } from "sonner";
 import type { OilProduct } from "@/lib/db/schema";
 import {
@@ -17,12 +18,7 @@ import {
   saveProductAction,
 } from "@/lib/actions/admin";
 import type { ActionState } from "@/lib/actions/inventory";
-import {
-  formatDefaultUnit,
-  formatPackSizes,
-  getProductCategory,
-  PRODUCT_CATEGORIES,
-} from "@/lib/products/display";
+import { formatDefaultUnit, formatPackSizes } from "@/lib/products/display";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,13 +30,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -494,78 +483,23 @@ function ProductStatusAction({
 }
 
 function ProductFilters({
-  search,
-  category,
+  value,
+  onChange,
+  onSubmit,
 }: {
-  search?: string;
-  category?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [searchDraft, setSearchDraft] = useState(search ?? "");
-
-  useEffect(() => {
-    setSearchDraft(search ?? "");
-  }, [search]);
-
-  function pushParams(updates: Record<string, string | undefined>) {
-    const params = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(updates)) {
-      if (value) {
-        params.set(key, value);
-      } else {
-        params.delete(key);
-      }
-    }
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
-  }
-
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    pushParams({ search: searchDraft.trim() || undefined });
-  }
-
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-      <form onSubmit={handleSearchSubmit} className="relative min-w-[12rem] flex-1">
-        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={searchDraft}
-          onChange={(e) => setSearchDraft(e.target.value)}
-          placeholder="Search oil type or category…"
-          className="h-10 bg-card pl-9"
-        />
-      </form>
-
-      <Select
-        value={category ?? "all"}
-        onValueChange={(value) =>
-          pushParams({
-            category: value && value !== "all" ? value : undefined,
-          })
-        }
-        items={[
-          { value: "all", label: "All Categories" },
-          ...PRODUCT_CATEGORIES.map((item) => ({
-            value: item,
-            label: item,
-          })),
-        ]}
-      >
-        <SelectTrigger className="h-10 w-full bg-card sm:w-[11rem]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Categories</SelectItem>
-          {PRODUCT_CATEGORIES.map((item) => (
-            <SelectItem key={item} value={item}>
-              {item}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <SearchFilterInput
+        value={value}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        placeholder="Search oil type…"
+        className="relative min-w-[12rem] flex-1"
+      />
     </div>
   );
 }
@@ -580,41 +514,37 @@ export function AddProductButton() {
 
 export function ProductsAdmin({
   products,
-  search,
-  category,
 }: {
   products: OilProduct[];
-  search?: string;
-  category?: string;
 }) {
   const router = useRouter();
+  const [searchDraft, setSearchDraft] = useState("");
+
   const filteredProducts = useMemo(() => {
-    const term = search?.trim().toLowerCase();
+    const term = searchDraft.trim().toLowerCase();
     return products.filter((product) => {
-      const productCategory = getProductCategory(product.name);
-      if (category && productCategory !== category) {
-        return false;
-      }
       if (!term) return true;
       return (
         product.name.toLowerCase().includes(term) ||
-        productCategory.toLowerCase().includes(term) ||
         formatPackSizes(product).toLowerCase().includes(term)
       );
     });
-  }, [products, search, category]);
+  }, [products, searchDraft]);
 
   return (
     <Card className="border shadow-sm">
         <CardContent className="space-y-4 p-4">
-          <ProductFilters search={search} category={category} />
+          <ProductFilters
+            value={searchDraft}
+            onChange={setSearchDraft}
+            onSubmit={() => {}}
+          />
 
           <div className="overflow-x-auto rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
                   <TableHead>Oil Type</TableHead>
-                  <TableHead>Category</TableHead>
                   <TableHead>Pack Sizes</TableHead>
                   <TableHead>Default Unit</TableHead>
                   <TableHead>MRP / Selling</TableHead>
@@ -626,7 +556,7 @@ export function ProductsAdmin({
                 {filteredProducts.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={6}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No oil products match your filters.
@@ -637,9 +567,6 @@ export function ProductsAdmin({
                     <TableRow key={product.id}>
                       <TableCell className="font-medium">
                         {product.name}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {getProductCategory(product.name)}
                       </TableCell>
                       <TableCell>{formatPackSizes(product)}</TableCell>
                       <TableCell>

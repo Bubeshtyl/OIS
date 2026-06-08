@@ -8,6 +8,7 @@ export function PackageCountField({
   description = "Number of boxes, pouches, or sachets",
   value,
   onChange,
+  max,
   required = true,
 }: {
   id?: string;
@@ -16,6 +17,7 @@ export function PackageCountField({
   description?: string;
   value?: string;
   onChange?: (value: string) => void;
+  max?: number;
   required?: boolean;
 }) {
   return (
@@ -31,6 +33,7 @@ export function PackageCountField({
         type="number"
         step="1"
         min="1"
+        max={max}
         required={required}
         className="min-h-11"
         placeholder="12"

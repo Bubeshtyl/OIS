@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { inventoryTransactions, oilProducts } from "@/lib/db/schema";
-import { toIstDateString } from "@/lib/date-range";
+import { addIstDays, parseIstDate } from "@/lib/date-range";
 import { getIstTodayString } from "@/lib/timezone";
 import {
   litresToPackets,
@@ -401,9 +401,7 @@ export async function getSalesForDateRange(startDate: string, endDate: string) {
 
   while (current <= endDate) {
     map.set(current, { packets: 0, litres: 0 });
-    const next = parseIstDateForRange(current);
-    next.setDate(next.getDate() + 1);
-    current = toIstDateString(next);
+    current = addIstDays(current, 1);
   }
 
   for (const row of rows) {
@@ -430,11 +428,11 @@ export async function getSalesForDateRange(startDate: string, endDate: string) {
     litres: totals.litres,
     label:
       dayCount <= 7
-        ? new Date(date).toLocaleDateString("en-IN", {
+        ? parseIstDate(date).toLocaleDateString("en-IN", {
             weekday: "short",
             timeZone: "Asia/Kolkata",
           })
-        : new Date(date).toLocaleDateString("en-IN", {
+        : parseIstDate(date).toLocaleDateString("en-IN", {
             day: "numeric",
             month: "short",
             timeZone: "Asia/Kolkata",
@@ -442,16 +440,9 @@ export async function getSalesForDateRange(startDate: string, endDate: string) {
   }));
 }
 
-function parseIstDateForRange(value: string) {
-  return new Date(`${value}T12:00:00`);
-}
-
 export async function getSalesLast7Days() {
   const today = getIstTodayString();
-  const start = new Date(`${today}T12:00:00`);
-  start.setDate(start.getDate() - 6);
-  const startStr = start.toISOString().slice(0, 10);
-  return getSalesForDateRange(startStr, today);
+  return getSalesForDateRange(addIstDays(today, -6), today);
 }
 
 export async function getTodaySales(date = getIstTodayString()) {

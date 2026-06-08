@@ -1,3 +1,4 @@
+import { isValidDateString, parseIstDate, toIstDateString } from "@/lib/date-range";
 import type { OilProduct } from "@/lib/db/schema";
 import {
   formatBoxCount,
@@ -69,7 +70,13 @@ export function formatPackets(value: number | string): string {
 }
 
 export function formatTransactionQuantity(
-  type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL",
+  type:
+    | "RECEIVE"
+    | "TRANSFER"
+    | "SALE"
+    | "RETURNED"
+    | "DAMAGED"
+    | "REVERSAL",
   quantity: number | string,
   referenceNote: string | null | undefined,
   product: PackagingProduct,
@@ -90,7 +97,7 @@ export function formatTransactionQuantity(
 
   if (packageCount != null) {
     const label =
-      type === "SALE"
+      type === "SALE" || type === "RETURNED" || type === "DAMAGED"
         ? formatPacketCount(packageCount)
         : formatBoxCount(packageCount);
     return `${label} (${formatLitres(qty)})`;
@@ -184,7 +191,11 @@ export function formatQuantity(value: number | string, unit: string): string {
 }
 
 export function formatDate(date: Date | string): string {
-  return dateFormatter.format(new Date(date));
+  const value =
+    typeof date === "string" && isValidDateString(date)
+      ? parseIstDate(date)
+      : new Date(date);
+  return dateFormatter.format(value);
 }
 
 export function formatDateTime(date: Date | string): string {
@@ -192,11 +203,5 @@ export function formatDateTime(date: Date | string): string {
 }
 
 export function toDateInputValue(date: Date): string {
-  const ist = new Date(
-    date.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
-  );
-  const year = ist.getFullYear();
-  const month = String(ist.getMonth() + 1).padStart(2, "0");
-  const day = String(ist.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return toIstDateString(date);
 }

@@ -22,7 +22,13 @@ import {
 
 type LedgerRow = {
   id: string;
-  type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL";
+  type:
+    | "RECEIVE"
+    | "TRANSFER"
+    | "SALE"
+    | "RETURNED"
+    | "DAMAGED"
+    | "REVERSAL";
   productName: string;
   unit: string;
   quantity: string;
@@ -90,7 +96,9 @@ export function ReportsView({
   const reversedSet = new Set(reversedIds);
   const title = REPORT_LABELS[report];
 
-  const consumptionRows = ledger.filter((r) => r.type === "SALE");
+  const consumptionRows = ledger.filter((r) =>
+    ["SALE", "RETURNED", "DAMAGED"].includes(r.type)
+  );
   const issuedRows = ledger.filter((r) => r.type === "TRANSFER");
 
   function renderPreview() {

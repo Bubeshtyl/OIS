@@ -10,9 +10,6 @@ export default async function ReceivePage({
   searchParams: Promise<{
     start?: string;
     end?: string;
-    search?: string;
-    product?: string;
-    page?: string;
   }>;
 }) {
   const params = await searchParams;

@@ -10,10 +10,7 @@ export default async function SalesPage({
   searchParams: Promise<{
     start?: string;
     end?: string;
-    search?: string;
-    product?: string;
     recordedBy?: string;
-    page?: string;
   }>;
 }) {
   const params = await searchParams;

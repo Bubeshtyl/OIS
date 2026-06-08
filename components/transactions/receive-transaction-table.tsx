@@ -1,6 +1,6 @@
-import type { TransactionListRow } from "@/lib/queries/transactions";
+import type { DisplayTransactionRow } from "@/lib/transactions/types";
 import {
-  formatDate,
+  formatDateTime,
   formatInr,
   formatStockQuantity,
   type StockDisplayUnit,
@@ -9,7 +9,8 @@ import { transactionRowPackets } from "@/lib/transactions/quantity";
 import {
   describeBoxPackaging,
   parsePackageCountFromNote,
-  parseUserNoteFromReference,
+  parseInvoiceFromReference,
+  parseSupplierFromReference,
 } from "@/lib/packaging";
 import type { OilProduct } from "@/lib/db/schema";
 import { TransactionActions } from "@/components/transactions/transaction-actions";
@@ -22,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-function toProduct(row: TransactionListRow): OilProduct {
+function toProduct(row: DisplayTransactionRow): OilProduct {
   return {
     id: row.productId,
     name: row.productName,
@@ -43,7 +44,7 @@ export function ReceiveTransactionTable({
   reversedIds,
   unit = "packets",
 }: {
-  rows: TransactionListRow[];
+  rows: DisplayTransactionRow[];
   isAdmin: boolean;
   reversedIds: string[];
   unit?: StockDisplayUnit;
@@ -62,7 +63,7 @@ export function ReceiveTransactionTable({
     <Table>
       <TableHeader>
         <TableRow className="bg-muted/40 hover:bg-muted/40">
-          <TableHead>Date</TableHead>
+          <TableHead>Recorded</TableHead>
           <TableHead>Supplier</TableHead>
           <TableHead>Invoice No.</TableHead>
           <TableHead>Oil Type</TableHead>
@@ -80,18 +81,31 @@ export function ReceiveTransactionTable({
           const costPerL = Number(row.costPrice);
           const totalCost = litres * costPerL;
           const packageCount = parsePackageCountFromNote(row.referenceNote);
-          const userNote = parseUserNoteFromReference(row.referenceNote);
-          const packSize =
-            describeBoxPackaging(toProduct(row)) ?? "—";
+          const supplier = row.isAggregated
+            ? row.aggregatedSupplier ?? "—"
+            : parseSupplierFromReference(row.referenceNote);
+          const invoice = row.isAggregated
+            ? row.aggregatedInvoice ?? "—"
+            : parseInvoiceFromReference(row.referenceNote);
+          const packSize = describeBoxPackaging(toProduct(row)) ?? "—";
 
           return (
             <TableRow key={row.id}>
-              <TableCell>{formatDate(row.transactionDate)}</TableCell>
-              <TableCell>Supplier</TableCell>
-              <TableCell className="max-w-[8rem] truncate">
-                {userNote || "—"}
+              <TableCell className="whitespace-nowrap text-muted-foreground">
+                {formatDateTime(row.createdAt)}
               </TableCell>
-              <TableCell className="font-medium">{row.productName}</TableCell>
+              <TableCell>{supplier || "—"}</TableCell>
+              <TableCell className="max-w-[8rem] truncate">
+                {invoice || "—"}
+              </TableCell>
+              <TableCell className="font-medium">
+                {row.productName}
+                {row.isAggregated ? (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    ({row.entryCount} entries)
+                  </span>
+                ) : null}
+              </TableCell>
               <TableCell className="max-w-[10rem] text-xs text-muted-foreground">
                 {packSize}
               </TableCell>
@@ -106,11 +120,15 @@ export function ReceiveTransactionTable({
               <TableCell>{formatInr(costPerL)}</TableCell>
               <TableCell>{formatInr(totalCost)}</TableCell>
               <TableCell>
-                <TransactionActions
-                  row={row}
-                  isAdmin={isAdmin}
-                  reversedIds={reversedSet}
-                />
+                {row.isAggregated ? (
+                  <span className="text-xs text-muted-foreground">—</span>
+                ) : (
+                  <TransactionActions
+                    row={row}
+                    isAdmin={isAdmin}
+                    reversedIds={reversedSet}
+                  />
+                )}
               </TableCell>
             </TableRow>
           );

@@ -1,4 +1,4 @@
-import type { TransactionListType } from "@/lib/queries/transactions";
+import type { TransactionListType } from "@/lib/transactions/types";
 
 export type TransactionPageKind = "receive" | "issued" | "consumption";
 
@@ -38,7 +38,7 @@ export const PAGE_CONFIG: Record<
   },
   consumption: {
     title: "Daily Consumption",
-    subtitle: "Oil Manager → Sold",
+    subtitle: "Oil Manager → Sold / Returned / Damaged",
     newButtonLabel: "+ New Consumption",
     searchPlaceholder: "Search oil type or notes…",
     staffFilterLabel: "All Managers",

@@ -1,34 +1,21 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 export function TransactionPagination({
   page,
   pageSize,
   total,
+  onPageChange,
 }: {
   page: number;
   pageSize: number;
   total: number;
+  onPageChange: (page: number) => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
-
-  function goToPage(nextPage: number) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (nextPage <= 1) {
-      params.delete("page");
-    } else {
-      params.set("page", String(nextPage));
-    }
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
-  }
 
   if (total === 0) {
     return (
@@ -47,7 +34,7 @@ export function TransactionPagination({
           variant="outline"
           size="sm"
           disabled={page <= 1}
-          onClick={() => goToPage(page - 1)}
+          onClick={() => onPageChange(page - 1)}
         >
           Previous
         </Button>
@@ -59,7 +46,7 @@ export function TransactionPagination({
           variant="outline"
           size="sm"
           disabled={page >= totalPages}
-          onClick={() => goToPage(page + 1)}
+          onClick={() => onPageChange(page + 1)}
         >
           Next
         </Button>

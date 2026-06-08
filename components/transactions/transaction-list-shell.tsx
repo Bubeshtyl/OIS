@@ -1,12 +1,16 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type { OilProduct } from "@/lib/db/schema";
-import type {
-  TransactionListRow,
-  TransactionListSummary,
-} from "@/lib/queries/transactions";
+import {
+  TRANSACTION_LIST_PAGE_SIZE,
+  type TransactionListRow,
+  type TransactionListSummary,
+} from "@/lib/transactions/types";
 import type { TransactionPageKind } from "@/lib/transactions/page-config";
 import { PAGE_CONFIG } from "@/lib/transactions/page-config";
+import { aggregateTransactionRowsByDateAndProduct } from "@/lib/transactions/aggregate-rows";
+import { filterTransactionRows } from "@/lib/transactions/client-search";
 import { buildFilterExtraParams } from "@/lib/transactions/url-params";
 import type { StockDisplayUnit } from "@/lib/format";
 import { useStockDisplayUnit } from "@/components/shared/use-stock-display-unit";
@@ -26,17 +30,12 @@ export function TransactionListShell({
   products,
   creators,
   rows,
-  total,
-  page,
-  pageSize,
   summary,
   startDate,
   endDate,
   defaultStart,
   defaultEnd,
-  productId,
   recordedBy,
-  search,
   isAdmin,
   reversedIds,
   unit: initialUnit = "packets",
@@ -45,27 +44,37 @@ export function TransactionListShell({
   products: OilProduct[];
   creators: Array<{ id: string; name: string }>;
   rows: TransactionListRow[];
-  total: number;
-  page: number;
-  pageSize: number;
   summary: TransactionListSummary;
   startDate: string;
   endDate: string;
   defaultStart: string;
   defaultEnd: string;
-  productId?: string;
   recordedBy?: string;
-  search?: string;
   isAdmin: boolean;
   reversedIds: string[];
   unit?: StockDisplayUnit;
 }) {
   const config = PAGE_CONFIG[pageKind];
   const { unit: displayUnit, setDisplayUnit } = useStockDisplayUnit(initialUnit);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [page, setPage] = useState(1);
+
+  const displayRows = useMemo(() => {
+    const filtered = filterTransactionRows(rows, searchDraft);
+    return aggregateTransactionRowsByDateAndProduct(filtered);
+  }, [rows, searchDraft]);
+
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * TRANSACTION_LIST_PAGE_SIZE;
+    return displayRows.slice(start, start + TRANSACTION_LIST_PAGE_SIZE);
+  }, [displayRows, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchDraft, rows, startDate, endDate, recordedBy]);
+
   const extraParams = buildFilterExtraParams({
-    product: productId,
     recordedBy,
-    search,
   });
 
   return (
@@ -93,11 +102,10 @@ export function TransactionListShell({
         <CardContent className="space-y-4 p-4">
           <TransactionFilters
             pageKind={pageKind}
-            products={products.map((p) => ({ id: p.id, name: p.name }))}
             creators={creators}
-            productId={productId}
             recordedBy={recordedBy}
-            search={search}
+            searchValue={searchDraft}
+            onSearchChange={setSearchDraft}
             unit={displayUnit}
             onUnitChange={setDisplayUnit}
           />
@@ -105,7 +113,7 @@ export function TransactionListShell({
           <div className="overflow-x-auto rounded-lg border [scrollbar-gutter:stable]">
             {pageKind === "receive" && (
               <ReceiveTransactionTable
-                rows={rows}
+                rows={pageRows}
                 isAdmin={isAdmin}
                 reversedIds={reversedIds}
                 unit={displayUnit}
@@ -113,7 +121,7 @@ export function TransactionListShell({
             )}
             {pageKind === "issued" && (
               <IssuedTransactionTable
-                rows={rows}
+                rows={pageRows}
                 isAdmin={isAdmin}
                 reversedIds={reversedIds}
                 unit={displayUnit}
@@ -121,7 +129,7 @@ export function TransactionListShell({
             )}
             {pageKind === "consumption" && (
               <ConsumptionTransactionTable
-                rows={rows}
+                rows={pageRows}
                 isAdmin={isAdmin}
                 reversedIds={reversedIds}
                 unit={displayUnit}
@@ -129,7 +137,12 @@ export function TransactionListShell({
             )}
           </div>
 
-          <TransactionPagination page={page} pageSize={pageSize} total={total} />
+          <TransactionPagination
+            page={page}
+            pageSize={TRANSACTION_LIST_PAGE_SIZE}
+            total={displayRows.length}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
 

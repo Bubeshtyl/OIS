@@ -12,7 +12,6 @@ export default async function StockCountPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    search?: string;
     product?: string;
     location?: string;
     unit?: string;
@@ -46,7 +45,6 @@ export default async function StockCountPage({
           managerValue: stock.managerValue,
         }}
         lowStockIds={lowStock.map((item) => item.id)}
-        search={params.search}
         productId={params.product}
         location={params.location}
         unit={unit}

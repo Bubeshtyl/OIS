@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Eye } from "lucide-react";
 import { toast } from "sonner";
 import { reverseTransactionAction } from "@/lib/actions/inventory";
-import type { TransactionListRow } from "@/lib/queries/transactions";
+import type { TransactionListRow } from "@/lib/transactions/types";
 import { TransactionDetailDialog } from "@/components/transactions/transaction-detail-dialog";
 import { Button } from "@/components/ui/button";
 

@@ -4,7 +4,7 @@ import type {
   IssuedSummary,
   ReceiveSummary,
   TransactionListSummary,
-} from "@/lib/queries/transactions";
+} from "@/lib/transactions/types";
 import type { TransactionPageKind } from "@/lib/transactions/page-config";
 import { Card, CardContent } from "@/components/ui/card";
 

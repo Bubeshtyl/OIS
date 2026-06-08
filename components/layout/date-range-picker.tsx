@@ -12,15 +12,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  calendarDateFromIstString,
   formatRangeLabel,
-  parseIstDate,
-  toIstDateString,
+  istDateStringFromCalendarDate,
 } from "@/lib/date-range";
 
 function toAppliedRange(startDate: string, endDate: string): DateRange {
   return {
-    from: parseIstDate(startDate),
-    to: parseIstDate(endDate),
+    from: calendarDateFromIstString(startDate),
+    to: calendarDateFromIstString(endDate),
   };
 }
 
@@ -60,8 +60,8 @@ export function DateRangePicker({
   function applyDraft() {
     if (!draftRange?.from || !draftRange?.to) return;
 
-    const start = toIstDateString(draftRange.from);
-    const end = toIstDateString(draftRange.to);
+    const start = istDateStringFromCalendarDate(draftRange.from);
+    const end = istDateStringFromCalendarDate(draftRange.to);
     const params = new URLSearchParams(searchParams.toString());
 
     if (extraParams) {
@@ -106,8 +106,8 @@ export function DateRangePicker({
     : !draftRange?.to
       ? "Select an end date"
       : formatRangeLabel(
-          toIstDateString(draftRange.from),
-          toIstDateString(draftRange.to)
+          istDateStringFromCalendarDate(draftRange.from),
+          istDateStringFromCalendarDate(draftRange.to)
         );
 
   return (
@@ -117,7 +117,7 @@ export function DateRangePicker({
           <Button
             variant="outline"
             size="sm"
-            className={className ?? "h-9 w-full min-w-0 gap-2 bg-card shadow-sm"}
+            className={className ?? "h-11 w-full min-w-0 justify-start gap-2 bg-card font-normal shadow-sm"}
           >
             <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 truncate">
@@ -129,7 +129,7 @@ export function DateRangePicker({
       <PopoverContent align="end" className="w-auto p-0">
         <Calendar
           mode="range"
-          defaultMonth={parseIstDate(startDate)}
+          defaultMonth={calendarDateFromIstString(startDate)}
           selected={draftRange}
           onSelect={setDraftRange}
           numberOfMonths={2}

@@ -90,7 +90,13 @@ export function DashboardView({
   productActivity: Record<string, PeriodRow>;
   recent: Array<{
     id: string;
-    type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL";
+    type:
+      | "RECEIVE"
+      | "TRANSFER"
+      | "SALE"
+      | "RETURNED"
+      | "DAMAGED"
+      | "REVERSAL";
     productName: string;
     quantity: string;
     unit: string;

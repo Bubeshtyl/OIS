@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -56,6 +57,8 @@ export function TransferForm({
   const [oilQty, setOilQty] = useState("");
   const [boxCount, setBoxCount] = useState("");
   const [volumeUnit, setVolumeUnit] = useState<VolumeUnit>("litre");
+  const today = getIstTodayString();
+  const [transactionDate, setTransactionDate] = useState(today);
 
   const selectedProduct = products.find((p) => p.id === productId);
   const usesVolumeUnits = isVolumeProduct(selectedProduct?.unit ?? "litre");
@@ -202,13 +205,13 @@ export function TransferForm({
 
       <div className="space-y-2">
         <Label htmlFor="transactionDate">Date *</Label>
-        <Input
+        <DatePicker
           id="transactionDate"
           name="transactionDate"
-          type="date"
+          value={transactionDate}
+          onChange={setTransactionDate}
+          today={today}
           required
-          defaultValue={getIstTodayString()}
-          className="min-h-11"
         />
       </div>
       <div className="space-y-2">

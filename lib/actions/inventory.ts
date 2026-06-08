@@ -14,6 +14,7 @@ import {
   reverseTransaction,
 } from "@/lib/inventory/service";
 import {
+  buildReceiveReferenceNote,
   formatBoxCount,
   formatPacketCount,
   totalPacketsFromBoxes,
@@ -79,8 +80,13 @@ export async function receiveStockAction(
     return { success: false, error: "Please enter a valid package count." };
   }
 
-  const userNote = String(formData.get("referenceNote") || "").trim();
-  const referenceNote = buildReferenceNote(packageCount, userNote);
+  const supplier = String(formData.get("supplier") || "").trim();
+  const invoice = String(formData.get("invoice") || "").trim();
+  const referenceNote = buildReceiveReferenceNote({
+    packageCount,
+    supplier,
+    invoice,
+  });
 
   const parsed = transactionSchema.safeParse({
     productId: formData.get("productId"),
@@ -181,6 +187,17 @@ export async function recordSaleAction(
     return { success: false, error: "Please enter a valid package count." };
   }
 
+  const consumptionType = String(
+    formData.get("consumptionType") || "SALE"
+  );
+  if (
+    consumptionType !== "SALE" &&
+    consumptionType !== "RETURNED" &&
+    consumptionType !== "DAMAGED"
+  ) {
+    return { success: false, error: "Invalid consumption category." };
+  }
+
   const userNote = String(formData.get("referenceNote") || "").trim();
   const referenceNote = buildReferenceNote(packageCount, userNote);
 
@@ -195,16 +212,44 @@ export async function recordSaleAction(
     return { success: false, error: "Please check all required fields." };
   }
 
+  if (
+    consumptionType === "SALE" ||
+    consumptionType === "RETURNED" ||
+    consumptionType === "DAMAGED"
+  ) {
+    const balance = await getProductBalance(parsed.data.productId, "MANAGER");
+    if (balance <= 0) {
+      return {
+        success: false,
+        error: "No stock available at Oil Manager.",
+      };
+    }
+    if (parsed.data.quantity > balance) {
+      return {
+        success: false,
+        error: `Only ${balance.toFixed(1)} available at Manager`,
+      };
+    }
+  }
+
   try {
     await createInventoryTransaction({
       ...parsed.data,
-      type: "SALE",
+      type: consumptionType as "SALE" | "RETURNED" | "DAMAGED",
       createdBy: session.userId,
     });
     revalidateInventoryPages();
+
+    const label =
+      consumptionType === "SALE"
+        ? "Sale"
+        : consumptionType === "RETURNED"
+          ? "Returned"
+          : "Damaged";
+
     return {
       success: true,
-      message: `Sale of ${formatPacketCount(packageCount)} recorded`,
+      message: `${label} of ${formatPacketCount(packageCount)} recorded`,
     };
   } catch (error) {
     return {

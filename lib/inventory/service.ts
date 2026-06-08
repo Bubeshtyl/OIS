@@ -43,6 +43,19 @@ function getBalanceDelta(
     return delta;
   }
 
+  if (type === "RETURNED") {
+    // Unsold stock returned from Oil Manager back to Depot.
+    delta.MANAGER = (delta.MANAGER ?? 0) - quantity;
+    delta.DEPOT = (delta.DEPOT ?? 0) + quantity;
+    return delta;
+  }
+
+  if (type === "DAMAGED") {
+    // Damaged stock is lost from Oil Manager inventory.
+    delta.MANAGER = (delta.MANAGER ?? 0) - quantity;
+    return delta;
+  }
+
   if (type === "REVERSAL") {
     if (fromLocation === "DEPOT" && toLocation === "SUPPLIER") {
       delta.DEPOT = (delta.DEPOT ?? 0) - quantity;
@@ -50,10 +63,11 @@ function getBalanceDelta(
       delta.DEPOT = (delta.DEPOT ?? 0) + quantity;
       delta.MANAGER = (delta.MANAGER ?? 0) - quantity;
     } else if (fromLocation === "MANAGER" && toLocation === "SALE") {
-      delta.MANAGER = (delta.MANAGER ?? 0) + quantity;
-    } else if (fromLocation === "DEPOT" && toLocation === "MANAGER") {
-      delta.DEPOT = (delta.DEPOT ?? 0) + quantity;
       delta.MANAGER = (delta.MANAGER ?? 0) - quantity;
+    } else if (fromLocation === "DEPOT" && toLocation === "MANAGER") {
+      // Reversal of RETURNED (Manager -> Depot).
+      delta.DEPOT = (delta.DEPOT ?? 0) - quantity;
+      delta.MANAGER = (delta.MANAGER ?? 0) + quantity;
     } else if (fromLocation === "SUPPLIER" && toLocation === "DEPOT") {
       delta.DEPOT = (delta.DEPOT ?? 0) + quantity;
     } else if (fromLocation === "SALE" && toLocation === "MANAGER") {
@@ -158,6 +172,16 @@ export async function createInventoryTransaction(input: CreateTransactionInput) 
       toLocation = "MANAGER";
       break;
     case "SALE":
+      fromLocation = "MANAGER";
+      toLocation = "SALE";
+      break;
+    case "RETURNED":
+      // Unsold stock returned from Oil Manager to Depot.
+      fromLocation = "MANAGER";
+      toLocation = "DEPOT";
+      break;
+    case "DAMAGED":
+      // Damaged stock is removed from Oil Manager (like SALE).
       fromLocation = "MANAGER";
       toLocation = "SALE";
       break;

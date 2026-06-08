@@ -1,10 +1,12 @@
 "use client";
 
-import type { TransactionListRow } from "@/lib/queries/transactions";
+import type { TransactionListRow } from "@/lib/transactions/types";
 import { formatDate, formatInr, formatLitres, formatTransactionQuantity } from "@/lib/format";
 import {
   describeBoxPackaging,
   parsePackageCountFromNote,
+  parseInvoiceFromReference,
+  parseSupplierFromReference,
   parseUserNoteFromReference,
 } from "@/lib/packaging";
 import type { OilProduct } from "@/lib/db/schema";
@@ -42,6 +44,8 @@ export function TransactionDetailDialog({
   const product = toProduct(row);
   const packageCount = parsePackageCountFromNote(row.referenceNote);
   const userNote = parseUserNoteFromReference(row.referenceNote);
+  const supplier = parseSupplierFromReference(row.referenceNote);
+  const invoice = parseInvoiceFromReference(row.referenceNote);
   const litres = Number(row.quantity);
   const packSize = describeBoxPackaging(product) ?? "—";
 
@@ -54,24 +58,19 @@ export function TransactionDetailDialog({
       value: packageCount != null ? String(packageCount) : "—",
     },
     { label: "Pack Size", value: packSize },
-    { label: "Recorded By", value: row.createdByName },
     { label: "Reference", value: userNote || "—" },
   ];
 
   if (row.type === "RECEIVE") {
-    details.splice(2, 0, { label: "Supplier", value: "Supplier" });
+    details.splice(2, 0, { label: "Supplier", value: supplier || "—" });
     details.splice(3, 0, {
-      label: "Invoice / Note",
-      value: userNote || "—",
+      label: "Invoice No.",
+      value: invoice || "—",
     });
     details.push({
       label: "Total Cost",
       value: formatInr(litres * Number(row.costPrice)),
     });
-  }
-
-  if (row.type === "TRANSFER" || row.type === "SALE") {
-    details.splice(2, 0, { label: "Manager", value: "Oil Manager" });
   }
 
   if (row.type === "SALE") {

@@ -20,6 +20,16 @@ const typeConfig = {
     icon: ArrowDown,
     className: "bg-emerald-100 text-emerald-700",
   },
+  RETURNED: {
+    label: "Returned",
+    icon: ArrowUp,
+    className: "bg-emerald-100 text-emerald-700",
+  },
+  DAMAGED: {
+    label: "Damaged",
+    icon: ArrowDown,
+    className: "bg-orange-100 text-orange-700",
+  },
   TRANSFER: {
     label: "Issued",
     icon: ArrowUp,

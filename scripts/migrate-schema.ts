@@ -36,6 +36,26 @@ async function migrateSchema() {
   await db.execute(sql`
     DO $$
     BEGIN
+      ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'RETURNED';
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END
+    $$;
+  `);
+
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'DAMAGED';
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END
+    $$;
+  `);
+
+  await db.execute(sql`
+    DO $$
+    BEGIN
       IF EXISTS (
         SELECT 1
         FROM information_schema.columns

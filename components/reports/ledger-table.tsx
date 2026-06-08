@@ -24,7 +24,13 @@ export function LedgerTable({
 }: {
   rows: Array<{
     id: string;
-    type: "RECEIVE" | "TRANSFER" | "SALE" | "REVERSAL";
+    type:
+      | "RECEIVE"
+      | "TRANSFER"
+      | "SALE"
+      | "RETURNED"
+      | "DAMAGED"
+      | "REVERSAL";
     productName: string;
     unit: string;
     quantity: string;

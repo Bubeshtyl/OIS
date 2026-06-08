@@ -8,12 +8,7 @@ import { getAllProducts } from "@/lib/queries/inventory";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminProductsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ search?: string; category?: string }>;
-}) {
-  const params = await searchParams;
+export default async function AdminProductsPage() {
   const products = await getAllProducts();
 
   return (
@@ -24,11 +19,7 @@ export default async function AdminProductsPage({
         action={<AddProductButton />}
       />
       <Suspense fallback={<div className="p-4">Loading products...</div>}>
-        <ProductsAdmin
-          products={products}
-          search={params.search}
-          category={params.category}
-        />
+        <ProductsAdmin products={products} />
       </Suspense>
     </div>
   );
