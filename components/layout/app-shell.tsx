@@ -22,12 +22,14 @@ export function AppShell({
         } as React.CSSProperties
       }
     >
-      <AppSidebar role={session.role} name={session.name} />
-      <SidebarInset className="bg-background">
-        <div className="flex h-14 items-center border-b bg-card px-4 md:hidden">
+      <AppSidebar role={session.role} />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
+        </header>
+        <div className="flex flex-1 flex-col gap-6 p-4 pt-0 md:p-8 md:pt-0">
+          {children}
         </div>
-        <div className="flex flex-1 flex-col gap-6 p-4 md:p-8">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

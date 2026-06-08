@@ -22,7 +22,7 @@ export function StockUnitToggle({
       role="group"
       aria-label="Display unit"
       className={cn(
-        "inline-grid h-8 w-auto shrink-0 grid-cols-2 gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm",
+        "inline-grid h-8 w-auto shrink-0 grid-cols-2 gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm [&_button]:min-h-0",
         className
       )}
     >

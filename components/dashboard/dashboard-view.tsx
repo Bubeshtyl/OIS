@@ -113,9 +113,16 @@ export function DashboardView({
 
   return (
     <>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <DashboardLocationTabs location={location} />
-        <StockUnitToggle unit={displayUnit} onChange={setDisplayUnit} />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <DashboardLocationTabs
+          location={location}
+          className="min-w-0 flex-1 sm:max-w-md"
+        />
+        <StockUnitToggle
+          unit={displayUnit}
+          onChange={setDisplayUnit}
+          className="h-9 w-full min-w-0 shrink-0 rounded-lg p-1 sm:w-[8.75rem]"
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

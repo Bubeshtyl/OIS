@@ -41,8 +41,10 @@ const TABS: Array<{
 
 export function DashboardLocationTabs({
   location = "all",
+  className,
 }: {
   location?: DashboardLocation;
+  className?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -65,7 +67,10 @@ export function DashboardLocationTabs({
     <div
       role="tablist"
       aria-label="Stock location"
-      className="grid w-full max-w-xl grid-cols-3 gap-1.5 rounded-xl border border-border bg-card p-1.5 shadow-sm"
+      className={cn(
+        "grid h-9 w-full min-w-0 grid-cols-3 gap-1 rounded-lg border border-border bg-card p-1 shadow-sm",
+        className
+      )}
     >
       {TABS.map((tab) => {
         const Icon = tab.icon;
@@ -79,7 +84,7 @@ export function DashboardLocationTabs({
             aria-selected={isActive}
             onClick={() => handleChange(tab.value)}
             className={cn(
-              "inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-all",
+              "inline-flex h-full min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-all",
               isActive
                 ? tab.activeClass
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
@@ -87,13 +92,13 @@ export function DashboardLocationTabs({
           >
             <span
               className={cn(
-                "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
+                "flex size-5 shrink-0 items-center justify-center rounded-md transition-colors",
                 isActive ? tab.activeIcon : "bg-muted text-muted-foreground"
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-3.5" />
             </span>
-            <span>{tab.label}</span>
+            <span className="truncate">{tab.label}</span>
           </button>
         );
       })}

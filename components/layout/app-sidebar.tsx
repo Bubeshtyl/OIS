@@ -17,7 +17,6 @@ import { AppLogo } from "@/components/brand/app-logo";
 import { logoutAction } from "@/lib/auth/actions";
 import { getNavItems, type NavIcon } from "@/lib/auth/rbac";
 import type { UserRole } from "@/lib/db/schema";
-import { cn } from "@/lib/utils";
 import {
   Sidebar,
   SidebarContent,
@@ -42,13 +41,19 @@ const iconMap: Record<NavIcon, LucideIcon> = {
   users: User,
 };
 
-export function AppSidebar({
-  role,
-  name,
-}: {
-  role: UserRole;
-  name: string;
-}) {
+function SidebarDivider() {
+  return (
+    <div className="px-4 py-3 group-data-[collapsible=icon]:px-3 group-data-[collapsible=icon]:py-2.5">
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        className="h-px w-full bg-sidebar-border/70"
+      />
+    </div>
+  );
+}
+
+export function AppSidebar({ role }: { role: UserRole }) {
   const pathname = usePathname();
   const items = getNavItems(role);
   const { isMobile, setOpenMobile } = useSidebar();
@@ -60,14 +65,19 @@ export function AppSidebar({
   }
 
   return (
-    <Sidebar collapsible="icon" className="border-r-0">
-      <SidebarHeader className="px-4 py-5 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-4">
-        <AppLogo
-          variant="sidebar"
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="p-0 px-4 pt-5 group-data-[collapsible=icon]:px-3 group-data-[collapsible=icon]:pt-4">
+        <Link
           href="/dashboard"
           onClick={closeMobileSidebar}
-        />
+          className="outline-none"
+        >
+          <AppLogo variant="sidebar" />
+        </Link>
       </SidebarHeader>
+
+      <SidebarDivider />
+
       <SidebarContent className="px-3">
         <SidebarGroup className="p-0">
           <SidebarGroupContent>
@@ -80,23 +90,20 @@ export function AppSidebar({
 
                 return (
                   <SidebarMenuItem key={item.href}>
-                    <Link
-                      href={item.href}
-                      title={item.label}
-                      onClick={closeMobileSidebar}
-                      className={cn(
-                        "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
-                        "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
-                        active &&
-                          "bg-sidebar-accent font-semibold text-sidebar-accent-foreground shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
-                      )}
+                    <SidebarMenuButton
+                      isActive={active}
+                      tooltip={item.label}
+                      className="h-10 rounded-xl"
+                      render={
+                        <Link
+                          href={item.href}
+                          onClick={closeMobileSidebar}
+                        />
+                      }
                     >
-                      <Icon className="size-[1.125rem] shrink-0" />
-                      <span className="truncate group-data-[collapsible=icon]:hidden">
-                        {item.label}
-                      </span>
-                    </Link>
+                      <Icon className="size-[1.125rem]" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
@@ -104,29 +111,20 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="px-3 pb-4">
-        <SidebarMenu className="gap-1">
-          <SidebarMenuItem>
-            <SidebarMenuButton className="h-auto min-h-9 flex-col items-start gap-0.5 rounded-xl py-2 text-sidebar-foreground/60">
-              <span className="text-[0.65rem] font-medium uppercase tracking-wide text-sidebar-foreground/45 group-data-[collapsible=icon]:hidden">
-                Petrol Station
-              </span>
-              <span className="truncate text-xs group-data-[collapsible=icon]:hidden">
-                {name}
-              </span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+
+      <SidebarDivider />
+
+      <SidebarFooter className="p-0 px-3 pb-5 group-data-[collapsible=icon]:px-2">
+        <SidebarMenu>
           <SidebarMenuItem>
             <form action={logoutAction} className="w-full">
               <SidebarMenuButton
                 type="submit"
-                className="w-full rounded-lg text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                 tooltip="Sign out"
+                className="h-10 rounded-xl"
               >
                 <LogOut className="size-[1.125rem]" />
-                <span className="group-data-[collapsible=icon]:hidden">
-                  Sign out
-                </span>
+                <span>Sign out</span>
               </SidebarMenuButton>
             </form>
           </SidebarMenuItem>

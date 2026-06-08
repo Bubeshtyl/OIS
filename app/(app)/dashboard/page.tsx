@@ -161,14 +161,14 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <PageHeader
-          title="Dashboard"
-          subtitle="Overview of oil inventory and movement"
-        />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <PageHeader
+            title="Dashboard"
+            subtitle="Overview of oil inventory and movement"
+          />
+        </div>
         <PageToolbar
-          name={session.name}
-          role={session.role}
           startDate={start}
           endDate={end}
           defaultStart={defaultStart}

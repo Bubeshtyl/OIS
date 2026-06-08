@@ -117,10 +117,10 @@ export function DateRangePicker({
           <Button
             variant="outline"
             size="sm"
-            className={className ?? "h-9 w-full gap-2 bg-card shadow-sm"}
+            className={className ?? "h-9 w-full min-w-0 gap-2 bg-card shadow-sm"}
           >
-            <CalendarDays className="size-4 text-muted-foreground" />
-            <span className="max-w-[14rem] truncate">
+            <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 truncate">
               {formatRangeLabel(startDate, endDate)}
             </span>
           </Button>
