@@ -12,9 +12,9 @@ Petrol station oil inventory app for tracking supplier receipts, depot-to-manage
 
 ## Default credentials (after seed)
 
-| Email | Password | Role |
-|-------|----------|------|
-| admin@station.com | admin123 | ADMIN |
+| Username | Password | Role |
+|----------|----------|------|
+| admin | admin123 | ADMIN |
 
 Change the admin password after first login in production.
 
@@ -77,6 +77,35 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:generate` | Generate SQL migrations |
 | `npm run db:seed` | Seed admin user + sample products |
 | `npm run db:reconcile` | Recompute stock_balance from ledger |
+
+## Stock Count
+
+Open **View full stock count** from the dashboard Depot Stock Summary card, or go to `/stock-count` directly. Shows a live snapshot of depot and manager balances per oil type (no date range). Optional filters: `?search=`, `?product=`, `?location=depot|manager`, `?unit=litres` (default display is packets; use the Packets / Litres toggle in the filter bar).
+
+**Packets / Litres toggle** is also available on the dashboard, Stock Received, Stock Issued, Daily Consumption, and Reports pages. Switching is instant (client-side); `?unit=litres` in the URL is updated for sharing.
+
+## Transaction list filters
+
+Stock Received, Stock Issued, and Daily Consumption support URL filters:
+
+- `?start=` / `?end=` — date range (IST, defaults to month-to-date)
+- `?search=` — product name, reference note, or recorded-by name
+- `?product=` — oil product id
+- `?page=` — pagination (10 rows per page)
+
+## Reports
+
+Open `/reports` to generate inventory reports. Use the `?report=` URL parameter to deep-link:
+
+| Report | `?report=` value |
+|--------|------------------|
+| Stock Summary | `stock-summary` |
+| Stock Movement | `stock-movement` |
+| Consumption | `consumption` |
+| Variance | `variance` |
+| Issued to Managers | `issued-managers` |
+
+Optional date range: `?start=YYYY-MM-DD&end=YYYY-MM-DD` (defaults to month-to-date, IST).
 
 ## Roles
 

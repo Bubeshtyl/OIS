@@ -18,13 +18,13 @@ export async function loginAction(
   _prev: AuthResult | null,
   formData: FormData
 ): Promise<AuthResult> {
-  const email = String(formData.get("email") || "")
+  const username = String(formData.get("username") || "")
     .trim()
     .toLowerCase();
   const password = String(formData.get("password") || "");
 
-  if (!email || !password) {
-    return { success: false, error: "Email and password are required." };
+  if (!username || !password) {
+    return { success: false, error: "Username and password are required." };
   }
 
   try {
@@ -32,21 +32,21 @@ export async function loginAction(
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.email, email))
+      .where(eq(users.username, username))
       .limit(1);
 
     if (!user || !user.isActive) {
-      return { success: false, error: "Invalid email or password." };
+      return { success: false, error: "Invalid username or password." };
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
-      return { success: false, error: "Invalid email or password." };
+      return { success: false, error: "Invalid username or password." };
     }
 
     await saveSession({
       userId: user.id,
-      email: user.email,
+      username: user.username,
       name: user.name,
       role: user.role,
       isLoggedIn: true,

@@ -1,38 +1,29 @@
-import { ReceiveForm } from "@/components/forms/receive-form";
-import {
-  PageHeader,
-  TransactionHistory,
-} from "@/components/shared/page-blocks";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getActiveProducts, getRecentTransactions } from "@/lib/queries/inventory";
+import { TransactionListShell } from "@/components/transactions/transaction-list-shell";
+import { getSession } from "@/lib/auth/session";
+import { loadTransactionPage } from "@/lib/transactions/load-page";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReceivePage() {
-  const [products, recent] = await Promise.all([
-    getActiveProducts(),
-    getRecentTransactions("RECEIVE"),
-  ]);
+export default async function ReceivePage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    start?: string;
+    end?: string;
+    search?: string;
+    product?: string;
+    page?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  const session = await getSession();
+  const data = await loadTransactionPage("receive", params);
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Receive Stock" subtitle="Supplier → Depot" />
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">New Receipt</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ReceiveForm products={products} />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent Receipts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TransactionHistory rows={recent} />
-        </CardContent>
-      </Card>
-    </div>
+    <TransactionListShell
+      pageKind="receive"
+      isAdmin={session.role === "ADMIN"}
+      {...data}
+    />
   );
 }

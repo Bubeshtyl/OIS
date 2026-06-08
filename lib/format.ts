@@ -99,6 +99,44 @@ export function formatTransactionQuantity(
   return formatQuantity(qty, unit);
 }
 
+export type StockDisplayUnit = "packets" | "litres";
+
+function formatStockNumber(value: number | string): string {
+  const num = Number(value);
+  if (num === 0) return "0";
+
+  return Number.isInteger(num)
+    ? num.toLocaleString("en-IN")
+    : num.toLocaleString("en-IN", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
+}
+
+export function parseStockDisplayUnit(value?: string): StockDisplayUnit {
+  return value === "litres" ? "litres" : "packets";
+}
+
+export function formatStockQuantity(
+  unit: StockDisplayUnit,
+  packets: number,
+  litres: number
+): string {
+  const value = unit === "litres" || packets <= 0 ? litres : packets;
+  return formatStockNumber(value);
+}
+
+export function formatSignedStockQuantity(
+  unit: StockDisplayUnit,
+  packets: number,
+  litres: number
+): string {
+  const value = unit === "litres" || packets <= 0 ? litres : packets;
+  if (value === 0) return "0";
+  const prefix = value > 0 ? "+" : "-";
+  return `${prefix}${formatStockNumber(Math.abs(value))}`;
+}
+
 export function formatStockCell(packets: number, litres: number) {
   if (packets > 0) {
     return {

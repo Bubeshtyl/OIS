@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { type DateRange } from "react-day-picker";
 import { Calendar } from "@/components/ui/calendar";
@@ -29,14 +29,19 @@ export function DateRangePicker({
   endDate,
   defaultStart,
   defaultEnd,
+  extraParams,
+  className,
 }: {
   startDate: string;
   endDate: string;
   defaultStart: string;
   defaultEnd: string;
+  extraParams?: Record<string, string>;
+  className?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [draftRange, setDraftRange] = useState<DateRange | undefined>(
     toAppliedRange(startDate, endDate)
@@ -57,11 +62,20 @@ export function DateRangePicker({
 
     const start = toIstDateString(draftRange.from);
     const end = toIstDateString(draftRange.to);
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (extraParams) {
+      for (const [key, value] of Object.entries(extraParams)) {
+        params.set(key, value);
+      }
+    }
 
     if (start !== defaultStart || end !== defaultEnd) {
       params.set("start", start);
       params.set("end", end);
+    } else {
+      params.delete("start");
+      params.delete("end");
     }
 
     const query = params.toString();
@@ -71,7 +85,19 @@ export function DateRangePicker({
 
   function resetToDefault() {
     setDraftRange(toAppliedRange(defaultStart, defaultEnd));
-    router.push(pathname);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("start");
+    params.delete("end");
+    params.delete("page");
+
+    if (extraParams) {
+      for (const [key, value] of Object.entries(extraParams)) {
+        params.set(key, value);
+      }
+    }
+
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
     setOpen(false);
   }
 
@@ -91,7 +117,7 @@ export function DateRangePicker({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2 bg-card shadow-sm"
+            className={className ?? "h-9 w-full gap-2 bg-card shadow-sm"}
           >
             <CalendarDays className="size-4 text-muted-foreground" />
             <span className="max-w-[14rem] truncate">

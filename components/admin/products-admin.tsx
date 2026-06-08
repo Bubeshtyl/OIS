@@ -1,15 +1,46 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Pencil, RotateCcw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { OilProduct } from "@/lib/db/schema";
-import { saveProductAction } from "@/lib/actions/admin";
+import {
+  deactivateProductAction,
+  reactivateProductAction,
+  saveProductAction,
+} from "@/lib/actions/admin";
 import type { ActionState } from "@/lib/actions/inventory";
+import {
+  formatDefaultUnit,
+  formatPackSizes,
+  getProductCategory,
+  PRODUCT_CATEGORIES,
+} from "@/lib/products/display";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +48,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -26,7 +69,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatInr, formatLitres } from "@/lib/format";
-import { describeBoxPackaging } from "@/lib/packaging";
 import { VolumeUnitToggle } from "@/components/forms/volume-unit-toggle";
 import {
   convertDisplayQuantity,
@@ -37,14 +79,13 @@ import {
 
 const initialState: ActionState = { success: false };
 
-// Product unit is derived from the volume-per-packet L/mL toggle (hidden field).
 function ProductFormSheet({
   product,
   children,
   onSaved,
 }: {
   product?: OilProduct;
-  children: React.ReactElement;
+  children: ReactElement;
   onSaved?: () => void;
 }) {
   const router = useRouter();
@@ -53,7 +94,6 @@ function ProductFormSheet({
     saveProductAction,
     initialState
   );
-  const [isActive, setIsActive] = useState(product?.isActive ?? true);
   const [packetVolume, setPacketVolume] = useState(() => {
     if (!product?.volumePerPacket) return "";
     const litres = Number(product.volumePerPacket);
@@ -67,6 +107,29 @@ function ProductFormSheet({
   const [packetsPerBox, setPacketsPerBox] = useState(
     product?.packetsPerBox ?? ""
   );
+  const [mrp, setMrp] = useState(product?.costPrice ?? "");
+  const [discount, setDiscount] = useState(() => {
+    if (!product?.costPrice || !product?.sellingPrice) return "";
+    const amount =
+      Number(product.costPrice) - Number(product.sellingPrice);
+    return amount > 0 ? String(amount) : "";
+  });
+  const [lowStockAlertEnabled, setLowStockAlertEnabled] = useState(
+    () => product?.lowStockThreshold != null && product.lowStockThreshold !== ""
+  );
+  const [lowStockThreshold, setLowStockThreshold] = useState(
+    product?.lowStockThreshold ?? ""
+  );
+
+  const sellingPrice = (() => {
+    const mrpNum = Number(mrp);
+    const discountNum = discount === "" ? 0 : Number(discount);
+    if (mrp === "" || Number.isNaN(mrpNum) || Number.isNaN(discountNum)) {
+      return "";
+    }
+    const result = mrpNum - discountNum;
+    return result >= 0 ? result.toFixed(2) : "";
+  })();
 
   const unit = productUnitFromVolumeUnit(packetVolumeUnit);
   const volumePerPacketLitres = toLitres(packetVolume, packetVolumeUnit);
@@ -84,8 +147,19 @@ function ProductFormSheet({
   }
 
   function resetFormFromProduct() {
-    setIsActive(product?.isActive ?? true);
     setPacketsPerBox(product?.packetsPerBox ?? "");
+    setMrp(product?.costPrice ?? "");
+    if (product?.costPrice && product?.sellingPrice) {
+      const amount =
+        Number(product.costPrice) - Number(product.sellingPrice);
+      setDiscount(amount > 0 ? String(amount) : "");
+    } else {
+      setDiscount("");
+    }
+    setLowStockAlertEnabled(
+      product?.lowStockThreshold != null && product.lowStockThreshold !== ""
+    );
+    setLowStockThreshold(product?.lowStockThreshold ?? "");
 
     if (product?.volumePerPacket) {
       const litres = Number(product.volumePerPacket);
@@ -135,15 +209,20 @@ function ProductFormSheet({
         </DialogHeader>
         <form action={formAction} className="space-y-3">
           {product && <input type="hidden" name="id" value={product.id} />}
-          <input type="hidden" name="isActive" value={String(isActive)} />
+          <input
+            type="hidden"
+            name="isActive"
+            value={String(product?.isActive ?? true)}
+          />
           <input type="hidden" name="unit" value={unit} />
           <input
             type="hidden"
             name="volumePerPacket"
             value={volumePerPacketLitres}
           />
+          <input type="hidden" name="sellingPrice" value={sellingPrice} />
           <div className="space-y-2">
-            <Label htmlFor="name">Product name *</Label>
+            <Label htmlFor="name">Oil name *</Label>
             <Input
               id="name"
               name="name"
@@ -152,25 +231,9 @@ function ProductFormSheet({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="packetsPerBox">Packets per box</Label>
-            <p className="text-xs text-muted-foreground">
-              How many pouches or sachets are in one box or carton.
-            </p>
-            <Input
-              id="packetsPerBox"
-              name="packetsPerBox"
-              type="number"
-              step="1"
-              min="1"
-              value={packetsPerBox}
-              onChange={(e) => setPacketsPerBox(e.target.value)}
-              placeholder="5"
-            />
-          </div>
-          <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <Label htmlFor="packetVolume">Volume per packet</Label>
+                <Label htmlFor="packetVolume">Size</Label>
                 <p className="text-xs text-muted-foreground">
                   Size of one pouch or sachet inside a box.
                 </p>
@@ -195,48 +258,105 @@ function ProductFormSheet({
               </p>
             ) : null}
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="packetsPerBox">Packets per box</Label>
+            <Input
+              id="packetsPerBox"
+              name="packetsPerBox"
+              type="number"
+              step="1"
+              min="1"
+              value={packetsPerBox}
+              onChange={(e) => setPacketsPerBox(e.target.value)}
+              placeholder="5"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="costPrice">Cost price *</Label>
-              <Input
-                id="costPrice"
-                name="costPrice"
-                type="number"
-                step="0.01"
-                defaultValue={product?.costPrice}
-                required
-              />
+              <Label htmlFor="costPrice">MRP *</Label>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>₹</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="costPrice"
+                  name="costPrice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={mrp}
+                  onChange={(e) => setMrp(e.target.value)}
+                  required
+                />
+              </InputGroup>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sellingPrice">Selling price *</Label>
-              <Input
-                id="sellingPrice"
-                name="sellingPrice"
-                type="number"
-                step="0.01"
-                defaultValue={product?.sellingPrice}
-                required
-              />
+              <Label htmlFor="discount">Discount</Label>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>₹</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="discount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={discount}
+                  onChange={(e) => setDiscount(e.target.value)}
+                />
+              </InputGroup>
+            </div>
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="sellingPrice">Selling price</Label>
+              <InputGroup>
+                <InputGroupAddon>
+                  <InputGroupText>₹</InputGroupText>
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="sellingPrice"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={sellingPrice}
+                  readOnly
+                  tabIndex={-1}
+                  className="cursor-default text-muted-foreground"
+                />
+              </InputGroup>
+              {mrp !== "" &&
+              discount !== "" &&
+              Number(discount) > Number(mrp) ? (
+                <p className="text-xs text-destructive">
+                  Discount cannot exceed MRP.
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="lowStockThreshold">Low stock alert</Label>
-            <p className="text-xs text-muted-foreground">
-              Warn when manager stock drops to or below this amount (litres).
-              Only products issued to the manager are checked. Leave blank to
-              disable.
-            </p>
-            <Input
-              id="lowStockThreshold"
-              name="lowStockThreshold"
-              type="number"
-              step="0.001"
-              defaultValue={product?.lowStockThreshold ?? ""}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="active">Active</Label>
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
+            <div className="flex items-center justify-between">
+              <Label htmlFor="lowStockAlert">Low stock alert</Label>
+              <Switch
+                id="lowStockAlert"
+                checked={lowStockAlertEnabled}
+                onCheckedChange={setLowStockAlertEnabled}
+              />
+            </div>
+            {lowStockAlertEnabled ? (
+              <Input
+                id="lowStockThreshold"
+                name="lowStockThreshold"
+                type="number"
+                step="1"
+                min="1"
+                value={lowStockThreshold}
+                onChange={(e) => setLowStockThreshold(e.target.value)}
+                placeholder="Packets"
+                required
+              />
+            ) : null}
           </div>
           <div className="flex gap-2">
             <Button
@@ -247,7 +367,15 @@ function ProductFormSheet({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={pending} className="flex-1">
+            <Button
+              type="submit"
+              disabled={
+                pending ||
+                !sellingPrice ||
+                (lowStockAlertEnabled && lowStockThreshold === "")
+              }
+              className="flex-1"
+            >
               Save
             </Button>
           </div>
@@ -257,59 +385,308 @@ function ProductFormSheet({
   );
 }
 
-export function ProductsAdmin({ products }: { products: OilProduct[] }) {
-  return (
-    <div>
-      <div className="mb-4 flex justify-end">
-        <ProductFormSheet>
-          <Button className="min-h-11">
-            + Add
-          </Button>
-        </ProductFormSheet>
-      </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>In box</TableHead>
-            <TableHead>Unit</TableHead>
-            <TableHead>Prices</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {products.map((product) => {
-            const boxLabel = describeBoxPackaging(product);
+function ProductStatusAction({
+  product,
+  onComplete,
+}: {
+  product: OilProduct;
+  onComplete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const isActive = product.isActive;
 
-            return (
-            <TableRow key={product.id}>
-              <TableCell>{product.name}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {boxLabel ?? "—"}
-              </TableCell>
-              <TableCell>{product.unit}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {formatInr(product.costPrice)} / {formatInr(product.sellingPrice)}
-              </TableCell>
-              <TableCell>
-                {product.isActive ? "Active" : "Inactive"}
-              </TableCell>
-              <TableCell>
-                <ProductFormSheet
-                  key={`${product.id}-${product.packetsPerBox}-${product.volumePerPacket}`}
-                  product={product}
-                >
-                  <Button variant="outline" size="sm">
-                    Edit
-                  </Button>
-                </ProductFormSheet>
-              </TableCell>
-            </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+  async function handleConfirm() {
+    setPending(true);
+    try {
+      const result = isActive
+        ? await deactivateProductAction(product.id)
+        : await reactivateProductAction(product.id);
+
+      if (result.success) {
+        toast.success(result.message);
+        setOpen(false);
+        onComplete();
+      } else {
+        toast.error(result.error ?? "Something went wrong.");
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        title={isActive ? "Deactivate product" : "Reactivate product"}
+        className={
+          isActive
+            ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
+            : "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+        }
+        disabled={pending}
+        onClick={() => setOpen(true)}
+      >
+        {isActive ? (
+          <Trash2 className="size-4" />
+        ) : (
+          <RotateCcw className="size-4" />
+        )}
+      </Button>
+
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogMedia
+              className={
+                isActive
+                  ? "bg-destructive/10 text-destructive"
+                  : "bg-emerald-50 text-emerald-600"
+              }
+            >
+              {isActive ? <Trash2 /> : <RotateCcw />}
+            </AlertDialogMedia>
+            <AlertDialogTitle>
+              {isActive ? "Deactivate this product?" : "Reactivate this product?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {isActive ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {product.name}
+                  </span>{" "}
+                  will be marked inactive and hidden from receive, transfer, and
+                  sales forms. Existing stock balances and transaction history
+                  are kept.
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">
+                    {product.name}
+                  </span>{" "}
+                  will be marked active again and shown in receive, transfer, and
+                  sales forms.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant={isActive ? "destructive" : "default"}
+              disabled={pending}
+              onClick={handleConfirm}
+            >
+              {pending
+                ? "Please wait…"
+                : isActive
+                  ? "Deactivate"
+                  : "Reactivate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function ProductFilters({
+  search,
+  category,
+}: {
+  search?: string;
+  category?: string;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [searchDraft, setSearchDraft] = useState(search ?? "");
+
+  useEffect(() => {
+    setSearchDraft(search ?? "");
+  }, [search]);
+
+  function pushParams(updates: Record<string, string | undefined>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) {
+        params.set(key, value);
+      } else {
+        params.delete(key);
+      }
+    }
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    pushParams({ search: searchDraft.trim() || undefined });
+  }
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <form onSubmit={handleSearchSubmit} className="relative min-w-[12rem] flex-1">
+        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={searchDraft}
+          onChange={(e) => setSearchDraft(e.target.value)}
+          placeholder="Search oil type or category…"
+          className="h-10 bg-card pl-9"
+        />
+      </form>
+
+      <Select
+        value={category ?? "all"}
+        onValueChange={(value) =>
+          pushParams({
+            category: value && value !== "all" ? value : undefined,
+          })
+        }
+        items={[
+          { value: "all", label: "All Categories" },
+          ...PRODUCT_CATEGORIES.map((item) => ({
+            value: item,
+            label: item,
+          })),
+        ]}
+      >
+        <SelectTrigger className="h-10 w-full bg-card sm:w-[11rem]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Categories</SelectItem>
+          {PRODUCT_CATEGORIES.map((item) => (
+            <SelectItem key={item} value={item}>
+              {item}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
+  );
+}
+
+export function AddProductButton() {
+  return (
+    <ProductFormSheet>
+      <Button className="min-h-10 shrink-0">+ Add Product</Button>
+    </ProductFormSheet>
+  );
+}
+
+export function ProductsAdmin({
+  products,
+  search,
+  category,
+}: {
+  products: OilProduct[];
+  search?: string;
+  category?: string;
+}) {
+  const router = useRouter();
+  const filteredProducts = useMemo(() => {
+    const term = search?.trim().toLowerCase();
+    return products.filter((product) => {
+      const productCategory = getProductCategory(product.name);
+      if (category && productCategory !== category) {
+        return false;
+      }
+      if (!term) return true;
+      return (
+        product.name.toLowerCase().includes(term) ||
+        productCategory.toLowerCase().includes(term) ||
+        formatPackSizes(product).toLowerCase().includes(term)
+      );
+    });
+  }, [products, search, category]);
+
+  return (
+    <Card className="border shadow-sm">
+        <CardContent className="space-y-4 p-4">
+          <ProductFilters search={search} category={category} />
+
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead>Oil Type</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Pack Sizes</TableHead>
+                  <TableHead>Default Unit</TableHead>
+                  <TableHead>MRP / Selling</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      No oil products match your filters.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredProducts.map((product) => (
+                    <TableRow key={product.id}>
+                      <TableCell className="font-medium">
+                        {product.name}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {getProductCategory(product.name)}
+                      </TableCell>
+                      <TableCell>{formatPackSizes(product)}</TableCell>
+                      <TableCell>
+                        {formatDefaultUnit(product.unit)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatInr(product.costPrice)} /{" "}
+                        {formatInr(product.sellingPrice)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={product.isActive ? "default" : "secondary"}
+                        >
+                          {product.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <ProductFormSheet
+                            key={`${product.id}-${product.packetsPerBox}-${product.volumePerPacket}`}
+                            product={product}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              title="Edit product"
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                          </ProductFormSheet>
+                          <ProductStatusAction
+                            product={product}
+                            onComplete={() => router.refresh()}
+                          />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <p className="text-sm text-muted-foreground">
+            Showing {filteredProducts.length} of {products.length} oil products
+          </p>
+        </CardContent>
+    </Card>
   );
 }

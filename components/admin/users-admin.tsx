@@ -81,12 +81,15 @@ function UserFormSheet({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email *</Label>
+            <Label htmlFor="username">Username *</Label>
             <Input
-              id="email"
-              name="email"
-              type="email"
-              defaultValue={user?.email}
+              id="username"
+              name="username"
+              type="text"
+              autoComplete="off"
+              defaultValue={user?.username}
+              pattern="[a-zA-Z0-9_]{3,32}"
+              title="3–32 characters: letters, numbers, and underscores only"
               required
             />
           </div>

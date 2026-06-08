@@ -38,7 +38,13 @@ import {
 
 const initialState: ActionState = { success: false };
 
-export function ReceiveForm({ products }: { products: OilProduct[] }) {
+export function ReceiveForm({
+  products,
+  onSuccess,
+}: {
+  products: OilProduct[];
+  onSuccess?: () => void;
+}) {
   const [state, formAction, pending] = useActionState(
     receiveStockAction,
     initialState
@@ -70,9 +76,12 @@ export function ReceiveForm({ products }: { products: OilProduct[] }) {
   ]);
 
   useEffect(() => {
-    if (state.message) toast.success(state.message);
+    if (state.success) {
+      if (state.message) toast.success(state.message);
+      onSuccess?.();
+    }
     if (state.error) toast.error(state.error);
-  }, [state]);
+  }, [state, onSuccess]);
 
   useEffect(() => {
     setOilQty("");

@@ -175,21 +175,30 @@ export async function getProductActivityForRange(
       and(
         gte(inventoryTransactions.transactionDate, startDate),
         lte(inventoryTransactions.transactionDate, endDate),
-        inArray(inventoryTransactions.type, ["RECEIVE", "TRANSFER"])
+        inArray(inventoryTransactions.type, ["RECEIVE", "TRANSFER", "SALE"])
       )
     );
 
   const byProduct = new Map<
     string,
-    { received: number; issued: number; receivedPackets: number; issuedPackets: number }
+    {
+      received: number;
+      issued: number;
+      consumed: number;
+      receivedPackets: number;
+      issuedPackets: number;
+      consumedPackets: number;
+    }
   >();
 
   for (const row of rows) {
     const entry = byProduct.get(row.productId) ?? {
       received: 0,
       issued: 0,
+      consumed: 0,
       receivedPackets: 0,
       issuedPackets: 0,
+      consumedPackets: 0,
     };
     const qty = Number(row.quantity);
     const packageCount = parsePackageCountFromNote(row.referenceNote);
@@ -202,9 +211,12 @@ export async function getProductActivityForRange(
     if (row.type === "RECEIVE") {
       entry.received += qty;
       entry.receivedPackets += packets;
-    } else {
+    } else if (row.type === "TRANSFER") {
       entry.issued += qty;
       entry.issuedPackets += packets;
+    } else if (row.type === "SALE") {
+      entry.consumed += qty;
+      entry.consumedPackets += packets;
     }
     byProduct.set(row.productId, entry);
   }
@@ -313,8 +325,9 @@ export async function getLowStockAlerts() {
   return summary.products.filter(
     (p) =>
       p.lowStockThreshold !== null &&
+      p.volumePerPacket != null &&
       issuedToManager.has(p.id) &&
-      p.manager <= p.lowStockThreshold
+      p.managerPackets <= p.lowStockThreshold
   );
 }
 
@@ -383,35 +396,38 @@ export async function getSalesForDateRange(startDate: string, endDate: string) {
       )
     );
 
-  const map = new Map<string, number>();
+  const map = new Map<string, { packets: number; litres: number }>();
   let current = startDate;
 
   while (current <= endDate) {
-    map.set(current, 0);
+    map.set(current, { packets: 0, litres: 0 });
     const next = parseIstDateForRange(current);
     next.setDate(next.getDate() + 1);
     current = toIstDateString(next);
   }
 
   for (const row of rows) {
+    const litres = Number(row.quantity);
     const packageCount = parsePackageCountFromNote(row.referenceNote);
     const packets = transactionPacketCount(
       "SALE",
-      Number(row.quantity),
+      litres,
       packageCount,
       row
     );
-    map.set(
-      row.transactionDate,
-      (map.get(row.transactionDate) ?? 0) + packets
-    );
+    const entry = map.get(row.transactionDate) ?? { packets: 0, litres: 0 };
+    entry.packets += packets;
+    entry.litres += litres;
+    map.set(row.transactionDate, entry);
   }
 
   const dayCount = map.size;
 
-  return Array.from(map.entries()).map(([date, quantity]) => ({
+  return Array.from(map.entries()).map(([date, totals]) => ({
     date,
-    quantity,
+    quantity: totals.packets,
+    packets: totals.packets,
+    litres: totals.litres,
     label:
       dayCount <= 7
         ? new Date(date).toLocaleDateString("en-IN", {
@@ -508,6 +524,8 @@ export async function getLedger(filters?: {
       reversesTransactionId: inventoryTransactions.reversesTransactionId,
       productName: oilProducts.name,
       unit: oilProducts.unit,
+      packetsPerBox: oilProducts.packetsPerBox,
+      volumePerPacket: oilProducts.volumePerPacket,
     })
     .from(inventoryTransactions)
     .innerJoin(

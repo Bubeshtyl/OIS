@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { reverseTransactionAction } from "@/lib/actions/inventory";
-import { formatDate, formatQuantity } from "@/lib/format";
+import { formatDate, formatStockQuantity, type StockDisplayUnit } from "@/lib/format";
+import { ledgerRowPackets } from "@/lib/transactions/quantity";
 import { SegmentBadge } from "@/components/shared/page-blocks";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,7 @@ export function LedgerTable({
   rows,
   reversedIds,
   isAdmin,
+  unit = "packets",
 }: {
   rows: Array<{
     id: string;
@@ -29,9 +31,12 @@ export function LedgerTable({
     transactionDate: string;
     referenceNote?: string | null;
     reversesTransactionId?: string | null;
+    packetsPerBox?: string | null;
+    volumePerPacket?: string | null;
   }>;
   reversedIds: Set<string>;
   isAdmin: boolean;
+  unit?: StockDisplayUnit;
 }) {
   const [pending, startTransition] = useTransition();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -53,7 +58,7 @@ export function LedgerTable({
           <TableHead>Date</TableHead>
           <TableHead>Type</TableHead>
           <TableHead>Product</TableHead>
-          <TableHead>Qty</TableHead>
+          <TableHead className="min-w-[4.5rem]">Qty</TableHead>
           <TableHead>Note</TableHead>
           {isAdmin && <TableHead />}
         </TableRow>
@@ -66,7 +71,13 @@ export function LedgerTable({
               <SegmentBadge type={row.type} />
             </TableCell>
             <TableCell>{row.productName}</TableCell>
-            <TableCell>{formatQuantity(row.quantity, row.unit)}</TableCell>
+            <TableCell>
+              {formatStockQuantity(
+                unit,
+                ledgerRowPackets(row),
+                Number(row.quantity)
+              )}
+            </TableCell>
             <TableCell className="max-w-32 truncate text-muted-foreground">
               {row.referenceNote || "—"}
             </TableCell>

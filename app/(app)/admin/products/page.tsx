@@ -1,16 +1,35 @@
-import { ProductsAdmin } from "@/components/admin/products-admin";
+import { Suspense } from "react";
+import {
+  AddProductButton,
+  ProductsAdmin,
+} from "@/components/admin/products-admin";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { getAllProducts } from "@/lib/queries/inventory";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminProductsPage() {
+export default async function AdminProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; category?: string }>;
+}) {
+  const params = await searchParams;
   const products = await getAllProducts();
 
   return (
-    <div>
-      <PageHeader title="Products" />
-      <ProductsAdmin products={products} />
+    <div className="space-y-6">
+      <PageHeader
+        title="Oil Products"
+        subtitle="Manage oil types, pack sizes, and pricing"
+        action={<AddProductButton />}
+      />
+      <Suspense fallback={<div className="p-4">Loading products...</div>}>
+        <ProductsAdmin
+          products={products}
+          search={params.search}
+          category={params.category}
+        />
+      </Suspense>
     </div>
   );
 }

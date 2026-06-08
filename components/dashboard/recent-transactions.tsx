@@ -3,7 +3,11 @@ import {
   ArrowUp,
   SquareArrowDown,
 } from "lucide-react";
-import { formatDate, formatLitres, formatPackets } from "@/lib/format";
+import {
+  formatDate,
+  formatStockQuantity,
+  type StockDisplayUnit,
+} from "@/lib/format";
 import {
   parsePackageCountFromNote,
   transactionPacketCount,
@@ -35,7 +39,9 @@ const typeConfig = {
 
 export function RecentTransactions({
   rows,
+  unit = "packets",
 }: {
+  unit?: StockDisplayUnit;
   rows: Array<{
     id: string;
     type: keyof typeof typeConfig;
@@ -81,7 +87,6 @@ export function RecentTransactions({
           .trim();
         const subtitleParts = [
           config.label,
-          formatLitres(row.quantity),
           userNote || null,
         ].filter(Boolean);
 
@@ -106,9 +111,11 @@ export function RecentTransactions({
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold">
-                {packetTotal > 0
-                  ? formatPackets(packetTotal)
-                  : formatLitres(row.quantity)}
+                {formatStockQuantity(
+                  unit,
+                  packetTotal,
+                  Number(row.quantity)
+                )}
               </p>
               <p className="text-xs text-muted-foreground">
                 {formatDate(row.transactionDate)} {time}

@@ -3,7 +3,7 @@ import type { UserRole } from "@/lib/db/schema";
 
 export interface SessionData {
   userId: string;
-  email: string;
+  username: string;
   name: string;
   role: UserRole;
   isLoggedIn: boolean;
@@ -11,7 +11,7 @@ export interface SessionData {
 
 export const defaultSession: SessionData = {
   userId: "",
-  email: "",
+  username: "",
   name: "",
   role: "MANAGER",
   isLoggedIn: false,

@@ -14,18 +14,18 @@ async function seed() {
   const existingAdmin = await db
     .select()
     .from(users)
-    .where(eq(users.email, "admin@station.com"))
+    .where(eq(users.username, "admin"))
     .limit(1);
 
   if (existingAdmin.length === 0) {
     await db.insert(users).values({
       name: "Admin",
-      email: "admin@station.com",
+      username: "admin",
       passwordHash,
       role: "ADMIN",
       isActive: true,
     });
-    console.log("Created admin user: admin@station.com / admin123");
+    console.log("Created admin user: admin / admin123");
   } else {
     console.log("Admin user already exists, skipping.");
   }

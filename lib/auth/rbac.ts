@@ -49,6 +49,7 @@ export function getDefaultPath(role: UserRole): string {
 
 const ROUTE_PERMISSIONS: Record<string, Permission | Permission[]> = {
   "/dashboard": "dashboard:read",
+  "/stock-count": "dashboard:read",
   "/receive": "receive:write",
   "/transfer": "transfer:write",
   "/sales": "sales:write",

@@ -31,6 +31,7 @@ export function PageToolbar({
   endDate,
   defaultStart,
   defaultEnd,
+  extraParams,
 }: {
   name: string;
   role: UserRole;
@@ -38,6 +39,7 @@ export function PageToolbar({
   endDate?: string;
   defaultStart?: string;
   defaultEnd?: string;
+  extraParams?: Record<string, string>;
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -47,6 +49,7 @@ export function PageToolbar({
           endDate={endDate}
           defaultStart={defaultStart}
           defaultEnd={defaultEnd}
+          extraParams={extraParams}
         />
       )}
       <DropdownMenu>

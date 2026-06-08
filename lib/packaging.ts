@@ -64,6 +64,19 @@ export function parsePackageCountFromNote(note?: string | null): number | null {
   return Number.isInteger(count) && count > 0 ? count : null;
 }
 
+export function parseUserNoteFromReference(note?: string | null): string {
+  if (!note) return "";
+  const lines = note.split("\n");
+  if (lines.length <= 1) {
+    return lines[0]?.match(/^Packages:\s*\d+/i) ? "" : (lines[0] ?? "").trim();
+  }
+  return lines
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export type PackagingProduct = {
   packetsPerBox?: string | null;
   volumePerPacket?: string | null;

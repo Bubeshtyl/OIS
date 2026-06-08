@@ -20,7 +20,7 @@ const productSchema = z
     unit: z.enum(["litre", "millilitre"]),
     costPrice: z.coerce.number().nonnegative(),
     sellingPrice: z.coerce.number().nonnegative(),
-    lowStockThreshold: z.coerce.number().nonnegative().optional(),
+    lowStockThreshold: z.coerce.number().int().nonnegative().optional(),
     packetsPerBox: z.coerce.number().int().positive().optional(),
     volumePerPacket: z.coerce.number().positive().optional(),
     isActive: z.coerce.boolean(),
@@ -102,10 +102,60 @@ export async function saveProductAction(
   return { success: true, message: "Product saved." };
 }
 
+export async function deactivateProductAction(
+  productId: string
+): Promise<ActionState> {
+  const session = await requireSession();
+  if (!hasPermission(session.role, "products:manage")) {
+    return { success: false, error: "You do not have permission." };
+  }
+
+  const parsedId = z.string().uuid().safeParse(productId);
+  if (!parsedId.success) {
+    return { success: false, error: "Invalid product." };
+  }
+
+  const db = getDb();
+  await db
+    .update(oilProducts)
+    .set({ isActive: false })
+    .where(eq(oilProducts.id, parsedId.data));
+
+  revalidateProductPages();
+  return { success: true, message: "Product deactivated." };
+}
+
+export async function reactivateProductAction(
+  productId: string
+): Promise<ActionState> {
+  const session = await requireSession();
+  if (!hasPermission(session.role, "products:manage")) {
+    return { success: false, error: "You do not have permission." };
+  }
+
+  const parsedId = z.string().uuid().safeParse(productId);
+  if (!parsedId.success) {
+    return { success: false, error: "Invalid product." };
+  }
+
+  const db = getDb();
+  await db
+    .update(oilProducts)
+    .set({ isActive: true })
+    .where(eq(oilProducts.id, parsedId.data));
+
+  revalidateProductPages();
+  return { success: true, message: "Product reactivated." };
+}
+
 const userSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1),
-  email: z.string().email(),
+  username: z
+    .string()
+    .min(3)
+    .max(32)
+    .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores."),
   role: z.enum(["ADMIN", "MANAGER", "ACCOUNTS"]),
   password: z.string().min(6).optional(),
   isActive: z.coerce.boolean(),
@@ -123,7 +173,7 @@ export async function saveUserAction(
   const parsed = userSchema.safeParse({
     id: formData.get("id") || undefined,
     name: formData.get("name"),
-    email: formData.get("email"),
+    username: formData.get("username"),
     role: formData.get("role"),
     password: formData.get("password") || undefined,
     isActive: formData.get("isActive") === "true",
@@ -142,13 +192,13 @@ export async function saveUserAction(
   if (parsed.data.id) {
     const update: {
       name: string;
-      email: string;
+      username: string;
       role: "ADMIN" | "MANAGER" | "ACCOUNTS";
       isActive: boolean;
       passwordHash?: string;
     } = {
       name: parsed.data.name,
-      email: parsed.data.email.toLowerCase(),
+      username: parsed.data.username.toLowerCase(),
       role: parsed.data.role,
       isActive: parsed.data.isActive,
     };
@@ -161,7 +211,7 @@ export async function saveUserAction(
   } else {
     await db.insert(users).values({
       name: parsed.data.name,
-      email: parsed.data.email.toLowerCase(),
+      username: parsed.data.username.toLowerCase(),
       role: parsed.data.role,
       isActive: parsed.data.isActive,
       passwordHash: await bcrypt.hash(parsed.data.password!, 10),
