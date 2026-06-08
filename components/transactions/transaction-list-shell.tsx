@@ -61,8 +61,9 @@ export function TransactionListShell({
 
   const displayRows = useMemo(() => {
     const filtered = filterTransactionRows(rows, searchDraft);
-    return aggregateTransactionRowsByDateAndProduct(filtered);
-  }, [rows, searchDraft]);
+    const groupBy = pageKind === "consumption" ? "datetime" : "date";
+    return aggregateTransactionRowsByDateAndProduct(filtered, groupBy);
+  }, [rows, searchDraft, pageKind]);
 
   const pageRows = useMemo(() => {
     const start = (page - 1) * TRANSACTION_LIST_PAGE_SIZE;

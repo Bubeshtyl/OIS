@@ -175,7 +175,13 @@ export async function getProductActivityForRange(
       and(
         gte(inventoryTransactions.transactionDate, startDate),
         lte(inventoryTransactions.transactionDate, endDate),
-        inArray(inventoryTransactions.type, ["RECEIVE", "TRANSFER", "SALE"])
+        inArray(inventoryTransactions.type, [
+          "RECEIVE",
+          "TRANSFER",
+          "SALE",
+          "RETURNED",
+          "DAMAGED",
+        ])
       )
     );
 
@@ -184,10 +190,14 @@ export async function getProductActivityForRange(
     {
       received: number;
       issued: number;
+      returned: number;
       consumed: number;
+      damaged: number;
       receivedPackets: number;
       issuedPackets: number;
+      returnedPackets: number;
       consumedPackets: number;
+      damagedPackets: number;
     }
   >();
 
@@ -195,10 +205,14 @@ export async function getProductActivityForRange(
     const entry = byProduct.get(row.productId) ?? {
       received: 0,
       issued: 0,
+      returned: 0,
       consumed: 0,
+      damaged: 0,
       receivedPackets: 0,
       issuedPackets: 0,
+      returnedPackets: 0,
       consumedPackets: 0,
+      damagedPackets: 0,
     };
     const qty = Number(row.quantity);
     const packageCount = parsePackageCountFromNote(row.referenceNote);
@@ -214,9 +228,17 @@ export async function getProductActivityForRange(
     } else if (row.type === "TRANSFER") {
       entry.issued += qty;
       entry.issuedPackets += packets;
+    } else if (row.type === "RETURNED") {
+      entry.returned += qty;
+      entry.returnedPackets += packets;
     } else if (row.type === "SALE") {
       entry.consumed += qty;
       entry.consumedPackets += packets;
+    } else if (row.type === "DAMAGED") {
+      entry.consumed += qty;
+      entry.consumedPackets += packets;
+      entry.damaged += qty;
+      entry.damagedPackets += packets;
     }
     byProduct.set(row.productId, entry);
   }
@@ -256,6 +278,10 @@ export async function getActivityForRange(startDate: string, endDate: string) {
   let saleQty = 0;
   let salePackets = 0;
   let saleValue = 0;
+  let returnedQty = 0;
+  let returnedPackets = 0;
+  let damagedQty = 0;
+  let damagedPackets = 0;
 
   for (const row of rows) {
     const qty = Number(row.quantity);
@@ -273,10 +299,16 @@ export async function getActivityForRange(startDate: string, endDate: string) {
     } else if (row.type === "TRANSFER") {
       transferQty += qty;
       transferPackets += packets;
+    } else if (row.type === "RETURNED") {
+      returnedQty += qty;
+      returnedPackets += packets;
     } else if (row.type === "SALE") {
       saleQty += qty;
       salePackets += packets;
       saleValue += qty * Number(row.sellingPrice);
+    } else if (row.type === "DAMAGED") {
+      damagedQty += qty;
+      damagedPackets += packets;
     }
   }
 
@@ -289,6 +321,10 @@ export async function getActivityForRange(startDate: string, endDate: string) {
     saleQty,
     salePackets,
     saleValue,
+    returnedQty,
+    returnedPackets,
+    damagedQty,
+    damagedPackets,
   };
 }
 
@@ -524,7 +560,10 @@ export async function getLedger(filters?: {
       eq(inventoryTransactions.productId, oilProducts.id)
     )
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(inventoryTransactions.transactionDate), desc(inventoryTransactions.createdAt));
+    .orderBy(
+      desc(inventoryTransactions.createdAt),
+      desc(inventoryTransactions.transactionDate)
+    );
 }
 
 export async function getDailySummary(startDate: string, endDate: string) {

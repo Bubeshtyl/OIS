@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/table";
 import type { DashboardLocation } from "@/components/dashboard/dashboard-location-tabs";
 import { formatStockQuantity, type StockDisplayUnit } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 type ProductRow = {
   id: string;
@@ -21,10 +22,14 @@ type ProductRow = {
 type PeriodRow = {
   received: number;
   issued: number;
+  returned: number;
   consumed: number;
+  damaged: number;
   receivedPackets: number;
   issuedPackets: number;
+  returnedPackets: number;
   consumedPackets: number;
+  damagedPackets: number;
 };
 
 function StockAmount({
@@ -32,14 +37,22 @@ function StockAmount({
   litres,
   unit,
   emphasize = false,
+  destructive = false,
 }: {
   packets: number;
   litres: number;
   unit: StockDisplayUnit;
   emphasize?: boolean;
+  destructive?: boolean;
 }) {
   return (
-    <span className={emphasize ? "font-semibold text-emerald-700" : "font-medium"}>
+    <span
+      className={cn(
+        "font-medium",
+        emphasize && "font-semibold text-emerald-700",
+        destructive && "text-destructive"
+      )}
+    >
       {formatStockQuantity(unit, packets, litres)}
     </span>
   );
@@ -49,10 +62,14 @@ function emptyPeriod(): PeriodRow {
   return {
     received: 0,
     issued: 0,
+    returned: 0,
     consumed: 0,
+    damaged: 0,
     receivedPackets: 0,
     issuedPackets: 0,
+    returnedPackets: 0,
     consumedPackets: 0,
+    damagedPackets: 0,
   };
 }
 
@@ -65,24 +82,43 @@ function DepotRows({
   productActivity: Record<string, PeriodRow>;
   unit: StockDisplayUnit;
 }) {
+  let totalOpeningPackets = 0;
+  let totalOpeningLitres = 0;
   let totalReceivedPackets = 0;
   let totalReceivedLitres = 0;
   let totalIssuedPackets = 0;
   let totalIssuedLitres = 0;
+  let totalReturnedPackets = 0;
+  let totalReturnedLitres = 0;
+  let totalDamagedPackets = 0;
+  let totalDamagedLitres = 0;
   let totalBalancePackets = 0;
   let totalBalanceLitres = 0;
 
   const rows = products.map((product) => {
     const period = productActivity[product.id] ?? emptyPeriod();
+    const openingPackets =
+      product.depotPackets -
+      period.receivedPackets +
+      period.issuedPackets -
+      period.returnedPackets;
+    const opening =
+      product.depot - period.received + period.issued - period.returned;
 
+    totalOpeningPackets += openingPackets;
+    totalOpeningLitres += opening;
     totalReceivedPackets += period.receivedPackets;
     totalReceivedLitres += period.received;
     totalIssuedPackets += period.issuedPackets;
     totalIssuedLitres += period.issued;
+    totalReturnedPackets += period.returnedPackets;
+    totalReturnedLitres += period.returned;
+    totalDamagedPackets += period.damagedPackets;
+    totalDamagedLitres += period.damaged;
     totalBalancePackets += product.depotPackets;
     totalBalanceLitres += product.depot;
 
-    return { product, period };
+    return { product, period, openingPackets, opening };
   });
 
   return (
@@ -90,15 +126,21 @@ function DepotRows({
       <TableHeader>
         <TableRow>
           <TableHead>Oil type</TableHead>
+          <TableHead className="min-w-[4.5rem]">Opening</TableHead>
           <TableHead className="min-w-[4.5rem]">Received</TableHead>
           <TableHead className="min-w-[4.5rem]">Issued</TableHead>
+          <TableHead className="min-w-[4.5rem]">Returned</TableHead>
+          <TableHead className="min-w-[4.5rem]">Damaged</TableHead>
           <TableHead className="min-w-[4.5rem]">Balance</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map(({ product, period }) => (
+        {rows.map(({ product, period, openingPackets, opening }) => (
           <TableRow key={product.id}>
             <TableCell className="font-medium">{product.name}</TableCell>
+            <TableCell>
+              <StockAmount packets={openingPackets} litres={opening} unit={unit} />
+            </TableCell>
             <TableCell>
               <StockAmount
                 packets={period.receivedPackets}
@@ -115,6 +157,21 @@ function DepotRows({
             </TableCell>
             <TableCell>
               <StockAmount
+                packets={period.returnedPackets}
+                litres={period.returned}
+                unit={unit}
+              />
+            </TableCell>
+            <TableCell>
+              <StockAmount
+                packets={period.damagedPackets}
+                litres={period.damaged}
+                unit={unit}
+                destructive
+              />
+            </TableCell>
+            <TableCell>
+              <StockAmount
                 packets={product.depotPackets}
                 litres={product.depot}
                 unit={unit}
@@ -127,6 +184,13 @@ function DepotRows({
           <TableCell>Total</TableCell>
           <TableCell>
             <StockAmount
+              packets={totalOpeningPackets}
+              litres={totalOpeningLitres}
+              unit={unit}
+            />
+          </TableCell>
+          <TableCell>
+            <StockAmount
               packets={totalReceivedPackets}
               litres={totalReceivedLitres}
               unit={unit}
@@ -137,6 +201,21 @@ function DepotRows({
               packets={totalIssuedPackets}
               litres={totalIssuedLitres}
               unit={unit}
+            />
+          </TableCell>
+          <TableCell>
+            <StockAmount
+              packets={totalReturnedPackets}
+              litres={totalReturnedLitres}
+              unit={unit}
+            />
+          </TableCell>
+          <TableCell>
+            <StockAmount
+              packets={totalDamagedPackets}
+              litres={totalDamagedLitres}
+              unit={unit}
+              destructive
             />
           </TableCell>
           <TableCell>
@@ -162,24 +241,50 @@ function ManagerRows({
   productActivity: Record<string, PeriodRow>;
   unit: StockDisplayUnit;
 }) {
+  let totalOpeningPackets = 0;
+  let totalOpeningLitres = 0;
   let totalIssuedPackets = 0;
   let totalIssuedLitres = 0;
-  let totalConsumedPackets = 0;
-  let totalConsumedLitres = 0;
+  let totalSoldPackets = 0;
+  let totalSoldLitres = 0;
+  let totalDamagedPackets = 0;
+  let totalDamagedLitres = 0;
+  let totalReturnedPackets = 0;
+  let totalReturnedLitres = 0;
   let totalBalancePackets = 0;
   let totalBalanceLitres = 0;
 
   const rows = products.map((product) => {
     const period = productActivity[product.id] ?? emptyPeriod();
+    const soldPackets = period.consumedPackets - period.damagedPackets;
+    const sold = period.consumed - period.damaged;
+    const openingPackets =
+      product.managerPackets -
+      period.issuedPackets +
+      soldPackets +
+      period.damagedPackets +
+      period.returnedPackets;
+    const opening =
+      product.manager -
+      period.issued +
+      sold +
+      period.damaged +
+      period.returned;
 
+    totalOpeningPackets += openingPackets;
+    totalOpeningLitres += opening;
     totalIssuedPackets += period.issuedPackets;
     totalIssuedLitres += period.issued;
-    totalConsumedPackets += period.consumedPackets;
-    totalConsumedLitres += period.consumed;
+    totalSoldPackets += soldPackets;
+    totalSoldLitres += sold;
+    totalDamagedPackets += period.damagedPackets;
+    totalDamagedLitres += period.damaged;
+    totalReturnedPackets += period.returnedPackets;
+    totalReturnedLitres += period.returned;
     totalBalancePackets += product.managerPackets;
     totalBalanceLitres += product.manager;
 
-    return { product, period };
+    return { product, period, openingPackets, opening, soldPackets, sold };
   });
 
   return (
@@ -187,15 +292,21 @@ function ManagerRows({
       <TableHeader>
         <TableRow>
           <TableHead>Oil type</TableHead>
+          <TableHead className="min-w-[4.5rem]">Opening</TableHead>
           <TableHead className="min-w-[4.5rem]">Issued</TableHead>
-          <TableHead className="min-w-[4.5rem]">Consumption</TableHead>
+          <TableHead className="min-w-[4.5rem]">Sold</TableHead>
+          <TableHead className="min-w-[4.5rem]">Damaged</TableHead>
+          <TableHead className="min-w-[4.5rem]">Returned</TableHead>
           <TableHead className="min-w-[4.5rem]">Balance</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map(({ product, period }) => (
+        {rows.map(({ product, period, openingPackets, opening, soldPackets, sold }) => (
           <TableRow key={product.id}>
             <TableCell className="font-medium">{product.name}</TableCell>
+            <TableCell>
+              <StockAmount packets={openingPackets} litres={opening} unit={unit} />
+            </TableCell>
             <TableCell>
               <StockAmount
                 packets={period.issuedPackets}
@@ -204,9 +315,20 @@ function ManagerRows({
               />
             </TableCell>
             <TableCell>
+              <StockAmount packets={soldPackets} litres={sold} unit={unit} />
+            </TableCell>
+            <TableCell>
               <StockAmount
-                packets={period.consumedPackets}
-                litres={period.consumed}
+                packets={period.damagedPackets}
+                litres={period.damaged}
+                unit={unit}
+                destructive
+              />
+            </TableCell>
+            <TableCell>
+              <StockAmount
+                packets={period.returnedPackets}
+                litres={period.returned}
                 unit={unit}
               />
             </TableCell>
@@ -224,6 +346,13 @@ function ManagerRows({
           <TableCell>Total</TableCell>
           <TableCell>
             <StockAmount
+              packets={totalOpeningPackets}
+              litres={totalOpeningLitres}
+              unit={unit}
+            />
+          </TableCell>
+          <TableCell>
+            <StockAmount
               packets={totalIssuedPackets}
               litres={totalIssuedLitres}
               unit={unit}
@@ -231,8 +360,23 @@ function ManagerRows({
           </TableCell>
           <TableCell>
             <StockAmount
-              packets={totalConsumedPackets}
-              litres={totalConsumedLitres}
+              packets={totalSoldPackets}
+              litres={totalSoldLitres}
+              unit={unit}
+            />
+          </TableCell>
+          <TableCell>
+            <StockAmount
+              packets={totalDamagedPackets}
+              litres={totalDamagedLitres}
+              unit={unit}
+              destructive
+            />
+          </TableCell>
+          <TableCell>
+            <StockAmount
+              packets={totalReturnedPackets}
+              litres={totalReturnedLitres}
               unit={unit}
             />
           </TableCell>

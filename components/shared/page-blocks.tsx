@@ -119,27 +119,46 @@ export function PageHeader({
   );
 }
 
+const segmentBadgeLabels = {
+  RECEIVE: "Receive",
+  TRANSFER: "Transfer",
+  SALE: "Sale",
+  RETURNED: "Returned",
+  DAMAGED: "Damaged",
+  REVERSAL: "Reversal",
+} as const;
+
+const consumptionCategoryBadgeClass: Partial<
+  Record<keyof typeof segmentBadgeLabels, string>
+> = {
+  SALE: "border-transparent bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
+  RETURNED:
+    "border-transparent bg-amber-100 text-amber-800 hover:bg-amber-100",
+  DAMAGED:
+    "border-transparent bg-red-100 text-red-700 hover:bg-red-100 dark:bg-destructive/20 dark:text-destructive",
+};
+
 export function SegmentBadge({
   type,
 }: {
-  type:
-    | "RECEIVE"
-    | "TRANSFER"
-    | "SALE"
-    | "RETURNED"
-    | "DAMAGED"
-    | "REVERSAL";
+  type: keyof typeof segmentBadgeLabels;
 }) {
-  const labels = {
-    RECEIVE: "Receive",
-    TRANSFER: "Transfer",
-    SALE: "Sale",
-    RETURNED: "Returned",
-    DAMAGED: "Damaged",
-    REVERSAL: "Reversal",
-  };
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(consumptionCategoryBadgeClass[type])}
+    >
+      {segmentBadgeLabels[type]}
+    </Badge>
+  );
+}
 
-  return <Badge variant="secondary">{labels[type]}</Badge>;
+export function ConsumptionCategoryBadge({
+  type,
+}: {
+  type: "SALE" | "RETURNED" | "DAMAGED";
+}) {
+  return <SegmentBadge type={type} />;
 }
 
 export function QuickActions() {

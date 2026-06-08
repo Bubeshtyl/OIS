@@ -5,7 +5,12 @@ import {
   parseSupplierFromReference,
 } from "@/lib/packaging";
 
-function groupKey(row: TransactionListRow) {
+type AggregationGroupBy = "date" | "datetime";
+
+function groupKey(row: TransactionListRow, groupBy: AggregationGroupBy) {
+  if (groupBy === "datetime") {
+    return `${row.createdAt.toISOString()}|${row.productId}|${row.type}`;
+  }
   return `${row.transactionDate}|${row.productId}|${row.type}`;
 }
 
@@ -28,13 +33,14 @@ function formatLabel(values: string[]) {
 }
 
 export function aggregateTransactionRowsByDateAndProduct(
-  rows: TransactionListRow[]
+  rows: TransactionListRow[],
+  groupBy: AggregationGroupBy = "date"
 ): DisplayTransactionRow[] {
   const order: string[] = [];
   const groups = new Map<string, TransactionListRow[]>();
 
   for (const row of rows) {
-    const key = groupKey(row);
+    const key = groupKey(row, groupBy);
     if (!groups.has(key)) {
       order.push(key);
       groups.set(key, []);
@@ -71,7 +77,10 @@ export function aggregateTransactionRowsByDateAndProduct(
     return {
       ...first,
       createdAt: latestCreatedAt,
-      id: `agg-${first.transactionDate}-${first.productId}-${first.type}`,
+      id:
+        groupBy === "datetime"
+          ? `agg-${first.createdAt.toISOString()}-${first.productId}-${first.type}`
+          : `agg-${first.transactionDate}-${first.productId}-${first.type}`,
       quantity: String(totalLitres),
       referenceNote:
         totalPackages > 0 ? `Packages: ${totalPackages}` : first.referenceNote,

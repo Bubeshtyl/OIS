@@ -3,7 +3,12 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { reverseTransactionAction } from "@/lib/actions/inventory";
-import { formatDate, formatStockQuantity, type StockDisplayUnit } from "@/lib/format";
+import {
+  formatDateTime,
+  formatStockQuantity,
+  type StockDisplayUnit,
+} from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { ledgerRowPackets } from "@/lib/transactions/quantity";
 import { SegmentBadge } from "@/components/shared/page-blocks";
 import { Button } from "@/components/ui/button";
@@ -34,7 +39,7 @@ export function LedgerTable({
     productName: string;
     unit: string;
     quantity: string;
-    transactionDate: string;
+    createdAt: Date;
     referenceNote?: string | null;
     reversesTransactionId?: string | null;
     packetsPerBox?: string | null;
@@ -61,7 +66,7 @@ export function LedgerTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Date</TableHead>
+          <TableHead>Recorded</TableHead>
           <TableHead>Type</TableHead>
           <TableHead>Product</TableHead>
           <TableHead className="min-w-[4.5rem]">Qty</TableHead>
@@ -72,12 +77,18 @@ export function LedgerTable({
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.id}>
-            <TableCell>{formatDate(row.transactionDate)}</TableCell>
+            <TableCell className="whitespace-nowrap text-muted-foreground">
+              {formatDateTime(row.createdAt)}
+            </TableCell>
             <TableCell>
               <SegmentBadge type={row.type} />
             </TableCell>
             <TableCell>{row.productName}</TableCell>
-            <TableCell>
+            <TableCell
+              className={cn(
+                row.type === "DAMAGED" && "font-medium text-destructive"
+              )}
+            >
               {formatStockQuantity(
                 unit,
                 ledgerRowPackets(row),

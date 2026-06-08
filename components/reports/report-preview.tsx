@@ -44,12 +44,14 @@ export function ReportQuantityCell({
   litres,
   unit = "packets",
   emphasize = false,
+  destructive = false,
 }: {
   value?: number;
   packets?: number;
   litres?: number;
   unit?: StockDisplayUnit;
   emphasize?: boolean;
+  destructive?: boolean;
 }) {
   const packetValue = packets ?? 0;
   const litreValue = litres ?? value ?? 0;
@@ -59,7 +61,7 @@ export function ReportQuantityCell({
     <span
       className={cn(
         emphasize && "font-semibold",
-        negative && "text-destructive"
+        (destructive || negative) && "font-medium text-destructive"
       )}
     >
       {formatStockQuantity(unit, packetValue, litreValue)}

@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { formatRangeLabel } from "@/lib/date-range";
+import { formatDateTime } from "@/lib/format";
 import { ledgerRowPackets } from "@/lib/transactions/quantity";
 import type { loadAllReportsData } from "@/lib/reports/load-all-reports";
 
@@ -37,8 +38,12 @@ function buildStockSummarySheet(
     "Received (L)",
     "Issued (pkt)",
     "Issued (L)",
-    "Consumption (pkt)",
-    "Consumption (L)",
+    "Returned (pkt)",
+    "Returned (L)",
+    "Sold (pkt)",
+    "Sold (L)",
+    "Damaged (pkt)",
+    "Damaged (L)",
     "Balance (pkt)",
     "Balance (L)",
   ];
@@ -51,8 +56,12 @@ function buildStockSummarySheet(
     row.received,
     row.issuedPackets,
     row.issued,
-    row.consumptionPackets,
-    row.consumption,
+    row.returnedPackets,
+    row.returned,
+    row.soldPackets,
+    row.sold,
+    row.damagedPackets,
+    row.damaged,
     row.balancePackets,
     row.balance,
   ]);
@@ -65,8 +74,12 @@ function buildStockSummarySheet(
     data.totals.received,
     data.totals.issuedPackets,
     data.totals.issued,
-    data.totals.consumptionPackets,
-    data.totals.consumption,
+    data.totals.returnedPackets,
+    data.totals.returned,
+    data.totals.soldPackets,
+    data.totals.sold,
+    data.totals.damagedPackets,
+    data.totals.damaged,
     data.totals.balancePackets,
     data.totals.balance,
   ]);
@@ -86,10 +99,16 @@ function buildVarianceSheet(
 ) {
   const headers = [
     "Oil Type",
+    "Opening (pkt)",
+    "Opening (L)",
     "Received (pkt)",
     "Received (L)",
     "Issued (pkt)",
     "Issued (L)",
+    "Returned (pkt)",
+    "Returned (L)",
+    "Damaged (pkt)",
+    "Damaged (L)",
     "Depot Balance (pkt)",
     "Depot Balance (L)",
     "Variance (pkt)",
@@ -98,10 +117,16 @@ function buildVarianceSheet(
 
   const body = data.rows.map((row) => [
     row.name,
+    row.openingPackets,
+    row.opening,
     row.receivedPackets,
     row.received,
     row.issuedPackets,
     row.issued,
+    row.returnedPackets,
+    row.returned,
+    row.damagedPackets,
+    row.damaged,
     row.depotBalancePackets,
     row.depotBalance,
     row.variancePackets,
@@ -110,10 +135,16 @@ function buildVarianceSheet(
 
   body.push([
     "Total",
+    data.totals.openingPackets,
+    data.totals.opening,
     data.totals.receivedPackets,
     data.totals.received,
     data.totals.issuedPackets,
     data.totals.issued,
+    data.totals.returnedPackets,
+    data.totals.returned,
+    data.totals.damagedPackets,
+    data.totals.damaged,
     data.totals.depotBalancePackets,
     data.totals.depotBalance,
     data.totals.variancePackets,
@@ -129,7 +160,7 @@ function buildVarianceSheet(
 
 function ledgerRowValues(row: LedgerRow) {
   return [
-    row.transactionDate,
+    formatDateTime(row.createdAt),
     row.type,
     row.productName,
     ledgerRowPackets(row),
@@ -147,7 +178,7 @@ function buildLedgerSheet(
   generatedAt: Date
 ) {
   const headers = [
-    "Date",
+    "Recorded",
     "Type",
     "Product",
     "Qty (pkt)",

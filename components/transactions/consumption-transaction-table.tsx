@@ -2,6 +2,7 @@ import type { DisplayTransactionRow } from "@/lib/transactions/types";
 import { formatDateTime, formatStockQuantity, type StockDisplayUnit } from "@/lib/format";
 import { transactionRowPackets } from "@/lib/transactions/quantity";
 import { parseUserNoteFromReference } from "@/lib/packaging";
+import { ConsumptionCategoryBadge } from "@/components/shared/page-blocks";
 import { TransactionActions } from "@/components/transactions/transaction-actions";
 import {
   Table,
@@ -59,12 +60,12 @@ export function ConsumptionTransactionTable({
                 </span>
               ) : null}
             </TableCell>
-            <TableCell className="text-muted-foreground">
-              {row.type === "SALE"
-                ? "Sale"
-                : row.type === "RETURNED"
-                  ? "Returned"
-                  : "Damaged"}
+            <TableCell>
+              {row.type === "SALE" ||
+              row.type === "RETURNED" ||
+              row.type === "DAMAGED" ? (
+                <ConsumptionCategoryBadge type={row.type} />
+              ) : null}
             </TableCell>
             <TableCell>
               {formatStockQuantity(

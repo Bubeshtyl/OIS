@@ -10,24 +10,30 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type StockSummaryTotals = {
+  opening: number;
+  received: number;
+  issued: number;
+  returned: number;
+  sold: number;
+  damaged: number;
+  balance: number;
+  openingPackets: number;
+  receivedPackets: number;
+  issuedPackets: number;
+  returnedPackets: number;
+  soldPackets: number;
+  damagedPackets: number;
+  balancePackets: number;
+};
+
 export function StockSummaryTable({
   rows,
   totals,
   unit = "packets",
 }: {
   rows: StockSummaryReportRow[];
-  totals: {
-    opening: number;
-    received: number;
-    issued: number;
-    consumption: number;
-    balance: number;
-    openingPackets: number;
-    receivedPackets: number;
-    issuedPackets: number;
-    consumptionPackets: number;
-    balancePackets: number;
-  };
+  totals: StockSummaryTotals;
   unit?: StockDisplayUnit;
 }) {
   return (
@@ -38,7 +44,9 @@ export function StockSummaryTable({
           <TableHead className="min-w-[4.5rem]">Opening</TableHead>
           <TableHead className="min-w-[4.5rem]">Received</TableHead>
           <TableHead className="min-w-[4.5rem]">Issued</TableHead>
-          <TableHead className="min-w-[4.5rem]">Consumption</TableHead>
+          <TableHead className="min-w-[4.5rem]">Returned</TableHead>
+          <TableHead className="min-w-[4.5rem]">Sold</TableHead>
+          <TableHead className="min-w-[4.5rem]">Damaged</TableHead>
           <TableHead className="min-w-[4.5rem]">Balance</TableHead>
         </TableRow>
       </TableHeader>
@@ -69,9 +77,24 @@ export function StockSummaryTable({
             </TableCell>
             <TableCell>
               <ReportQuantityCell
-                packets={row.consumptionPackets}
-                litres={row.consumption}
+                packets={row.returnedPackets}
+                litres={row.returned}
                 unit={unit}
+              />
+            </TableCell>
+            <TableCell>
+              <ReportQuantityCell
+                packets={row.soldPackets}
+                litres={row.sold}
+                unit={unit}
+              />
+            </TableCell>
+            <TableCell>
+              <ReportQuantityCell
+                packets={row.damagedPackets}
+                litres={row.damaged}
+                unit={unit}
+                destructive
               />
             </TableCell>
             <TableCell>
@@ -112,10 +135,27 @@ export function StockSummaryTable({
           </TableCell>
           <TableCell>
             <ReportQuantityCell
-              packets={totals.consumptionPackets}
-              litres={totals.consumption}
+              packets={totals.returnedPackets}
+              litres={totals.returned}
               unit={unit}
               emphasize
+            />
+          </TableCell>
+          <TableCell>
+            <ReportQuantityCell
+              packets={totals.soldPackets}
+              litres={totals.sold}
+              unit={unit}
+              emphasize
+            />
+          </TableCell>
+          <TableCell>
+            <ReportQuantityCell
+              packets={totals.damagedPackets}
+              litres={totals.damaged}
+              unit={unit}
+              emphasize
+              destructive
             />
           </TableCell>
           <TableCell>

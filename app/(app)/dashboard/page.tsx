@@ -78,27 +78,58 @@ export default async function DashboardPage({
     (d) => d.received - d.transferred
   );
 
-  const depotVariancePackets =
-    activity.receivePackets -
+  const depotOpeningPackets =
+    stock.depotPackets -
+    activity.receivePackets +
     activity.transferPackets -
+    activity.returnedPackets;
+  const depotOpeningLitres =
+    stock.depotQty -
+    activity.receiveQty +
+    activity.transferQty -
+    activity.returnedQty;
+  const managerOpeningPackets =
+    stock.managerPackets -
+    activity.transferPackets +
+    activity.salePackets +
+    activity.damagedPackets +
+    activity.returnedPackets;
+  const managerOpeningLitres =
+    stock.managerQty -
+    activity.transferQty +
+    activity.saleQty +
+    activity.damagedQty +
+    activity.returnedQty;
+
+  const depotVariancePackets =
+    depotOpeningPackets +
+    activity.receivePackets -
+    activity.transferPackets +
+    activity.returnedPackets -
     stock.depotPackets;
   const managerVariancePackets =
+    managerOpeningPackets +
     activity.transferPackets -
     activity.salePackets -
+    activity.damagedPackets -
+    activity.returnedPackets -
     stock.managerPackets;
-  const systemVariancePackets =
-    activity.receivePackets -
-    activity.salePackets -
-    (stock.depotPackets + stock.managerPackets);
+  const systemVariancePackets = depotVariancePackets + managerVariancePackets;
 
   const depotVarianceLitres =
-    activity.receiveQty - activity.transferQty - stock.depotQty;
-  const managerVarianceLitres =
-    activity.transferQty - activity.saleQty - stock.managerQty;
-  const systemVarianceLitres =
+    depotOpeningLitres +
     activity.receiveQty -
+    activity.transferQty +
+    activity.returnedQty -
+    stock.depotQty;
+  const managerVarianceLitres =
+    managerOpeningLitres +
+    activity.transferQty -
     activity.saleQty -
-    (stock.depotQty + stock.managerQty);
+    activity.damagedQty -
+    activity.returnedQty -
+    stock.managerQty;
+  const systemVarianceLitres = depotVarianceLitres + managerVarianceLitres;
 
   const stockKpi =
     location === "manager"
@@ -152,9 +183,9 @@ export default async function DashboardPage({
 
   const stockSummaryDescription =
     location === "manager"
-      ? "Issued and consumption are for the selected date range. Balance is current stock at manager."
+      ? "Opening + issued − sold − damaged − returned = balance (selected range)."
       : location === "depot"
-        ? "Received and issued are for the selected date range. Balance is current stock at depot."
+        ? "Opening + received − issued + returned = balance (selected range). Damaged is shown for manager activity."
         : "Current balances across depot and manager locations.";
 
   const productActivityRecord = Object.fromEntries(productActivity);

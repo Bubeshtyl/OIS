@@ -15,7 +15,9 @@ export async function loadAllReportsData(startDate: string, endDate: string) {
     stockSummary,
     variance,
     ledger,
-    consumption: ledger.filter((row) => row.type === "SALE"),
+    consumption: ledger.filter((row) =>
+      ["SALE", "RETURNED", "DAMAGED"].includes(row.type)
+    ),
     issued: ledger.filter((row) => row.type === "TRANSFER"),
   };
 }

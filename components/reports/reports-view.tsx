@@ -32,7 +32,7 @@ type LedgerRow = {
   productName: string;
   unit: string;
   quantity: string;
-  transactionDate: string;
+  createdAt: Date;
   referenceNote?: string | null;
   reversesTransactionId?: string | null;
   packetsPerBox?: string | null;
@@ -65,24 +65,34 @@ export function ReportsView({
       opening: number;
       received: number;
       issued: number;
-      consumption: number;
+      returned: number;
+      sold: number;
+      damaged: number;
       balance: number;
       openingPackets: number;
       receivedPackets: number;
       issuedPackets: number;
-      consumptionPackets: number;
+      returnedPackets: number;
+      soldPackets: number;
+      damagedPackets: number;
       balancePackets: number;
     };
   } | null;
   variance: {
     rows: VarianceReportRow[];
     totals: {
+      opening: number;
       received: number;
       issued: number;
+      returned: number;
+      damaged: number;
       depotBalance: number;
       variance: number;
+      openingPackets: number;
       receivedPackets: number;
       issuedPackets: number;
+      returnedPackets: number;
+      damagedPackets: number;
       depotBalancePackets: number;
       variancePackets: number;
     };

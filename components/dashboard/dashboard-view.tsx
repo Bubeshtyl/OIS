@@ -42,10 +42,14 @@ type ProductRow = {
 type PeriodRow = {
   received: number;
   issued: number;
+  returned: number;
   consumed: number;
+  damaged: number;
   receivedPackets: number;
   issuedPackets: number;
+  returnedPackets: number;
   consumedPackets: number;
+  damagedPackets: number;
 };
 
 export function DashboardView({
@@ -207,7 +211,7 @@ export function DashboardView({
               View full stock count
             </Link>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <StockSummaryTable
               products={products}
               productActivity={productActivity}
