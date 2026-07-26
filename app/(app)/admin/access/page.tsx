@@ -15,12 +15,12 @@ export default async function AdminAccessPage() {
   }
 
   if (!isRbacAccessUiEnabled() || session.role !== "ADMIN") {
-    redirect(getDefaultPath(session.role));
+    redirect(await getDefaultPath(session.role));
   }
 
   const config = await getAccessConfiguration();
   if (!config) {
-    redirect(getDefaultPath(session.role));
+    redirect(await getDefaultPath(session.role));
   }
 
   return (

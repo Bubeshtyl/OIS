@@ -33,14 +33,15 @@ export async function proxy(request: NextRequest) {
 
   if (session.isLoggedIn && pathname === "/login") {
     return NextResponse.redirect(
-      new URL(getDefaultPath(session.role), request.url)
+      new URL(await getDefaultPath(session.role), request.url)
     );
   }
 
   if (session.isLoggedIn && !(await canAccessRoute(session.role, pathname))) {
-    return NextResponse.redirect(
-      new URL(getDefaultPath(session.role), request.url)
-    );
+    const defaultPath = await getDefaultPath(session.role);
+    if (pathname !== defaultPath) {
+      return NextResponse.redirect(new URL(defaultPath, request.url));
+    }
   }
 
   return response;

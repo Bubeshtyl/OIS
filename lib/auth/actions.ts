@@ -59,7 +59,7 @@ export async function loginAction(
   }
 
   const session = await getSession();
-  redirect(getDefaultPath(session.role));
+  redirect(await getDefaultPath(session.role));
 }
 
 export async function logoutAction() {

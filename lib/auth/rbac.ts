@@ -10,6 +10,7 @@ export type { Permission };
 export { DEFAULT_ROLE_PERMISSIONS };
 
 export type NavIcon =
+  | "home"
   | "dashboard"
   | "receive"
   | "transfer"
@@ -23,7 +24,7 @@ export type NavIcon =
   | "settings"
   | "access";
 
-export type NavGroup = "oil" | "tickets" | "configuration";
+export type NavGroup = "analytics" | "oil" | "tickets" | "configuration";
 
 export type NavCatalogItem = {
   href: string;
@@ -43,10 +44,24 @@ export type NavCatalogItem = {
 
 const BASE_NAV_CATALOG: NavCatalogItem[] = [
   {
+    href: "/",
+    label: "Home",
+    icon: "home",
+    permission: "dashboard:read",
+  },
+  {
     href: "/dashboard",
     label: "Dashboard",
     icon: "dashboard",
+    group: "analytics",
     permission: "dashboard:read",
+  },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: "reports",
+    group: "analytics",
+    permission: "reports:read",
   },
   {
     href: "/receive",
@@ -68,13 +83,6 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     icon: "sales",
     group: "oil",
     permission: "sales:write",
-  },
-  {
-    href: "/reports",
-    label: "Reports",
-    icon: "reports",
-    group: "oil",
-    permission: "reports:read",
   },
   {
     href: "/admin/products",
@@ -137,7 +145,9 @@ export function getNavCatalog(): NavCatalogItem[] {
 
 /** Routes grantable to Manager/Accounts in the Access UI. */
 export function getGrantableNavCatalog(): NavCatalogItem[] {
-  return getNavCatalog().filter((item) => !item.adminOnly);
+  return getNavCatalog().filter(
+    (item) => !item.adminOnly && item.href !== "/"
+  );
 }
 
 export type NavItem = {
@@ -148,6 +158,7 @@ export type NavItem = {
 };
 
 const EXTRA_ROUTE_PERMISSIONS: Record<string, Permission | Permission[]> = {
+  "/dashboard": "dashboard:read",
   "/stock-count": "dashboard:read",
   "/admin/users": "users:manage",
   "/tickets/new": "tickets:manage",
@@ -183,27 +194,52 @@ export async function canWriteInventory(role: UserRole): Promise<boolean> {
   );
 }
 
-export function getDefaultPath(role: UserRole): string {
-  return role === "ACCOUNTS" ? "/reports" : "/dashboard";
+/**
+ * First route the role can open after login.
+ * Prefers Dashboard/Reports when granted; otherwise the first accessible nav item.
+ */
+export async function getDefaultPath(role: UserRole): Promise<string> {
+  const items = await getNavItems(role);
+  const preferred =
+    role === "ACCOUNTS"
+      ? ["/reports", "/dashboard", "/tickets", "/"]
+      : ["/dashboard", "/reports", "/tickets", "/"];
+
+  for (const href of preferred) {
+    if (items.some((item) => item.href === href)) {
+      return href;
+    }
+  }
+
+  return items[0]?.href ?? "/";
 }
 
 export async function canAccessRoute(
   role: UserRole,
   pathname: string
 ): Promise<boolean> {
+  // Placeholder home is available to every signed-in role.
+  if (pathname === "/") return true;
+
   if (pathname === "/admin/access" || pathname.startsWith("/admin/access/")) {
     if (!isRbacAccessUiEnabled()) return false;
   }
 
   const routePermissions = buildRoutePermissions();
 
-  // Longer prefixes first so /tickets/new matches before /tickets
+  // Longer prefixes first so /tickets/new matches before /tickets.
+  // Exact "/" must not use startsWith — every path starts with "/".
   const routes = Object.keys(routePermissions).sort(
     (a, b) => b.length - a.length
   );
 
   for (const route of routes) {
-    if (pathname === route || pathname.startsWith(`${route}/`)) {
+    const matches =
+      route === "/"
+        ? pathname === "/"
+        : pathname === route || pathname.startsWith(`${route}/`);
+
+    if (matches) {
       const permission = routePermissions[route];
       const perms = Array.isArray(permission) ? permission : [permission];
       for (const p of perms) {
@@ -220,7 +256,9 @@ export async function getNavItems(role: UserRole): Promise<NavItem[]> {
   const permissions = await getPermissionsForRole(role);
 
   return catalog
-    .filter((item) => permissions.includes(item.permission))
+    .filter(
+      (item) => item.href === "/" || permissions.includes(item.permission)
+    )
     .map(({ href, label, icon, group }) => ({ href, label, icon, group }));
 }
 

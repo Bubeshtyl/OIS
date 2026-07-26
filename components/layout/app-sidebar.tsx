@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Container,
   Droplet,
+  Home,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -46,6 +47,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const iconMap: Record<NavIcon, LucideIcon> = {
+  home: Home,
   dashboard: LayoutDashboard,
   receive: SquareArrowDown,
   transfer: SquareArrowUp,
@@ -64,12 +66,14 @@ const groupMeta: Record<
   NavGroup,
   { label: string; icon: NavIcon }
 > = {
+  analytics: { label: "Analytics", icon: "dashboard" },
   oil: { label: "Oil Management", icon: "sales" },
   tickets: { label: "Ticket Management", icon: "tickets" },
   configuration: { label: "Configuration", icon: "settings" },
 };
 
 function isItemActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -149,6 +153,7 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
   const pathname = usePathname();
   const items = navItems;
   const topItems = items.filter((item) => !item.group);
+  const analyticsItems = items.filter((item) => item.group === "analytics");
   const oilItems = items.filter((item) => item.group === "oil");
   const ticketItems = items.filter((item) => item.group === "tickets");
   const configItems = items.filter((item) => item.group === "configuration");
@@ -162,6 +167,7 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
 
   const groupedSections = (
     [
+      { group: "analytics" as const, items: analyticsItems },
       { group: "oil" as const, items: oilItems },
       { group: "tickets" as const, items: ticketItems },
       { group: "configuration" as const, items: configItems },
@@ -172,7 +178,7 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-0 px-4 pt-5 group-data-[collapsible=icon]:px-3 group-data-[collapsible=icon]:pt-4">
         <Link
-          href="/dashboard"
+          href="/"
           onClick={closeMobileSidebar}
           className="outline-none"
         >

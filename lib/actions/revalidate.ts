@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 
 const INVENTORY_PATHS = [
+  "/",
   "/dashboard",
   "/stock-count",
   "/receive",
