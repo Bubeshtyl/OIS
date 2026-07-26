@@ -213,7 +213,7 @@ export default async function DashboardPage({
       <DashboardView
         location={location}
         unit={unit}
-        canWrite={canWriteInventory(session.role)}
+        canWrite={await canWriteInventory(session.role)}
         stockKpi={stockKpi}
         varianceKpi={varianceKpi}
         activity={{

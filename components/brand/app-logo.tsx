@@ -47,7 +47,7 @@ export function AppLogo({
       >
         <Image
           src={LOGO_SRC}
-          alt="OIS logo"
+          alt="TYL logo"
           width={size}
           height={size}
           className="size-full object-contain"
@@ -69,7 +69,7 @@ export function AppLogo({
             variant === "inline" && "text-sm text-foreground"
           )}
         >
-          OIS
+          TYL
         </span>
         <span
           className={cn(
@@ -78,7 +78,7 @@ export function AppLogo({
             variant === "inline" && "text-[0.65rem] text-muted-foreground"
           )}
         >
-          Inventory Management
+          Track Your Litres
         </span>
       </div>
     </div>

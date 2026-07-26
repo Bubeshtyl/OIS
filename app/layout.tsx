@@ -20,8 +20,8 @@ const appUrl =
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
-  title: "OIS Inventory",
-  description: "Oil Station Inventory Management",
+  title: "TYL",
+  description: "Track Your Litres",
   manifest: "/site.webmanifest",
   icons: {
     icon: [
@@ -33,21 +33,21 @@ export const metadata: Metadata = {
     ],
   },
   openGraph: {
-    title: "OIS Inventory",
-    description: "Oil Station Inventory Management",
+    title: "TYL",
+    description: "Track Your Litres",
     images: [
       {
         url: "/android-chrome-512x512.png",
         width: 512,
         height: 512,
-        alt: "OIS logo",
+        alt: "TYL logo",
       },
     ],
   },
   twitter: {
     card: "summary",
-    title: "OIS Inventory",
-    description: "Oil Station Inventory Management",
+    title: "TYL",
+    description: "Track Your Litres",
     images: ["/android-chrome-512x512.png"],
   },
 };

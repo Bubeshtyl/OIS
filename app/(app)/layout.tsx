@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
+import { getNavItems } from "@/lib/auth/rbac";
 import { getSession } from "@/lib/auth/session";
 
 export default async function AppLayout({
@@ -12,5 +13,11 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  return <AppShell session={session}>{children}</AppShell>;
+  const navItems = await getNavItems(session.role);
+
+  return (
+    <AppShell session={session} navItems={navItems}>
+      {children}
+    </AppShell>
+  );
 }

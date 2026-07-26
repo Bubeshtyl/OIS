@@ -147,7 +147,7 @@ export function DashboardView({
           icon={Container}
           iconClassName="bg-emerald-100 text-emerald-700"
           sparkline={receivedSparkline}
-          sparklineColor="#16a34a"
+          sparklineColor="#93c572"
         />
         <KpiCard
           label="Total Issued to Managers"

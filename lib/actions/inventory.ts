@@ -71,7 +71,7 @@ export async function receiveStockAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "receive:write")) {
+  if (!(await hasPermission(session.role, "receive:write"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -127,7 +127,7 @@ export async function transferStockAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "transfer:write")) {
+  if (!(await hasPermission(session.role, "transfer:write"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -178,7 +178,7 @@ export async function recordSaleAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "sales:write")) {
+  if (!(await hasPermission(session.role, "sales:write"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -276,7 +276,7 @@ export async function reverseTransactionAction(
   transactionId: string
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "reversal:write")) {
+  if (!(await hasPermission(session.role, "reversal:write"))) {
     return { success: false, error: "Only admins can reverse transactions." };
   }
 
