@@ -2,7 +2,6 @@ import {
   and,
   asc,
   count,
-  desc,
   eq,
   gte,
   ilike,
@@ -251,7 +250,7 @@ export async function getDailySalesReportPage({
     .select(dailySalesSelect)
     .from(dailySales)
     .where(where)
-    .orderBy(desc(dailySales.startDate), asc(dailySales.receiptNo))
+    .orderBy(asc(dailySales.receiptNo))
     .limit(DAILY_SALES_PAGE_SIZE)
     .offset((pageClamped - 1) * DAILY_SALES_PAGE_SIZE);
 
@@ -275,5 +274,5 @@ export async function getDailySalesExportRows(
     .select(dailySalesSelect)
     .from(dailySales)
     .where(buildFilterWhere(filters))
-    .orderBy(desc(dailySales.startDate), asc(dailySales.receiptNo));
+    .orderBy(asc(dailySales.receiptNo));
 }

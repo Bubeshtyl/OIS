@@ -55,14 +55,14 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     href: "/dashboard",
     label: "Dashboard",
     icon: "dashboard",
-    group: "analytics",
+    group: "oil",
     permission: "dashboard:read",
   },
   {
     href: "/reports",
     label: "Reports",
     icon: "reports",
-    group: "analytics",
+    group: "oil",
     permission: "reports:read",
   },
   {
@@ -74,7 +74,7 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
   },
   {
     href: "/daily-sales-report",
-    label: "Daily Sales Report",
+    label: "Daily Sales Data",
     icon: "daily-sales",
     group: "analytics",
     permission: "daily-sales:read",
@@ -211,23 +211,11 @@ export async function canWriteInventory(role: UserRole): Promise<boolean> {
 }
 
 /**
- * First route the role can open after login.
- * Prefers Dashboard/Reports when granted; otherwise the first accessible nav item.
+ * Landing route after login (and related auth redirects).
+ * Home is available to every signed-in role.
  */
-export async function getDefaultPath(role: UserRole): Promise<string> {
-  const items = await getNavItems(role);
-  const preferred =
-    role === "ACCOUNTS"
-      ? ["/reports", "/dashboard", "/tickets", "/"]
-      : ["/dashboard", "/reports", "/tickets", "/"];
-
-  for (const href of preferred) {
-    if (items.some((item) => item.href === href)) {
-      return href;
-    }
-  }
-
-  return items[0]?.href ?? "/";
+export async function getDefaultPath(_role: UserRole): Promise<string> {
+  return "/";
 }
 
 export async function canAccessRoute(

@@ -131,7 +131,7 @@ export function DailySalesReportView({
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Daily Sales Report" />
+      <PageHeader title="Daily Sales Data" />
 
       <DailySalesFilters
         key={searchParams.toString()}
@@ -204,6 +204,12 @@ export function DailySalesReportView({
                     Nozzle
                   </TableHead>
                   <TableHead className="text-right font-bold text-sidebar-foreground">
+                    Start Tot
+                  </TableHead>
+                  <TableHead className="text-right font-bold text-sidebar-foreground">
+                    End Tot
+                  </TableHead>
+                  <TableHead className="text-right font-bold text-sidebar-foreground">
                     Discount
                   </TableHead>
                   <TableHead className="text-right font-bold text-sidebar-foreground">
@@ -224,7 +230,7 @@ export function DailySalesReportView({
                 {rows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={16}
+                      colSpan={18}
                       className="h-24 text-center text-muted-foreground"
                     >
                       No rows match these filters.
@@ -267,6 +273,12 @@ export function DailySalesReportView({
                       </TableCell>
                       <TableCell className="text-right">
                         {row.nozzleNo ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {formatQty(row.startTot)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        {formatQty(row.endTot)}
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         {formatInr(row.discountAmount)}
