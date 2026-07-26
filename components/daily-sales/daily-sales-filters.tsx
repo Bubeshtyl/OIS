@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Loader2, ReceiptText } from "lucide-react";
+import { ChevronDown, Download, Loader2, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -42,12 +42,18 @@ export function DailySalesFilters({
   products,
   mopTypes,
   isPending = false,
+  canExport = false,
+  exporting = false,
+  onExport,
   onNavigate,
 }: {
   initialFilters: DailySalesFilters;
   products: string[];
   mopTypes: string[];
   isPending?: boolean;
+  canExport?: boolean;
+  exporting?: boolean;
+  onExport?: () => void;
   onNavigate: (href: string) => void;
 }) {
   const pathname = usePathname();
@@ -126,6 +132,27 @@ export function DailySalesFilters({
               "Apply"
             )}
           </Button>
+          {onExport ? (
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-sm border border-emerald-400/35 bg-emerald-500/15 text-black hover:bg-emerald-500/25 hover:text-black"
+              disabled={!canExport || isPending || exporting}
+              onClick={onExport}
+            >
+              {exporting ? (
+                <>
+                  <Loader2 className="animate-spin" data-icon="inline-start" />
+                  Exporting…
+                </>
+              ) : (
+                <>
+                  <Download data-icon="inline-start" />
+                  Export Excel
+                </>
+              )}
+            </Button>
+          ) : null}
         </div>
       </div>
 

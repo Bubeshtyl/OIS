@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Download, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { DailySalesFilters } from "@/components/daily-sales/daily-sales-filters";
 import { PageHeader } from "@/components/shared/page-blocks";
@@ -70,8 +70,18 @@ export function DailySalesReportView({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [exporting, setExporting] = useState(false);
+  const [exportReady, setExportReady] = useState(false);
+
+  useEffect(() => {
+    if (isPending) {
+      setExportReady(false);
+      return;
+    }
+    setExportReady(filters.applied && total > 0);
+  }, [isPending, filters.applied, total]);
 
   function navigate(href: string) {
+    setExportReady(false);
     startTransition(() => {
       router.push(href);
     });
@@ -86,7 +96,7 @@ export function DailySalesReportView({
   }
 
   async function exportExcel() {
-    if (!filters.applied || exporting || isPending) return;
+    if (!exportReady || exporting || isPending || !filters.applied) return;
     setExporting(true);
     try {
       const response = await fetch(
@@ -129,31 +139,11 @@ export function DailySalesReportView({
         products={products}
         mopTypes={mopTypes}
         isPending={isPending}
+        canExport={exportReady && !isPending}
+        exporting={exporting}
+        onExport={exportExcel}
         onNavigate={navigate}
       />
-
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="rounded-sm"
-          disabled={!filters.applied || isPending || exporting || total === 0}
-          onClick={exportExcel}
-        >
-          {exporting ? (
-            <>
-              <Loader2 className="animate-spin" data-icon="inline-start" />
-              Exporting…
-            </>
-          ) : (
-            <>
-              <Download data-icon="inline-start" />
-              Export Excel
-            </>
-          )}
-        </Button>
-      </div>
 
       {isPending ? (
         <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-xl border bg-background px-6 py-12 text-center">
