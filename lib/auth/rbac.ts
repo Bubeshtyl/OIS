@@ -16,6 +16,8 @@ export type NavIcon =
   | "transfer"
   | "sales"
   | "reports"
+  | "file-upload"
+  | "daily-sales"
   | "products"
   | "users"
   | "tickets"
@@ -62,6 +64,20 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     icon: "reports",
     group: "analytics",
     permission: "reports:read",
+  },
+  {
+    href: "/file-upload",
+    label: "File Upload",
+    icon: "file-upload",
+    group: "analytics",
+    permission: "file-upload:read",
+  },
+  {
+    href: "/daily-sales-report",
+    label: "Daily Sales Report",
+    icon: "daily-sales",
+    group: "analytics",
+    permission: "daily-sales:read",
   },
   {
     href: "/receive",

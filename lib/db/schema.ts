@@ -137,6 +137,34 @@ export const stockBalance = pgTable(
   (table) => [primaryKey({ columns: [table.productId, table.location] })]
 );
 
+/** Pump daily sales import — standalone, no FKs. Upserted by receipt_no. */
+export const dailySales = pgTable("daily_sales", {
+  receiptNo: text("receipt_no").primaryKey(),
+  startDate: timestamp("start_date", { withTimezone: false }).notNull(),
+  endDate: timestamp("end_date", { withTimezone: false }).notNull(),
+  product: text("product").notNull(),
+  amount: numeric("amount", { precision: 14, scale: 3 }).notNull(),
+  volumeLitre: numeric("volume_litre", { precision: 14, scale: 3 }).notNull(),
+  ratePerLtr: numeric("rate_per_ltr", { precision: 14, scale: 3 }).notNull(),
+  mopType: text("mop_type").notNull(),
+  dsmName: text("dsm_name").notNull(),
+  bayNo: integer("bay_no"),
+  nozzleNo: integer("nozzle_no"),
+  startTot: numeric("start_tot", { precision: 16, scale: 3 }).notNull(),
+  endTot: numeric("end_tot", { precision: 16, scale: 3 }).notNull(),
+  discountAmount: numeric("discount_amount", { precision: 14, scale: 3 })
+    .notNull()
+    .default("0"),
+  netAmount: numeric("net_amount", { precision: 14, scale: 3 }).notNull(),
+  vehicleNo: text("vehicle_no"),
+  vehicleSegment: text("vehicle_segment"),
+  mobileNo: text("mobile_no"),
+  loadedAt: timestamp("loaded_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
 export const teams = pgTable("teams", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull().unique(),
@@ -313,6 +341,7 @@ export type User = typeof users.$inferSelect;
 export type OilProduct = typeof oilProducts.$inferSelect;
 export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
 export type StockBalance = typeof stockBalance.$inferSelect;
+export type DailySale = typeof dailySales.$inferSelect;
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 export type TransactionType = (typeof transactionTypeEnum.enumValues)[number];
 export type Location = (typeof locationEnum.enumValues)[number];

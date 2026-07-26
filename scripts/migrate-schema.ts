@@ -234,6 +234,31 @@ async function migrateSchema() {
   `);
 
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS daily_sales (
+      receipt_no text PRIMARY KEY,
+      start_date timestamp NOT NULL,
+      end_date timestamp NOT NULL,
+      product text NOT NULL,
+      amount numeric(14, 3) NOT NULL,
+      volume_litre numeric(14, 3) NOT NULL,
+      rate_per_ltr numeric(14, 3) NOT NULL,
+      mop_type text NOT NULL,
+      dsm_name text NOT NULL,
+      bay_no integer,
+      nozzle_no integer,
+      start_tot numeric(16, 3) NOT NULL,
+      end_tot numeric(16, 3) NOT NULL,
+      discount_amount numeric(14, 3) NOT NULL DEFAULT 0,
+      net_amount numeric(14, 3) NOT NULL,
+      vehicle_no text,
+      vehicle_segment text,
+      mobile_no text,
+      loaded_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz
+    )
+  `);
+
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS role_permissions (
       role user_role NOT NULL,
       permission text NOT NULL,
@@ -249,10 +274,14 @@ async function migrateSchema() {
       ('MANAGER', 'transfer:write'),
       ('MANAGER', 'sales:write'),
       ('MANAGER', 'reports:read'),
+      ('MANAGER', 'file-upload:read'),
+      ('MANAGER', 'daily-sales:read'),
       ('MANAGER', 'tickets:read'),
       ('MANAGER', 'tickets:manage'),
       ('ACCOUNTS', 'dashboard:read'),
       ('ACCOUNTS', 'reports:read'),
+      ('ACCOUNTS', 'file-upload:read'),
+      ('ACCOUNTS', 'daily-sales:read'),
       ('ACCOUNTS', 'tickets:read')
     ON CONFLICT (role, permission) DO NOTHING
   `);
