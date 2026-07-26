@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const ACCEPT =
-  ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
+  ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv";
 
 type UploadResult = {
   kind: "success";
@@ -33,9 +33,13 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function isExcelFile(file: File) {
+function isSupportedUploadFile(file: File) {
   const lower = file.name.toLowerCase();
-  return lower.endsWith(".xlsx") || lower.endsWith(".xls");
+  return (
+    lower.endsWith(".xlsx") ||
+    lower.endsWith(".xls") ||
+    lower.endsWith(".csv")
+  );
 }
 
 export function FileUploadView() {
@@ -48,8 +52,8 @@ export function FileUploadView() {
   function selectFile(list: FileList | null) {
     if (!list?.length) return;
     const next = list[0];
-    if (!isExcelFile(next)) {
-      const message = "Only .xlsx and .xls Excel files are supported.";
+    if (!isSupportedUploadFile(next)) {
+      const message = "Only .xlsx, .xls, and .csv files are supported.";
       setFeedback({ kind: "error", message });
       toast.error(message);
       return;
@@ -182,12 +186,12 @@ export function FileUploadView() {
         <p className="text-lg font-medium tracking-tight">
           {uploading
             ? "Uploading and loading rows…"
-            : "Drop an Excel file here or click to browse"}
+            : "Drop an Excel or CSV file here or click to browse"}
         </p>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
           {uploading
             ? "Large files can take up to a minute. Keep this page open until you see a confirmation."
-            : "Upload a daily sales export (.xlsx / .xls). Rows are upserted by Receipt No into daily_sales."}
+            : "Upload a daily sales export (.xlsx / .xls / .csv). Rows are upserted by Receipt No into daily_sales."}
         </p>
         <input
           ref={inputRef}

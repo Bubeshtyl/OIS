@@ -6,7 +6,7 @@ export default function FileUploadPage() {
     <div className="space-y-6">
       <PageHeader
         title="File Upload"
-        subtitle="Import daily sales Excel exports into the daily_sales table"
+        subtitle="Import daily sales Excel or CSV exports into the daily_sales table"
       />
       <FileUploadView />
     </div>

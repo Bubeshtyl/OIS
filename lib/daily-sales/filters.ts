@@ -10,6 +10,61 @@ export const VEHICLE_SEGMENT_OPTIONS = [
 export type VehicleSegmentFilter =
   (typeof VEHICLE_SEGMENT_OPTIONS)[number]["value"];
 
+export const EXTRA_CONDITION_FIELDS = {
+  ratePerLtr: {
+    label: "Rate/Ltr",
+    kind: "number",
+    ops: ["eq", "gte", "lte"],
+  },
+  dsmName: {
+    label: "DSM Name",
+    kind: "text",
+    ops: ["is", "contains"],
+  },
+  bayNo: {
+    label: "Bay No",
+    kind: "integer",
+    ops: ["eq"],
+  },
+  nozzleNo: {
+    label: "Nozzle No",
+    kind: "integer",
+    ops: ["eq"],
+  },
+  startTot: {
+    label: "Start Tot",
+    kind: "number",
+    ops: ["eq", "gte", "lte"],
+  },
+  endTot: {
+    label: "End Tot",
+    kind: "number",
+    ops: ["eq", "gte", "lte"],
+  },
+  discountAmount: {
+    label: "Discount",
+    kind: "number",
+    ops: ["eq", "gte", "lte"],
+  },
+  netAmount: {
+    label: "Net Amount",
+    kind: "number",
+    ops: ["eq", "gte", "lte"],
+  },
+} as const;
+
+export type ExtraConditionField = keyof typeof EXTRA_CONDITION_FIELDS;
+
+export type ExtraConditionOp =
+  (typeof EXTRA_CONDITION_FIELDS)[ExtraConditionField]["ops"][number];
+
+export type DailySalesCondition = {
+  id: string;
+  field: ExtraConditionField;
+  op: ExtraConditionOp;
+  value: string;
+};
+
 export type DailySalesFilters = {
   /** Set when the user clicks Apply — required before data is fetched. */
   applied: boolean;
@@ -25,6 +80,27 @@ export type DailySalesFilters = {
   volumeMax?: string;
   vehicleSegment: VehicleSegmentFilter;
   vehicleOrMobile?: string;
+  conditions: DailySalesCondition[];
+};
+
+export const EXTRA_CONDITION_FIELD_OPTIONS = (
+  Object.entries(EXTRA_CONDITION_FIELDS) as [
+    ExtraConditionField,
+    (typeof EXTRA_CONDITION_FIELDS)[ExtraConditionField],
+  ][]
+).map(([value, meta]) => ({
+  value,
+  label: meta.label,
+  kind: meta.kind,
+  ops: meta.ops,
+}));
+
+export const CONDITION_OP_LABELS: Record<string, string> = {
+  eq: "=",
+  gte: "≥",
+  lte: "≤",
+  is: "equal",
+  contains: "contains",
 };
 
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
@@ -55,6 +131,111 @@ function parseVehicleSegment(value: string | null | undefined): VehicleSegmentFi
   return "all";
 }
 
+function isExtraConditionField(value: unknown): value is ExtraConditionField {
+  return typeof value === "string" && value in EXTRA_CONDITION_FIELDS;
+}
+
+function isOpForField(
+  field: ExtraConditionField,
+  op: unknown
+): op is ExtraConditionOp {
+  if (typeof op !== "string") return false;
+  return (EXTRA_CONDITION_FIELDS[field].ops as readonly string[]).includes(op);
+}
+
+function validateConditionValue(
+  field: ExtraConditionField,
+  value: string
+): string | undefined {
+  const trimmed = optionalString(value);
+  if (!trimmed) return undefined;
+
+  const kind = EXTRA_CONDITION_FIELDS[field].kind;
+  if (kind === "number" || kind === "integer") {
+    if (Number.isNaN(Number(trimmed))) return undefined;
+    if (kind === "integer" && !Number.isInteger(Number(trimmed))) return undefined;
+    return trimmed;
+  }
+  return trimmed;
+}
+
+export function createEmptyCondition(
+  field: ExtraConditionField = "dsmName"
+): DailySalesCondition {
+  const meta = EXTRA_CONDITION_FIELDS[field];
+  return {
+    id:
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `c_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    field,
+    op: meta.ops[0],
+    value: "",
+  };
+}
+
+export function parseConditionsParam(
+  raw: string | null | undefined
+): DailySalesCondition[] {
+  const text = optionalString(raw);
+  if (!text) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) return [];
+
+  const conditions: DailySalesCondition[] = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const field = record.field ?? record.f;
+    const op = record.op ?? record.o;
+    const value = record.value ?? record.v;
+    const id =
+      typeof record.id === "string" && record.id
+        ? record.id
+        : createEmptyCondition().id;
+
+    if (!isExtraConditionField(field) || !isOpForField(field, op)) continue;
+    if (typeof value !== "string") continue;
+
+    const validated = validateConditionValue(field, value);
+    // Keep rows that were applied with a value; drop empty/invalid on parse.
+    if (!validated) continue;
+
+    conditions.push({ id, field, op, value: validated });
+  }
+
+  return conditions;
+}
+
+export function serializeConditionsParam(
+  conditions: DailySalesCondition[]
+): string | undefined {
+  const compact = conditions
+    .map((condition) => {
+      const value = validateConditionValue(condition.field, condition.value);
+      if (!value) return null;
+      if (!isOpForField(condition.field, condition.op)) return null;
+      return {
+        f: condition.field,
+        o: condition.op,
+        v: value,
+      };
+    })
+    .filter((item): item is { f: ExtraConditionField; o: ExtraConditionOp; v: string } =>
+      item != null
+    );
+
+  if (compact.length === 0) return undefined;
+  return JSON.stringify(compact);
+}
+
 export function parseDailySalesFilters(
   params: Record<string, string | undefined>
 ): DailySalesFilters {
@@ -75,6 +256,7 @@ export function parseDailySalesFilters(
     volumeMax: optionalNumberString(params.volumeMax),
     vehicleSegment: parseVehicleSegment(params.vehicleSegment),
     vehicleOrMobile: optionalString(params.q),
+    conditions: parseConditionsParam(params.conds),
   };
 }
 
@@ -97,6 +279,8 @@ export function dailySalesFiltersToSearchParams(
     params.set("vehicleSegment", filters.vehicleSegment);
   }
   if (filters.vehicleOrMobile) params.set("q", filters.vehicleOrMobile);
+  const conds = serializeConditionsParam(filters.conditions ?? []);
+  if (conds) params.set("conds", conds);
   return params;
 }
 

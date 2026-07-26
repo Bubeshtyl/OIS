@@ -10,7 +10,7 @@ import { upsertDailySales } from "@/lib/daily-sales/upsert";
 export const maxDuration = 300;
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = [".xlsx", ".xls"];
+const ALLOWED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 
 function hasAllowedExtension(name: string) {
   const lower = name.toLowerCase();
@@ -34,14 +34,20 @@ export async function POST(request: NextRequest) {
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "Missing file. Upload a single Excel file as field \"file\"." },
+        {
+          error:
+            'Missing file. Upload a single Excel or CSV file as field "file".',
+        },
         { status: 400 }
       );
     }
 
     if (!hasAllowedExtension(file.name)) {
       return NextResponse.json(
-        { error: "Invalid file type. Only .xlsx and .xls files are allowed." },
+        {
+          error:
+            "Invalid file type. Only .xlsx, .xls, and .csv files are allowed.",
+        },
         { status: 400 }
       );
     }
@@ -58,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = await file.arrayBuffer();
-    const parsed = parseDailySalesWorkbook(buffer);
+    const parsed = parseDailySalesWorkbook(buffer, file.name);
     const result = await upsertDailySales(parsed.rows);
 
     return NextResponse.json({

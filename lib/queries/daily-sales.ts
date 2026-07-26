@@ -14,6 +14,7 @@ import {
 import {
   vehicleSegmentDbValue,
   wallDateTimeToTimestamp,
+  type DailySalesCondition,
   type DailySalesFilters,
 } from "@/lib/daily-sales/filters";
 import { getDb } from "@/lib/db";
@@ -43,6 +44,65 @@ export type DailySalesReportRow = {
   loadedAt: Date;
   updatedAt: Date | null;
 };
+
+function conditionToSql(condition: DailySalesCondition): SQL | undefined {
+  const value = condition.value.trim();
+  if (!value) return undefined;
+
+  switch (condition.field) {
+    case "ratePerLtr": {
+      if (condition.op === "eq") return eq(dailySales.ratePerLtr, value);
+      if (condition.op === "gte") return gte(dailySales.ratePerLtr, value);
+      if (condition.op === "lte") return lte(dailySales.ratePerLtr, value);
+      return undefined;
+    }
+    case "dsmName": {
+      if (condition.op === "is") return eq(dailySales.dsmName, value);
+      if (condition.op === "contains") {
+        return ilike(dailySales.dsmName, `%${value}%`);
+      }
+      return undefined;
+    }
+    case "bayNo": {
+      const n = Number(value);
+      if (!Number.isInteger(n)) return undefined;
+      if (condition.op === "eq") return eq(dailySales.bayNo, n);
+      return undefined;
+    }
+    case "nozzleNo": {
+      const n = Number(value);
+      if (!Number.isInteger(n)) return undefined;
+      if (condition.op === "eq") return eq(dailySales.nozzleNo, n);
+      return undefined;
+    }
+    case "startTot": {
+      if (condition.op === "eq") return eq(dailySales.startTot, value);
+      if (condition.op === "gte") return gte(dailySales.startTot, value);
+      if (condition.op === "lte") return lte(dailySales.startTot, value);
+      return undefined;
+    }
+    case "endTot": {
+      if (condition.op === "eq") return eq(dailySales.endTot, value);
+      if (condition.op === "gte") return gte(dailySales.endTot, value);
+      if (condition.op === "lte") return lte(dailySales.endTot, value);
+      return undefined;
+    }
+    case "discountAmount": {
+      if (condition.op === "eq") return eq(dailySales.discountAmount, value);
+      if (condition.op === "gte") return gte(dailySales.discountAmount, value);
+      if (condition.op === "lte") return lte(dailySales.discountAmount, value);
+      return undefined;
+    }
+    case "netAmount": {
+      if (condition.op === "eq") return eq(dailySales.netAmount, value);
+      if (condition.op === "gte") return gte(dailySales.netAmount, value);
+      if (condition.op === "lte") return lte(dailySales.netAmount, value);
+      return undefined;
+    }
+    default:
+      return undefined;
+  }
+}
 
 function buildFilterWhere(filters: DailySalesFilters): SQL | undefined {
   const parts: SQL[] = [];
@@ -98,6 +158,11 @@ function buildFilterWhere(filters: DailySalesFilters): SQL | undefined {
     parts.push(
       or(ilike(dailySales.vehicleNo, term), ilike(dailySales.mobileNo, term))!
     );
+  }
+
+  for (const condition of filters.conditions ?? []) {
+    const clause = conditionToSql(condition);
+    if (clause) parts.push(clause);
   }
 
   if (parts.length === 0) return undefined;

@@ -185,16 +185,42 @@ function mapRow(
   }
 }
 
-export function parseDailySalesWorkbook(buffer: ArrayBuffer): ParseWorkbookResult {
-  const workbook = XLSX.read(buffer, {
+function isCsvFileName(fileName?: string) {
+  return (fileName ?? "").toLowerCase().endsWith(".csv");
+}
+
+function readWorkbook(buffer: ArrayBuffer, fileName?: string): XLSX.WorkBook {
+  if (isCsvFileName(fileName)) {
+    // Strip UTF-8 BOM so the first header matches expected column names.
+    const text = new TextDecoder("utf-8").decode(buffer).replace(/^\uFEFF/, "");
+    if (!text.trim()) {
+      throw new DailySalesParseError("CSV file is empty");
+    }
+    return XLSX.read(text, {
+      type: "string",
+      raw: true,
+    });
+  }
+
+  return XLSX.read(buffer, {
     type: "array",
     cellDates: false,
     raw: true,
   });
+}
+
+export function parseDailySalesWorkbook(
+  buffer: ArrayBuffer,
+  fileName?: string
+): ParseWorkbookResult {
+  const workbook = readWorkbook(buffer, fileName);
+  const sourceLabel = isCsvFileName(fileName) ? "CSV" : "Sheet";
 
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    throw new DailySalesParseError("Workbook has no sheets");
+    throw new DailySalesParseError(
+      isCsvFileName(fileName) ? "CSV has no data" : "Workbook has no sheets"
+    );
   }
 
   const sheet = workbook.Sheets[sheetName];
@@ -205,7 +231,7 @@ export function parseDailySalesWorkbook(buffer: ArrayBuffer): ParseWorkbookResul
   });
 
   if (matrix.length === 0) {
-    throw new DailySalesParseError("Sheet is empty");
+    throw new DailySalesParseError(`${sourceLabel} is empty`);
   }
 
   const headerRow = (matrix[0] ?? []).map((cell) =>
@@ -225,7 +251,7 @@ export function parseDailySalesWorkbook(buffer: ArrayBuffer): ParseWorkbookResul
   });
 
   if (objects.length === 0) {
-    throw new DailySalesParseError("Sheet has no data rows");
+    throw new DailySalesParseError(`${sourceLabel} has no data rows`);
   }
 
   const byReceipt = new Map<string, DailySalesRow>();

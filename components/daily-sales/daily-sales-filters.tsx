@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Download, Loader2, ReceiptText } from "lucide-react";
+import { ChevronDown, Download, Loader2, Plus, ReceiptText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -21,11 +21,19 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
+  CONDITION_OP_LABELS,
+  createEmptyCondition,
   dailySalesFiltersToSearchParams,
+  EXTRA_CONDITION_FIELD_OPTIONS,
+  EXTRA_CONDITION_FIELDS,
   VEHICLE_SEGMENT_OPTIONS,
+  type DailySalesCondition,
   type DailySalesFilters,
+  type ExtraConditionField,
+  type ExtraConditionOp,
   type VehicleSegmentFilter,
 } from "@/lib/daily-sales/filters";
+import { cn } from "@/lib/utils";
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
@@ -57,7 +65,10 @@ export function DailySalesFilters({
   onNavigate: (href: string) => void;
 }) {
   const pathname = usePathname();
-  const [draft, setDraft] = useState<DailySalesFilters>(initialFilters);
+  const [draft, setDraft] = useState<DailySalesFilters>({
+    ...initialFilters,
+    conditions: initialFilters.conditions ?? [],
+  });
   const [open, setOpen] = useState(!initialFilters.applied);
 
   function update<K extends keyof DailySalesFilters>(
@@ -65,6 +76,43 @@ export function DailySalesFilters({
     value: DailySalesFilters[K]
   ) {
     setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateCondition(
+    id: string,
+    patch: Partial<Pick<DailySalesCondition, "field" | "op" | "value">>
+  ) {
+    setDraft((prev) => ({
+      ...prev,
+      conditions: prev.conditions.map((condition) => {
+        if (condition.id !== id) return condition;
+        if (patch.field && patch.field !== condition.field) {
+          const nextField = patch.field;
+          const ops = EXTRA_CONDITION_FIELDS[nextField].ops;
+          return {
+            ...condition,
+            field: nextField,
+            op: ops[0],
+            value: "",
+          };
+        }
+        return { ...condition, ...patch };
+      }),
+    }));
+  }
+
+  function addCondition() {
+    setDraft((prev) => ({
+      ...prev,
+      conditions: [...prev.conditions, createEmptyCondition()],
+    }));
+  }
+
+  function removeCondition(id: string) {
+    setDraft((prev) => ({
+      ...prev,
+      conditions: prev.conditions.filter((condition) => condition.id !== id),
+    }));
   }
 
   function apply() {
@@ -80,6 +128,7 @@ export function DailySalesFilters({
     setDraft({
       applied: false,
       vehicleSegment: "all",
+      conditions: [],
     });
     setOpen(true);
     onNavigate(pathname);
@@ -408,6 +457,131 @@ export function DailySalesFilters({
                 />
               </div>
             </div>
+          </section>
+
+          <Separator />
+
+          <section className="space-y-2">
+            <SectionLabel>More conditions</SectionLabel>
+            {draft.conditions.length > 0 ? (
+              <div className="space-y-2">
+                {draft.conditions.map((condition) => {
+                  const meta = EXTRA_CONDITION_FIELDS[condition.field];
+                  const opItems = meta.ops.map((op) => ({
+                    value: op,
+                    label: CONDITION_OP_LABELS[op] ?? op,
+                  }));
+
+                  return (
+                    <div
+                      key={condition.id}
+                      className="flex min-w-0 items-center gap-2"
+                    >
+                      <Select
+                        value={condition.field}
+                        onValueChange={(value) =>
+                          updateCondition(condition.id, {
+                            field: value as ExtraConditionField,
+                          })
+                        }
+                        items={EXTRA_CONDITION_FIELD_OPTIONS.map((option) => ({
+                          value: option.value,
+                          label: option.label,
+                        }))}
+                      >
+                        <SelectTrigger
+                          size="sm"
+                          className={cn(controlClass, "min-w-0 flex-[1.1]")}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EXTRA_CONDITION_FIELD_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={condition.op}
+                        onValueChange={(value) =>
+                          updateCondition(condition.id, {
+                            op: value as ExtraConditionOp,
+                          })
+                        }
+                        items={opItems}
+                      >
+                        <SelectTrigger
+                          size="sm"
+                          className={cn(controlClass, "min-w-0 flex-[0.7]")}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {meta.ops.map((op) => (
+                            <SelectItem key={op} value={op}>
+                              {CONDITION_OP_LABELS[op] ?? op}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Input
+                        type={
+                          meta.kind === "number" || meta.kind === "integer"
+                            ? "number"
+                            : "text"
+                        }
+                        step={meta.kind === "number" ? "any" : undefined}
+                        inputMode={
+                          meta.kind === "integer" ? "numeric" : undefined
+                        }
+                        placeholder="Value"
+                        value={condition.value}
+                        onChange={(e) =>
+                          updateCondition(condition.id, {
+                            value: e.target.value,
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            apply();
+                          }
+                        }}
+                        className={cn(controlClass, "min-w-0 flex-[1.2]")}
+                      />
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Remove condition"
+                        disabled={isPending}
+                        onClick={() => removeCondition(condition.id)}
+                        className="shrink-0"
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-sm"
+              disabled={isPending}
+              onClick={addCondition}
+            >
+              <Plus data-icon="inline-start" />
+              Add condition
+            </Button>
           </section>
         </div>
       </CollapsibleContent>
