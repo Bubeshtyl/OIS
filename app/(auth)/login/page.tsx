@@ -26,10 +26,8 @@ export default function LoginPage() {
           <div className="mb-2 flex justify-center">
             <AppLogo variant="login" />
           </div>
-          <CardTitle className="sr-only">OIS Inventory</CardTitle>
-          <CardDescription className="sr-only">
-            Oil Station Stock Management
-          </CardDescription>
+          <CardTitle className="sr-only">TYL</CardTitle>
+          <CardDescription className="sr-only">Track Your Litres</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={formAction} className="space-y-4">

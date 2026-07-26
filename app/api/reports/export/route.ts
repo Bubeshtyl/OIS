@@ -16,7 +16,7 @@ import { getIstTodayString } from "@/lib/timezone";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
-  if (!session.isLoggedIn || !hasPermission(session.role, "reports:read")) {
+  if (!session.isLoggedIn || !(await hasPermission(session.role, "reports:read"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

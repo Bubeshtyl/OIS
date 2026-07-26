@@ -1,110 +1,272 @@
 import type { UserRole } from "@/lib/db/schema";
+import { isRbacAccessUiEnabled } from "@/lib/features";
+import { getPermissionsForRole } from "@/lib/auth/permissions";
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  type Permission,
+} from "@/lib/auth/role-defaults";
 
-export type Permission =
-  | "dashboard:read"
-  | "receive:write"
-  | "transfer:write"
-  | "sales:write"
-  | "reports:read"
-  | "products:manage"
-  | "users:manage"
-  | "reversal:write";
-
-const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  ADMIN: [
-    "dashboard:read",
-    "receive:write",
-    "transfer:write",
-    "sales:write",
-    "reports:read",
-    "products:manage",
-    "users:manage",
-    "reversal:write",
-  ],
-  MANAGER: [
-    "dashboard:read",
-    "receive:write",
-    "transfer:write",
-    "sales:write",
-    "reports:read",
-  ],
-  ACCOUNTS: ["dashboard:read", "reports:read"],
-};
-
-export function hasPermission(role: UserRole, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role].includes(permission);
-}
-
-export function canWriteInventory(role: UserRole): boolean {
-  return (
-    hasPermission(role, "receive:write") ||
-    hasPermission(role, "transfer:write") ||
-    hasPermission(role, "sales:write")
-  );
-}
-
-export function getDefaultPath(role: UserRole): string {
-  return role === "ACCOUNTS" ? "/reports" : "/dashboard";
-}
-
-const ROUTE_PERMISSIONS: Record<string, Permission | Permission[]> = {
-  "/dashboard": "dashboard:read",
-  "/stock-count": "dashboard:read",
-  "/receive": "receive:write",
-  "/transfer": "transfer:write",
-  "/sales": "sales:write",
-  "/reports": "reports:read",
-  "/admin/products": "products:manage",
-  "/admin/users": "users:manage",
-};
-
-export function canAccessRoute(role: UserRole, pathname: string): boolean {
-  for (const [route, permission] of Object.entries(ROUTE_PERMISSIONS)) {
-    if (pathname === route || pathname.startsWith(`${route}/`)) {
-      const perms = Array.isArray(permission) ? permission : [permission];
-      return perms.some((p) => hasPermission(role, p));
-    }
-  }
-  return true;
-}
+export type { Permission };
+export { DEFAULT_ROLE_PERMISSIONS };
 
 export type NavIcon =
+  | "home"
   | "dashboard"
   | "receive"
   | "transfer"
   | "sales"
   | "reports"
   | "products"
-  | "users";
+  | "users"
+  | "tickets"
+  | "teams"
+  | "questions"
+  | "settings"
+  | "access";
 
-export function getNavItems(
-  role: UserRole
-): Array<{ href: string; label: string; icon: NavIcon }> {
-  const items: Array<{ href: string; label: string; icon: NavIcon }> = [
-    { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
-    { href: "/receive", label: "Stock Received", icon: "receive" },
-    { href: "/transfer", label: "Stock Issued", icon: "transfer" },
-    { href: "/sales", label: "Daily Consumption", icon: "sales" },
-    { href: "/reports", label: "Reports", icon: "reports" },
-  ];
+export type NavGroup = "analytics" | "oil" | "tickets" | "configuration";
 
-  if (role === "ACCOUNTS") {
-    return items.filter((item) =>
-      ["/dashboard", "/reports"].includes(item.href)
-    );
+export type NavCatalogItem = {
+  href: string;
+  label: string;
+  icon: NavIcon;
+  group?: NavGroup;
+  /** Permission required to see this nav item / access this route. */
+  permission: Permission;
+  /** Admin-only routes — not grantable to Manager/Accounts in the Access UI. */
+  adminOnly?: boolean;
+  /**
+   * Extra permissions written when this route is enabled for a role
+   * (e.g. Tickets also grants tickets:manage for managers).
+   */
+  extraGrants?: Partial<Record<"MANAGER" | "ACCOUNTS", Permission[]>>;
+};
+
+const BASE_NAV_CATALOG: NavCatalogItem[] = [
+  {
+    href: "/",
+    label: "Home",
+    icon: "home",
+    permission: "dashboard:read",
+  },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: "dashboard",
+    group: "analytics",
+    permission: "dashboard:read",
+  },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: "reports",
+    group: "analytics",
+    permission: "reports:read",
+  },
+  {
+    href: "/receive",
+    label: "Stock Received",
+    icon: "receive",
+    group: "oil",
+    permission: "receive:write",
+  },
+  {
+    href: "/transfer",
+    label: "Stock Issued",
+    icon: "transfer",
+    group: "oil",
+    permission: "transfer:write",
+  },
+  {
+    href: "/sales",
+    label: "Daily Consumption",
+    icon: "sales",
+    group: "oil",
+    permission: "sales:write",
+  },
+  {
+    href: "/admin/products",
+    label: "Oil Products",
+    icon: "products",
+    group: "oil",
+    permission: "products:manage",
+    adminOnly: true,
+  },
+  {
+    href: "/tickets",
+    label: "Tickets",
+    icon: "tickets",
+    group: "tickets",
+    permission: "tickets:read",
+    extraGrants: { MANAGER: ["tickets:manage"] },
+  },
+  {
+    href: "/admin/questions",
+    label: "Questionnaire",
+    icon: "questions",
+    group: "tickets",
+    permission: "questions:manage",
+    adminOnly: true,
+  },
+  {
+    href: "/admin/settings",
+    label: "Ticket Settings",
+    icon: "settings",
+    group: "tickets",
+    permission: "settings:manage",
+    adminOnly: true,
+  },
+  {
+    href: "/admin/teams",
+    label: "Teams",
+    icon: "teams",
+    group: "configuration",
+    permission: "teams:manage",
+    adminOnly: true,
+  },
+];
+
+const ACCESS_NAV_ITEM: NavCatalogItem = {
+  href: "/admin/access",
+  label: "Access",
+  icon: "access",
+  group: "configuration",
+  permission: "users:manage",
+  adminOnly: true,
+};
+
+/** Full sidebar catalog. Access appears only when the feature flag is on. */
+export function getNavCatalog(): NavCatalogItem[] {
+  if (isRbacAccessUiEnabled()) {
+    return [...BASE_NAV_CATALOG, ACCESS_NAV_ITEM];
   }
+  return BASE_NAV_CATALOG;
+}
 
+/** Routes grantable to Manager/Accounts in the Access UI. */
+export function getGrantableNavCatalog(): NavCatalogItem[] {
+  return getNavCatalog().filter(
+    (item) => !item.adminOnly && item.href !== "/"
+  );
+}
+
+export type NavItem = {
+  href: string;
+  label: string;
+  icon: NavIcon;
+  group?: NavGroup;
+};
+
+const EXTRA_ROUTE_PERMISSIONS: Record<string, Permission | Permission[]> = {
+  "/dashboard": "dashboard:read",
+  "/stock-count": "dashboard:read",
+  "/admin/users": "users:manage",
+  "/tickets/new": "tickets:manage",
+};
+
+function buildRoutePermissions(): Record<string, Permission | Permission[]> {
+  const routes: Record<string, Permission | Permission[]> = {
+    ...EXTRA_ROUTE_PERMISSIONS,
+  };
+  for (const item of getNavCatalog()) {
+    routes[item.href] = item.permission;
+  }
+  return routes;
+}
+
+export async function hasPermission(
+  role: UserRole,
+  permission: Permission
+): Promise<boolean> {
   if (role === "ADMIN") {
-    return [
-      ...items,
-      {
-        href: "/admin/products",
-        label: "Oil Products",
-        icon: "products" as const,
-      },
-      { href: "/admin/users", label: "Managers", icon: "users" as const },
-    ];
+    return DEFAULT_ROLE_PERMISSIONS.ADMIN.includes(permission);
   }
 
-  return items;
+  const permissions = await getPermissionsForRole(role);
+  return permissions.includes(permission);
+}
+
+export async function canWriteInventory(role: UserRole): Promise<boolean> {
+  return (
+    (await hasPermission(role, "receive:write")) ||
+    (await hasPermission(role, "transfer:write")) ||
+    (await hasPermission(role, "sales:write"))
+  );
+}
+
+/**
+ * First route the role can open after login.
+ * Prefers Dashboard/Reports when granted; otherwise the first accessible nav item.
+ */
+export async function getDefaultPath(role: UserRole): Promise<string> {
+  const items = await getNavItems(role);
+  const preferred =
+    role === "ACCOUNTS"
+      ? ["/reports", "/dashboard", "/tickets", "/"]
+      : ["/dashboard", "/reports", "/tickets", "/"];
+
+  for (const href of preferred) {
+    if (items.some((item) => item.href === href)) {
+      return href;
+    }
+  }
+
+  return items[0]?.href ?? "/";
+}
+
+export async function canAccessRoute(
+  role: UserRole,
+  pathname: string
+): Promise<boolean> {
+  // Placeholder home is available to every signed-in role.
+  if (pathname === "/") return true;
+
+  if (pathname === "/admin/access" || pathname.startsWith("/admin/access/")) {
+    if (!isRbacAccessUiEnabled()) return false;
+  }
+
+  const routePermissions = buildRoutePermissions();
+
+  // Longer prefixes first so /tickets/new matches before /tickets.
+  // Exact "/" must not use startsWith — every path starts with "/".
+  const routes = Object.keys(routePermissions).sort(
+    (a, b) => b.length - a.length
+  );
+
+  for (const route of routes) {
+    const matches =
+      route === "/"
+        ? pathname === "/"
+        : pathname === route || pathname.startsWith(`${route}/`);
+
+    if (matches) {
+      const permission = routePermissions[route];
+      const perms = Array.isArray(permission) ? permission : [permission];
+      for (const p of perms) {
+        if (await hasPermission(role, p)) return true;
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+export async function getNavItems(role: UserRole): Promise<NavItem[]> {
+  const catalog = getNavCatalog();
+  const permissions = await getPermissionsForRole(role);
+
+  return catalog
+    .filter(
+      (item) => item.href === "/" || permissions.includes(item.permission)
+    )
+    .map(({ href, label, icon, group }) => ({ href, label, icon, group }));
+}
+
+/** Permissions to persist when a grantable catalog route is enabled for a role. */
+export function permissionsGrantedByNavItem(
+  item: NavCatalogItem,
+  role: "MANAGER" | "ACCOUNTS"
+): Permission[] {
+  const extras = item.extraGrants?.[role] ?? [];
+  return [item.permission, ...extras];
 }

@@ -48,7 +48,10 @@ Example:
 DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
 DATABASE_MIGRATIONS_URL=postgresql://postgres.[project-ref]:[password]@db.[project-ref].supabase.co:5432/postgres
 SESSION_SECRET=your-long-random-secret
+FEATURE_RBAC_ACCESS_UI=false
 ```
+
+Optional: set `FEATURE_RBAC_ACCESS_UI=true` to enable the admin **Access** page under Configuration, where Manager and Accounts sidebar routes can be granted without code changes. When off (default), role access stays hard-coded.
 
 If you skip `DATABASE_MIGRATIONS_URL`, `db:push` uses `DATABASE_URL` — use a direct or session pooler string for migrations if the transaction pooler fails.
 

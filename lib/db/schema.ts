@@ -2,10 +2,13 @@ import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   date,
+  integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
   primaryKey,
+  serial,
   text,
   timestamp,
   uuid,
@@ -40,12 +43,32 @@ export const userRoleEnum = pgEnum("user_role", [
   "ACCOUNTS",
 ]);
 
+export const ticketStatusEnum = pgEnum("ticket_status", [
+  "OPEN",
+  "IN_PROGRESS",
+  "RESOLVED",
+  "CLOSED",
+]);
+
+export const questionAnswerTypeEnum = pgEnum("question_answer_type", [
+  "TEXT",
+  "CHOICE",
+]);
+
+export const telegramSessionStepEnum = pgEnum("telegram_session_step", [
+  "AWAITING_ACCESS_CODE",
+  "AWAITING_TEAM",
+  "AWAITING_ANSWER",
+  "AWAITING_CONFIRMATION",
+]);
+
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: userRoleEnum("role").notNull(),
+  teamId: uuid("team_id").references(() => teams.id),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
@@ -114,7 +137,122 @@ export const stockBalance = pgTable(
   (table) => [primaryKey({ columns: [table.productId, table.location] })]
 );
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const teams = pgTable("teams", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull().unique(),
+  telegramChatId: text("telegram_chat_id").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    role: userRoleEnum("role").notNull(),
+    permission: text("permission").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.role, table.permission] })]
+);
+
+export const ticketQuestions = pgTable("ticket_questions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  order: integer("order").notNull().unique(),
+  prompt: text("prompt").notNull(),
+  answerType: questionAnswerTypeEnum("answer_type").notNull().default("TEXT"),
+  choices: jsonb("choices").$type<string[]>(),
+  dependsOnQuestionId: uuid("depends_on_question_id"),
+  choicesByParent: jsonb("choices_by_parent").$type<Record<string, string[]>>(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+export const ticketSettings = pgTable("ticket_settings", {
+  id: integer("id").primaryKey().default(1),
+  prefix: text("prefix").notNull().default("JCK"),
+  paddingWidth: integer("padding_width").notNull().default(6),
+  accessCode: text("access_code"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+export type TicketAnswer = {
+  questionId: string;
+  prompt: string;
+  answerType: "TEXT" | "CHOICE";
+  answer: string;
+};
+
+export type TicketQuestionQueueItem = {
+  id: string;
+  prompt: string;
+  answerType: "TEXT" | "CHOICE";
+  choices: string[] | null;
+  dependsOnQuestionId: string | null;
+  choicesByParent: Record<string, string[]> | null;
+};
+
+export const tickets = pgTable("tickets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ticketSeq: serial("ticket_seq").notNull().unique(),
+  teamId: uuid("team_id")
+    .notNull()
+    .references(() => teams.id),
+  status: ticketStatusEnum("status").notNull().default("OPEN"),
+  answers: jsonb("answers").$type<TicketAnswer[]>().notNull().default([]),
+  requesterTelegramUserId: text("requester_telegram_user_id"),
+  requesterTelegramChatId: text("requester_telegram_chat_id"),
+  requesterName: text("requester_name").notNull(),
+  requesterUsername: text("requester_username"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  resolutionNote: text("resolution_note"),
+  notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+export const telegramSessions = pgTable("telegram_sessions", {
+  chatId: text("chat_id").primaryKey(),
+  step: telegramSessionStepEnum("step").notNull().default("AWAITING_TEAM"),
+  teamId: uuid("team_id").references(() => teams.id),
+  questionQueue: jsonb("question_queue")
+    .$type<TicketQuestionQueueItem[]>()
+    .notNull()
+    .default([]),
+  answers: jsonb("answers").$type<TicketAnswer[]>().notNull().default([]),
+  codeAttempts: integer("code_attempts").notNull().default(0),
+  telegramUserId: text("telegram_user_id").notNull(),
+  telegramUsername: text("telegram_username"),
+  telegramFirstName: text("telegram_first_name"),
+  telegramLastName: text("telegram_last_name"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+export const telegramProcessedUpdates = pgTable("telegram_processed_updates", {
+  updateId: text("update_id").primaryKey(),
+  processedAt: timestamp("processed_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  team: one(teams, {
+    fields: [users.teamId],
+    references: [teams.id],
+  }),
   transactions: many(inventoryTransactions),
 }));
 
@@ -148,6 +286,29 @@ export const stockBalanceRelations = relations(stockBalance, ({ one }) => ({
   }),
 }));
 
+export const teamsRelations = relations(teams, ({ many }) => ({
+  tickets: many(tickets),
+  telegramSessions: many(telegramSessions),
+  members: many(users),
+}));
+
+export const ticketsRelations = relations(tickets, ({ one }) => ({
+  team: one(teams, {
+    fields: [tickets.teamId],
+    references: [teams.id],
+  }),
+}));
+
+export const telegramSessionsRelations = relations(
+  telegramSessions,
+  ({ one }) => ({
+    team: one(teams, {
+      fields: [telegramSessions.teamId],
+      references: [teams.id],
+    }),
+  })
+);
+
 export type User = typeof users.$inferSelect;
 export type OilProduct = typeof oilProducts.$inferSelect;
 export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
@@ -156,3 +317,15 @@ export type UserRole = (typeof userRoleEnum.enumValues)[number];
 export type TransactionType = (typeof transactionTypeEnum.enumValues)[number];
 export type Location = (typeof locationEnum.enumValues)[number];
 export type StockLocation = (typeof stockLocationEnum.enumValues)[number];
+
+export type Team = typeof teams.$inferSelect;
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type TicketQuestion = typeof ticketQuestions.$inferSelect;
+export type TicketSettingsRow = typeof ticketSettings.$inferSelect;
+export type Ticket = typeof tickets.$inferSelect;
+export type TelegramSession = typeof telegramSessions.$inferSelect;
+export type TicketStatus = (typeof ticketStatusEnum.enumValues)[number];
+export type QuestionAnswerType =
+  (typeof questionAnswerTypeEnum.enumValues)[number];
+export type TelegramSessionStep =
+  (typeof telegramSessionStepEnum.enumValues)[number];

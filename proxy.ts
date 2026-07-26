@@ -10,7 +10,7 @@ import {
   type SessionData,
 } from "@/lib/auth/session-config";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/api/telegram/webhook"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -33,14 +33,15 @@ export async function proxy(request: NextRequest) {
 
   if (session.isLoggedIn && pathname === "/login") {
     return NextResponse.redirect(
-      new URL(getDefaultPath(session.role), request.url)
+      new URL(await getDefaultPath(session.role), request.url)
     );
   }
 
-  if (session.isLoggedIn && !canAccessRoute(session.role, pathname)) {
-    return NextResponse.redirect(
-      new URL(getDefaultPath(session.role), request.url)
-    );
+  if (session.isLoggedIn && !(await canAccessRoute(session.role, pathname))) {
+    const defaultPath = await getDefaultPath(session.role);
+    if (pathname !== defaultPath) {
+      return NextResponse.redirect(new URL(defaultPath, request.url));
+    }
   }
 
   return response;

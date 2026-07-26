@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import type { SessionData } from "@/lib/auth/session-config";
+import type { NavItem } from "@/lib/auth/rbac";
 import {
   SidebarInset,
   SidebarProvider,
@@ -8,9 +9,11 @@ import {
 
 export function AppShell({
   session,
+  navItems,
   children,
 }: {
   session: SessionData;
+  navItems: NavItem[];
   children: React.ReactNode;
 }) {
   return (
@@ -22,7 +25,7 @@ export function AppShell({
         } as React.CSSProperties
       }
     >
-      <AppSidebar role={session.role} />
+      <AppSidebar navItems={navItems} />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />

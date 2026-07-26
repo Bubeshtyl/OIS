@@ -41,7 +41,7 @@ export async function saveProductAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "products:manage")) {
+  if (!(await hasPermission(session.role, "products:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -106,7 +106,7 @@ export async function deactivateProductAction(
   productId: string
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "products:manage")) {
+  if (!(await hasPermission(session.role, "products:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -129,7 +129,7 @@ export async function reactivateProductAction(
   productId: string
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "products:manage")) {
+  if (!(await hasPermission(session.role, "products:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -166,7 +166,7 @@ export async function saveUserAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  if (!hasPermission(session.role, "users:manage")) {
+  if (!(await hasPermission(session.role, "users:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -224,7 +224,7 @@ export async function saveUserAction(
 
 export async function getAllUsers() {
   const session = await requireSession();
-  if (!hasPermission(session.role, "users:manage")) {
+  if (!(await hasPermission(session.role, "users:manage"))) {
     return [];
   }
 
