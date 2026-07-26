@@ -77,6 +77,7 @@ export function DateRangePicker({
       params.delete("start");
       params.delete("end");
     }
+    params.delete("page");
 
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
