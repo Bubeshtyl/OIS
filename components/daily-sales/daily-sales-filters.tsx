@@ -221,7 +221,7 @@ export function DailySalesFilters({
                   value={draft.start}
                   onChange={(value) => update("start", value)}
                   placeholder="Pick start date & time"
-                  defaultTime="00:00"
+                  defaultTime="06:00"
                   className="rounded-sm"
                 />
               </div>
@@ -234,7 +234,7 @@ export function DailySalesFilters({
                   value={draft.end}
                   onChange={(value) => update("end", value)}
                   placeholder="Pick end date & time"
-                  defaultTime="23:59"
+                  defaultTime="06:00"
                   className="rounded-sm"
                 />
               </div>
