@@ -208,7 +208,6 @@ export function DailySalesFilters({
       <CollapsibleContent>
         <div className="space-y-4 p-4 md:p-5">
           <section className="space-y-2">
-            <SectionLabel>Date range</SectionLabel>
             <div className="grid grid-cols-2 gap-2">
               <div className="min-w-0 space-y-1">
                 <Label
@@ -273,7 +272,6 @@ export function DailySalesFilters({
           </section>
 
           <section className="space-y-2">
-            <SectionLabel>Product &amp; payment</SectionLabel>
             <div className="grid grid-cols-2 gap-2">
               <div className="min-w-0 space-y-1">
                 <Label className="text-xs text-muted-foreground">Product</Label>
@@ -335,7 +333,6 @@ export function DailySalesFilters({
           </section>
 
           <section className="space-y-2">
-            <SectionLabel>Amounts &amp; volume</SectionLabel>
             <div className="grid grid-cols-2 gap-2">
               <div className="min-w-0 space-y-1">
                 <Label className="text-xs text-muted-foreground">
@@ -401,7 +398,6 @@ export function DailySalesFilters({
           </section>
 
           <section className="space-y-2">
-            <SectionLabel>Vehicle</SectionLabel>
             <div className="grid grid-cols-2 gap-2">
               <div className="min-w-0 space-y-1">
                 <Label className="text-xs text-muted-foreground">
