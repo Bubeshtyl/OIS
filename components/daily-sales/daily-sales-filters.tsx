@@ -43,7 +43,8 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-const controlClass = "h-8 w-full min-w-0 rounded-sm bg-background text-sm";
+const controlClass =
+  "h-7 w-full min-w-0 rounded-sm bg-background px-2 py-0 text-xs md:text-xs placeholder:text-xs";
 
 export function DailySalesFilters({
   initialFilters,
@@ -70,6 +71,7 @@ export function DailySalesFilters({
     conditions: initialFilters.conditions ?? [],
   });
   const [open, setOpen] = useState(!initialFilters.applied);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   function update<K extends keyof DailySalesFilters>(
     key: K,
@@ -135,6 +137,7 @@ export function DailySalesFilters({
   }
 
   return (
+    <div className="space-y-3">
     <Collapsible
       open={open}
       onOpenChange={setOpen}
@@ -220,9 +223,8 @@ export function DailySalesFilters({
                   id="ds-start"
                   value={draft.start}
                   onChange={(value) => update("start", value)}
-                  placeholder="Pick start date & time"
+                  placeholder="Start date & time"
                   defaultTime="06:00"
-                  className="rounded-sm"
                 />
               </div>
               <div className="min-w-0 space-y-1">
@@ -233,9 +235,8 @@ export function DailySalesFilters({
                   id="ds-end"
                   value={draft.end}
                   onChange={(value) => update("end", value)}
-                  placeholder="Pick end date & time"
+                  placeholder="End date & time"
                   defaultTime="06:00"
-                  className="rounded-sm"
                 />
               </div>
             </div>
@@ -243,9 +244,9 @@ export function DailySalesFilters({
 
           <Separator />
 
-          <section className="space-y-2 rounded-sm border border-sidebar-border bg-sidebar/40 p-3">
+          <section className="space-y-2">
             <div className="flex items-center gap-2">
-              <ReceiptText className="size-3.5 text-sidebar-foreground" />
+              <ReceiptText className="size-3.5 text-muted-foreground" />
               <SectionLabel>Receipt no.</SectionLabel>
             </div>
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -270,7 +271,30 @@ export function DailySalesFilters({
               />
             </div>
           </section>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
 
+    <Collapsible
+      open={moreOpen}
+      onOpenChange={setMoreOpen}
+      className="group/more overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+    >
+      <CollapsibleTrigger
+        render={
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 bg-sidebar px-3 py-2.5 text-left text-sidebar-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring sm:px-4"
+          />
+        }
+      >
+        <ChevronDown className="size-4 shrink-0 transition-transform duration-200 group-data-open/more:rotate-180" />
+        <span className="truncate text-sm font-semibold tracking-tight">
+          More conditions
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-4 p-4 md:p-5">
           <section className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <div className="min-w-0 space-y-1">
@@ -284,7 +308,7 @@ export function DailySalesFilters({
                     )
                   }
                   items={[
-                    { value: "all", label: "All products" },
+                    { value: "all", label: "All" },
                     ...products.map((p) => ({ value: p, label: p })),
                   ]}
                 >
@@ -292,7 +316,7 @@ export function DailySalesFilters({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All products</SelectItem>
+                    <SelectItem value="all">All</SelectItem>
                     {products.map((product) => (
                       <SelectItem key={product} value={product}>
                         {product}
@@ -312,7 +336,7 @@ export function DailySalesFilters({
                     )
                   }
                   items={[
-                    { value: "all", label: "All MOP types" },
+                    { value: "all", label: "All" },
                     ...mopTypes.map((m) => ({ value: m, label: m })),
                   ]}
                 >
@@ -320,7 +344,7 @@ export function DailySalesFilters({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All MOP types</SelectItem>
+                    <SelectItem value="all">All</SelectItem>
                     {mopTypes.map((mop) => (
                       <SelectItem key={mop} value={mop}>
                         {mop}
@@ -413,8 +437,7 @@ export function DailySalesFilters({
                   }
                   items={VEHICLE_SEGMENT_OPTIONS.map((option) => ({
                     value: option.value,
-                    label:
-                      option.value === "all" ? "All segments" : option.label,
+                    label: option.value === "all" ? "All" : option.label,
                   }))}
                 >
                   <SelectTrigger size="sm" className={controlClass}>
@@ -423,7 +446,7 @@ export function DailySalesFilters({
                   <SelectContent>
                     {VEHICLE_SEGMENT_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.value === "all" ? "All segments" : option.label}
+                        {option.value === "all" ? "All" : option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -438,7 +461,7 @@ export function DailySalesFilters({
                 </Label>
                 <Input
                   id="ds-vehicle-q"
-                  placeholder="Type vehicle or mobile number"
+                  placeholder="Vehicle or mobile"
                   value={draft.vehicleOrMobile ?? ""}
                   onChange={(e) =>
                     update("vehicleOrMobile", e.target.value || undefined)
@@ -458,7 +481,6 @@ export function DailySalesFilters({
           <Separator />
 
           <section className="space-y-2">
-            <SectionLabel>More conditions</SectionLabel>
             {draft.conditions.length > 0 ? (
               <div className="space-y-2">
                 {draft.conditions.map((condition) => {
@@ -582,5 +604,6 @@ export function DailySalesFilters({
         </div>
       </CollapsibleContent>
     </Collapsible>
+    </div>
   );
 }

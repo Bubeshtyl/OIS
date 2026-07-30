@@ -276,12 +276,14 @@ async function migrateSchema() {
       ('MANAGER', 'reports:read'),
       ('MANAGER', 'file-upload:read'),
       ('MANAGER', 'daily-sales:read'),
+      ('MANAGER', 'sales-data-analytics:read'),
       ('MANAGER', 'tickets:read'),
       ('MANAGER', 'tickets:manage'),
       ('ACCOUNTS', 'dashboard:read'),
       ('ACCOUNTS', 'reports:read'),
       ('ACCOUNTS', 'file-upload:read'),
       ('ACCOUNTS', 'daily-sales:read'),
+      ('ACCOUNTS', 'sales-data-analytics:read'),
       ('ACCOUNTS', 'tickets:read')
     ON CONFLICT (role, permission) DO NOTHING
   `);

@@ -81,13 +81,13 @@ export function DateTimePicker({
             type="button"
             variant="outline"
             className={cn(
-              "h-8 w-full justify-start gap-2 rounded-sm bg-background px-2.5 font-normal",
+              "h-7 w-full justify-start gap-2 rounded-sm bg-background px-2 font-normal text-xs",
               !label && "text-muted-foreground",
               className
             )}
           >
             <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate text-sm">{label ?? placeholder}</span>
+            <span className="truncate text-xs">{label ?? placeholder}</span>
           </Button>
         }
       />

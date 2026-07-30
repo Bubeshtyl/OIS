@@ -16,6 +16,7 @@ import {
   type DailySalesCondition,
   type DailySalesFilters,
 } from "@/lib/daily-sales/filters";
+import { addIstDays, parseIstDate } from "@/lib/date-range";
 import { getDb } from "@/lib/db";
 import { dailySales } from "@/lib/db/schema";
 
@@ -275,4 +276,164 @@ export async function getDailySalesExportRows(
     .from(dailySales)
     .where(buildFilterWhere(filters))
     .orderBy(asc(dailySales.receiptNo));
+}
+
+export type DailySalesMetricPoint = {
+  date: string;
+  label: string;
+  amount: number;
+  netAmount: number;
+  volumeLitre: number;
+  receipts: number;
+};
+
+const ANALYTICS_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+function normalizeAnalyticsBounds(start: string, end: string) {
+  if (start <= end) return { start, end };
+  return { start: end, end: start };
+}
+
+function analyticsDateTimeWhere(startDateTime: string, endDateTime: string) {
+  if (
+    !ANALYTICS_DATETIME_RE.test(startDateTime) ||
+    !ANALYTICS_DATETIME_RE.test(endDateTime)
+  ) {
+    return null;
+  }
+
+  const { start, end } = normalizeAnalyticsBounds(startDateTime, endDateTime);
+  return {
+    start,
+    end,
+    where: and(
+      gte(
+        dailySales.startDate,
+        sql`${wallDateTimeToTimestamp(start, "start")}::timestamp`
+      ),
+      lte(
+        dailySales.startDate,
+        sql`${wallDateTimeToTimestamp(end, "end")}::timestamp`
+      )
+    ),
+  };
+}
+
+export type DailySalesBreakdownPoint = {
+  name: string;
+  amount: number;
+};
+
+async function getDailySalesAmountBreakdown(
+  startDateTime: string,
+  endDateTime: string,
+  dimension: "product" | "mopType"
+): Promise<DailySalesBreakdownPoint[]> {
+  const bounds = analyticsDateTimeWhere(startDateTime, endDateTime);
+  if (!bounds) return [];
+
+  const groupColumn =
+    dimension === "product" ? dailySales.product : dailySales.mopType;
+  const db = getDb();
+
+  const rows = await db
+    .select({
+      name: groupColumn,
+      amount: sql<string>`coalesce(sum(${dailySales.amount}), 0)`,
+    })
+    .from(dailySales)
+    .where(bounds.where)
+    .groupBy(groupColumn)
+    .orderBy(sql`sum(${dailySales.amount}) desc`);
+
+  return rows
+    .filter((row) => row.name)
+    .map((row) => ({
+      name: row.name,
+      amount: Number(row.amount),
+    }));
+}
+
+export async function getDailySalesMetricsByProduct(
+  startDateTime: string,
+  endDateTime: string
+): Promise<DailySalesBreakdownPoint[]> {
+  return getDailySalesAmountBreakdown(startDateTime, endDateTime, "product");
+}
+
+export async function getDailySalesMetricsByMopType(
+  startDateTime: string,
+  endDateTime: string
+): Promise<DailySalesBreakdownPoint[]> {
+  return getDailySalesAmountBreakdown(startDateTime, endDateTime, "mopType");
+}
+
+/** Daily totals for amount / net / volume between inclusive datetime bounds (`yyyy-MM-ddTHH:mm`). */
+export async function getDailySalesMetricsByDay(
+  startDateTime: string,
+  endDateTime: string
+): Promise<DailySalesMetricPoint[]> {
+  const bounds = analyticsDateTimeWhere(startDateTime, endDateTime);
+  if (!bounds) return [];
+
+  const { start, end, where } = bounds;
+  const startDay = start.slice(0, 10);
+  const endDay = end.slice(0, 10);
+
+  const db = getDb();
+  const dayExpr = sql<string>`to_char(date_trunc('day', ${dailySales.startDate}), 'YYYY-MM-DD')`;
+
+  const rows = await db
+    .select({
+      date: dayExpr,
+      amount: sql<string>`coalesce(sum(${dailySales.amount}), 0)`,
+      netAmount: sql<string>`coalesce(sum(${dailySales.netAmount}), 0)`,
+      volumeLitre: sql<string>`coalesce(sum(${dailySales.volumeLitre}), 0)`,
+      receipts: count(),
+    })
+    .from(dailySales)
+    .where(where)
+    .groupBy(dayExpr)
+    .orderBy(asc(dayExpr));
+
+  const totals = new Map(
+    rows.map((row) => [
+      row.date,
+      {
+        amount: Number(row.amount),
+        netAmount: Number(row.netAmount),
+        volumeLitre: Number(row.volumeLitre),
+        receipts: Number(row.receipts),
+      },
+    ])
+  );
+
+  const points: DailySalesMetricPoint[] = [];
+  let current = startDay;
+  while (current <= endDay) {
+    const entry = totals.get(current) ?? {
+      amount: 0,
+      netAmount: 0,
+      volumeLitre: 0,
+      receipts: 0,
+    };
+    points.push({ date: current, ...entry, label: "" });
+    current = addIstDays(current, 1);
+  }
+
+  const dayCount = points.length;
+  return points.map((point) => ({
+    ...point,
+    label:
+      dayCount <= 7
+        ? parseIstDate(point.date).toLocaleDateString("en-IN", {
+            weekday: "short",
+            timeZone: "Asia/Kolkata",
+          })
+        : parseIstDate(point.date).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            timeZone: "Asia/Kolkata",
+          }),
+  }));
 }

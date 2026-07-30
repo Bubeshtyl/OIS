@@ -8,6 +8,7 @@ export type Permission =
   | "reports:read"
   | "file-upload:read"
   | "daily-sales:read"
+  | "sales-data-analytics:read"
   | "products:manage"
   | "users:manage"
   | "reversal:write"
@@ -29,6 +30,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "reports:read",
     "file-upload:read",
     "daily-sales:read",
+    "sales-data-analytics:read",
     "products:manage",
     "users:manage",
     "reversal:write",
@@ -46,6 +48,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "reports:read",
     "file-upload:read",
     "daily-sales:read",
+    "sales-data-analytics:read",
     "tickets:read",
     "tickets:manage",
   ],
@@ -54,6 +57,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "reports:read",
     "file-upload:read",
     "daily-sales:read",
+    "sales-data-analytics:read",
     "tickets:read",
   ],
 };

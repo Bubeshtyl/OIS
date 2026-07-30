@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  ChartColumn,
   ChevronRight,
   Container,
   Droplet,
@@ -57,6 +58,7 @@ const iconMap: Record<NavIcon, LucideIcon> = {
   reports: BarChart3,
   "file-upload": Upload,
   "daily-sales": Table2,
+  "sales-data-analytics": ChartColumn,
   products: Container,
   users: User,
   tickets: Ticket,

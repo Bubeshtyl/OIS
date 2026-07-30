@@ -18,6 +18,7 @@ export type NavIcon =
   | "reports"
   | "file-upload"
   | "daily-sales"
+  | "sales-data-analytics"
   | "products"
   | "users"
   | "tickets"
@@ -78,6 +79,13 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     icon: "daily-sales",
     group: "analytics",
     permission: "daily-sales:read",
+  },
+  {
+    href: "/sales-data-analytics",
+    label: "Sales Data Analytics",
+    icon: "sales-data-analytics",
+    group: "analytics",
+    permission: "sales-data-analytics:read",
   },
   {
     href: "/receive",
