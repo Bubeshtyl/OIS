@@ -23,18 +23,21 @@ export function DatePicker({
   id,
   name,
   required,
+  placeholder = "Pick date",
   className,
 }: {
-  value: string;
+  value?: string;
   onChange: (date: string) => void;
   today?: string;
   id?: string;
   name?: string;
   required?: boolean;
+  placeholder?: string;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = calendarDateFromIstString(value);
+  const hasValue = Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+  const selected = hasValue ? calendarDateFromIstString(value!) : undefined;
 
   function handleSelect(date: Date | undefined) {
     if (!date) return;
@@ -48,7 +51,7 @@ export function DatePicker({
         <input
           type="hidden"
           name={name}
-          value={value}
+          value={value ?? ""}
           required={required}
         />
       ) : null}
@@ -61,11 +64,14 @@ export function DatePicker({
               variant="outline"
               className={cn(
                 "h-11 w-full justify-start gap-2 bg-card font-normal shadow-sm",
+                !hasValue && "text-muted-foreground",
                 className
               )}
             >
               <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">{formatRangeLabel(value, value)}</span>
+              <span className="truncate">
+                {hasValue ? formatRangeLabel(value!, value!) : placeholder}
+              </span>
             </Button>
           }
         />

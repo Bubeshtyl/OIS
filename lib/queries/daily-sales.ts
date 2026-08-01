@@ -16,7 +16,17 @@ import {
   type DailySalesCondition,
   type DailySalesFilters,
 } from "@/lib/daily-sales/filters";
-import { addIstDays, parseIstDate } from "@/lib/date-range";
+import {
+  enumeratePeriodBuckets,
+  labelPeriodBucket,
+  type AnalyticsGranularity,
+} from "@/lib/daily-sales/analytics-period";
+import {
+  formatAmountRangeLabel,
+  formatHourLabel,
+  type FootfallByPriceBounds,
+  type FootfallFilterBounds,
+} from "@/lib/daily-sales/footfall-filters";
 import { getDb } from "@/lib/db";
 import { dailySales } from "@/lib/db/schema";
 
@@ -287,6 +297,18 @@ export type DailySalesMetricPoint = {
   receipts: number;
 };
 
+export type FootfallMetricPoint = {
+  date: string;
+  label: string;
+  count: number;
+};
+
+export type FootfallHourPoint = {
+  hour: number;
+  label: string;
+  count: number;
+};
+
 const ANALYTICS_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 function normalizeAnalyticsBounds(start: string, end: string) {
@@ -368,24 +390,37 @@ export async function getDailySalesMetricsByMopType(
   return getDailySalesAmountBreakdown(startDateTime, endDateTime, "mopType");
 }
 
-/** Daily totals for amount / net / volume between inclusive datetime bounds (`yyyy-MM-ddTHH:mm`). */
-export async function getDailySalesMetricsByDay(
+function periodBucketExpr(granularity: AnalyticsGranularity) {
+  switch (granularity) {
+    case "hour":
+      return sql<string>`to_char(date_trunc('hour', ${dailySales.startDate}), 'YYYY-MM-DD"T"HH24:00')`;
+    case "day":
+      return sql<string>`to_char(date_trunc('day', ${dailySales.startDate}), 'YYYY-MM-DD')`;
+    case "week":
+      return sql<string>`to_char(date_trunc('week', ${dailySales.startDate}), 'YYYY-MM-DD')`;
+    case "month":
+      return sql<string>`to_char(date_trunc('month', ${dailySales.startDate}), 'YYYY-MM')`;
+    case "year":
+      return sql<string>`to_char(date_trunc('year', ${dailySales.startDate}), 'YYYY')`;
+  }
+}
+
+/** Period totals for amount / net / volume between inclusive datetime bounds (`yyyy-MM-ddTHH:mm`). */
+export async function getDailySalesMetricsByPeriod(
   startDateTime: string,
-  endDateTime: string
+  endDateTime: string,
+  granularity: AnalyticsGranularity
 ): Promise<DailySalesMetricPoint[]> {
   const bounds = analyticsDateTimeWhere(startDateTime, endDateTime);
   if (!bounds) return [];
 
   const { start, end, where } = bounds;
-  const startDay = start.slice(0, 10);
-  const endDay = end.slice(0, 10);
-
   const db = getDb();
-  const dayExpr = sql<string>`to_char(date_trunc('day', ${dailySales.startDate}), 'YYYY-MM-DD')`;
+  const bucketExpr = periodBucketExpr(granularity);
 
   const rows = await db
     .select({
-      date: dayExpr,
+      date: bucketExpr,
       amount: sql<string>`coalesce(sum(${dailySales.amount}), 0)`,
       netAmount: sql<string>`coalesce(sum(${dailySales.netAmount}), 0)`,
       volumeLitre: sql<string>`coalesce(sum(${dailySales.volumeLitre}), 0)`,
@@ -393,8 +428,8 @@ export async function getDailySalesMetricsByDay(
     })
     .from(dailySales)
     .where(where)
-    .groupBy(dayExpr)
-    .orderBy(asc(dayExpr));
+    .groupBy(bucketExpr)
+    .orderBy(asc(bucketExpr));
 
   const totals = new Map(
     rows.map((row) => [
@@ -408,32 +443,160 @@ export async function getDailySalesMetricsByDay(
     ])
   );
 
-  const points: DailySalesMetricPoint[] = [];
-  let current = startDay;
-  while (current <= endDay) {
-    const entry = totals.get(current) ?? {
+  const buckets = enumeratePeriodBuckets(start, end, granularity);
+  const points = buckets.map((key) => {
+    const entry = totals.get(key) ?? {
       amount: 0,
       netAmount: 0,
       volumeLitre: 0,
       receipts: 0,
     };
-    points.push({ date: current, ...entry, label: "" });
-    current = addIstDays(current, 1);
-  }
+    return { date: key, ...entry, label: "" };
+  });
 
-  const dayCount = points.length;
   return points.map((point) => ({
     ...point,
-    label:
-      dayCount <= 7
-        ? parseIstDate(point.date).toLocaleDateString("en-IN", {
-            weekday: "short",
-            timeZone: "Asia/Kolkata",
-          })
-        : parseIstDate(point.date).toLocaleDateString("en-IN", {
-            day: "numeric",
-            month: "short",
-            timeZone: "Asia/Kolkata",
-          }),
+    label: labelPeriodBucket(point.date, granularity, points.length),
   }));
+}
+
+/** Footfall = receipt count, bucketed by period. */
+export async function getFootfallMetricsByPeriod(
+  startDateTime: string,
+  endDateTime: string,
+  granularity: AnalyticsGranularity
+): Promise<FootfallMetricPoint[]> {
+  const bounds = analyticsDateTimeWhere(startDateTime, endDateTime);
+  if (!bounds) return [];
+
+  const { start, end, where } = bounds;
+  const db = getDb();
+  const bucketExpr = periodBucketExpr(granularity);
+
+  const rows = await db
+    .select({
+      date: bucketExpr,
+      count: count(),
+    })
+    .from(dailySales)
+    .where(where)
+    .groupBy(bucketExpr)
+    .orderBy(asc(bucketExpr));
+
+  const totals = new Map(rows.map((row) => [row.date, Number(row.count)]));
+  const buckets = enumeratePeriodBuckets(start, end, granularity);
+  const points = buckets.map((key) => ({
+    date: key,
+    count: totals.get(key) ?? 0,
+    label: "",
+  }));
+
+  return points.map((point) => ({
+    ...point,
+    label: labelPeriodBucket(point.date, granularity, points.length),
+  }));
+}
+
+/**
+ * Footfall by clock hour across a date range, applying the same daily time window
+ * on each day (not one continuous datetime span).
+ */
+export async function getFootfallByHourOfDay(
+  bounds: FootfallFilterBounds
+): Promise<FootfallHourPoint[]> {
+  const {
+    startDate,
+    endDate,
+    startHour,
+    endHour,
+    product,
+  } = bounds;
+
+  const db = getDb();
+  const hourExpr = sql<number>`extract(hour from ${dailySales.startDate})::int`;
+
+  const parts: SQL[] = [
+    sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') >= ${startDate}`,
+    sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') <= ${endDate}`,
+    sql`extract(hour from ${dailySales.startDate})::int >= ${startHour}`,
+    sql`extract(hour from ${dailySales.startDate})::int <= ${endHour}`,
+  ];
+  if (product) {
+    parts.push(eq(dailySales.product, product));
+  }
+
+  const rows = await db
+    .select({
+      hour: hourExpr,
+      count: count(),
+    })
+    .from(dailySales)
+    .where(and(...parts))
+    .groupBy(hourExpr)
+    .orderBy(asc(hourExpr));
+
+  const totals = new Map(rows.map((row) => [Number(row.hour), Number(row.count)]));
+  const points: FootfallHourPoint[] = [];
+  for (let hour = startHour; hour <= endHour; hour += 1) {
+    points.push({
+      hour,
+      label: formatHourLabel(hour),
+      count: totals.get(hour) ?? 0,
+    });
+  }
+  return points;
+}
+
+export type FootfallAmountRangePoint = {
+  min: number;
+  max: number;
+  label: string;
+  count: number;
+};
+
+/**
+ * Footfall counts bucketed by user-defined net_amount ranges
+ * (min inclusive, max exclusive), within a calendar date span.
+ */
+export async function getFootfallByAmountRanges(
+  bounds: FootfallByPriceBounds
+): Promise<FootfallAmountRangePoint[]> {
+  const { startDate, endDate, ranges, product } = bounds;
+  if (ranges.length === 0) return [];
+
+  const db = getDb();
+  const parts: SQL[] = [
+    sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') >= ${startDate}`,
+    sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') <= ${endDate}`,
+  ];
+  if (product) {
+    parts.push(eq(dailySales.product, product));
+  }
+
+  const selectFields = Object.fromEntries(
+    ranges.map((range, index) => [
+      `r${index}`,
+      sql<string>`count(*) filter (where ${dailySales.netAmount} >= ${String(range.min)} and ${dailySales.netAmount} < ${String(range.max)})`,
+    ])
+  ) as Record<string, SQL<string>>;
+
+  const [row] = await db
+    .select(selectFields)
+    .from(dailySales)
+    .where(and(...parts));
+
+  return ranges.map((range, index) => ({
+    min: range.min,
+    max: range.max,
+    label: formatAmountRangeLabel(range),
+    count: Number(row?.[`r${index}`] ?? 0),
+  }));
+}
+
+/** Daily totals for amount / net / volume between inclusive datetime bounds (`yyyy-MM-ddTHH:mm`). */
+export async function getDailySalesMetricsByDay(
+  startDateTime: string,
+  endDateTime: string
+): Promise<DailySalesMetricPoint[]> {
+  return getDailySalesMetricsByPeriod(startDateTime, endDateTime, "day");
 }
