@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   ticketSettings,
@@ -9,12 +9,15 @@ import {
 } from "@/lib/db/schema";
 import { formatTicketNumberWithSettings } from "@/lib/tickets/format";
 
-export async function formatTicketNumber(seq: number): Promise<string> {
+export async function formatTicketNumber(
+  tenantId: string,
+  seq: number
+): Promise<string> {
   const db = getDb();
   const [settings] = await db
     .select()
     .from(ticketSettings)
-    .where(eq(ticketSettings.id, 1))
+    .where(eq(ticketSettings.tenantId, tenantId))
     .limit(1);
 
   return formatTicketNumberWithSettings(
@@ -25,6 +28,7 @@ export async function formatTicketNumber(seq: number): Promise<string> {
 }
 
 export async function createTicket(input: {
+  tenantId: string;
   teamId: string;
   answers: TicketAnswer[];
   requesterName: string;
@@ -37,6 +41,7 @@ export async function createTicket(input: {
   const [ticket] = await db
     .insert(tickets)
     .values({
+      tenantId: input.tenantId,
       teamId: input.teamId,
       answers: input.answers,
       requesterName: input.requesterName,
@@ -49,25 +54,31 @@ export async function createTicket(input: {
   return ticket;
 }
 
-export async function markTicketNotified(ticketId: string): Promise<void> {
+export async function markTicketNotified(
+  tenantId: string,
+  ticketId: string
+): Promise<void> {
   const db = getDb();
   await db
     .update(tickets)
     .set({ notifiedAt: new Date() })
-    .where(eq(tickets.id, ticketId));
+    .where(and(eq(tickets.id, ticketId), eq(tickets.tenantId, tenantId)));
 }
 
-export async function listTickets(filters?: {
-  teamId?: string;
-  status?: TicketStatus;
-}) {
+export async function listTickets(
+  tenantId: string,
+  filters?: {
+    teamId?: string;
+    status?: TicketStatus;
+  }
+) {
   const db = getDb();
   return db.query.tickets.findMany({
-    where: (ticket, { eq: eqOp, and }) => {
-      const conditions = [];
+    where: (ticket, { eq: eqOp, and: andOp }) => {
+      const conditions = [eqOp(ticket.tenantId, tenantId)];
       if (filters?.teamId) conditions.push(eqOp(ticket.teamId, filters.teamId));
       if (filters?.status) conditions.push(eqOp(ticket.status, filters.status));
-      return conditions.length ? and(...conditions) : undefined;
+      return andOp(...conditions);
     },
     with: { team: true },
     orderBy: (ticket, { desc }) => [desc(ticket.createdAt)],
@@ -75,28 +86,34 @@ export async function listTickets(filters?: {
 }
 
 export async function getRecentTicketsForRequester(
+  tenantId: string,
   requesterTelegramChatId: string,
   limit = 10
 ) {
   const db = getDb();
   return db.query.tickets.findMany({
-    where: (ticket, { eq: eqOp }) =>
-      eqOp(ticket.requesterTelegramChatId, requesterTelegramChatId),
+    where: (ticket, { eq: eqOp, and: andOp }) =>
+      andOp(
+        eqOp(ticket.tenantId, tenantId),
+        eqOp(ticket.requesterTelegramChatId, requesterTelegramChatId)
+      ),
     with: { team: true },
     orderBy: (ticket, { desc }) => [desc(ticket.createdAt)],
     limit,
   });
 }
 
-export async function getTicketById(id: string) {
+export async function getTicketById(tenantId: string, id: string) {
   const db = getDb();
   return db.query.tickets.findFirst({
-    where: (ticket, { eq: eqOp }) => eqOp(ticket.id, id),
+    where: (ticket, { eq: eqOp, and: andOp }) =>
+      andOp(eqOp(ticket.id, id), eqOp(ticket.tenantId, tenantId)),
     with: { team: true },
   });
 }
 
 export async function updateTicketStatus(
+  tenantId: string,
   id: string,
   status: TicketStatus,
   resolutionNote?: string
@@ -109,5 +126,5 @@ export async function updateTicketStatus(
       resolutionNote: resolutionNote ?? undefined,
       updatedAt: new Date(),
     })
-    .where(eq(tickets.id, id));
+    .where(and(eq(tickets.id, id), eq(tickets.tenantId, tenantId)));
 }

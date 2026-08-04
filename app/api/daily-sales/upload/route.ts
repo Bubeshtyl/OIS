@@ -1,7 +1,7 @@
 import { gunzipSync } from "node:zlib";
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission } from "@/lib/auth/rbac";
-import { getSession } from "@/lib/auth/session";
+import { getOptionalTenantSession } from "@/lib/auth/permissions";
 import {
   DailySalesParseError,
   parseDailySalesWorkbook,
@@ -36,11 +36,8 @@ export async function POST(request: NextRequest) {
   const started = Date.now();
 
   try {
-    const session = await getSession();
-    if (
-      !session.isLoggedIn ||
-      !(await hasPermission(session.role, "file-upload:read"))
-    ) {
+    const session = await getOptionalTenantSession();
+    if (!session || !(await hasPermission(session, "file-upload:read"))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -104,9 +101,10 @@ export async function POST(request: NextRequest) {
     }
 
     const parsed = parseDailySalesWorkbook(toArrayBuffer(bytes), file.name);
-    const result = await upsertDailySales(parsed.rows);
+    const result = await upsertDailySales(session.tenantId, parsed.rows);
 
     await recordDailySalesUpload({
+      tenantId: session.tenantId,
       fileName: file.name,
       uploadedBy: session.userId || null,
       inserted: result.inserted,

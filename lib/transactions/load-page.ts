@@ -16,6 +16,7 @@ import { PAGE_KIND_TO_TYPE } from "@/lib/transactions/page-config";
 import { getIstTodayString } from "@/lib/timezone";
 
 export async function loadTransactionPage(
+  tenantId: string,
   pageKind: TransactionPageKind,
   searchParams: {
     start?: string;
@@ -43,11 +44,12 @@ export async function loadTransactionPage(
   const needsCreators = pageKind === "receive";
 
   const [products, creators, list] = await Promise.all([
-    getActiveProducts(),
+    getActiveProducts(tenantId),
     needsCreators
-      ? getDistinctCreatorsForType(types[0], start, end)
+      ? getDistinctCreatorsForType(tenantId, types[0], start, end)
       : Promise.resolve([]),
     getAllTransactionRows({
+      tenantId,
       types,
       startDate: start,
       endDate: end,
@@ -57,7 +59,10 @@ export async function loadTransactionPage(
 
   const reversedIds =
     list.rows.length > 0
-      ? await getReversedTransactionIdsFor(list.rows.map((row) => row.id))
+      ? await getReversedTransactionIdsFor(
+          tenantId,
+          list.rows.map((row) => row.id)
+        )
       : [];
 
   return {

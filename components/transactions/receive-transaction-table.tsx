@@ -26,6 +26,7 @@ import {
 function toProduct(row: DisplayTransactionRow): OilProduct {
   return {
     id: row.productId,
+    tenantId: "",
     name: row.productName,
     unit: row.unit as OilProduct["unit"],
     costPrice: row.costPrice,

@@ -3,7 +3,7 @@ import { formatTicketNumber, markTicketNotified } from "@/lib/tickets/service";
 import type { Team, Ticket } from "@/lib/db/schema";
 
 export async function notifyTeam(team: Team, ticket: Ticket): Promise<void> {
-  const ticketNumber = await formatTicketNumber(ticket.ticketSeq);
+  const ticketNumber = await formatTicketNumber(ticket.tenantId, ticket.ticketSeq);
   const qa = ticket.answers
     .map((entry) => `${entry.prompt}: ${entry.answer}`)
     .join("\n");
@@ -19,7 +19,7 @@ export async function notifyTeam(team: Team, ticket: Ticket): Promise<void> {
 
   const sent = await sendMessage(team.telegramChatId, text);
   if (sent) {
-    await markTicketNotified(ticket.id);
+    await markTicketNotified(ticket.tenantId, ticket.id);
   } else {
     console.error(`Failed to notify team ${team.id} for ticket ${ticket.id}`);
   }

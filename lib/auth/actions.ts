@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { roles, tenants, users } from "@/lib/db/schema";
 import { getDefaultPath } from "@/lib/auth/rbac";
 import {
   destroySession,
@@ -30,8 +30,21 @@ export async function loginAction(
   try {
     const db = getDb();
     const [user] = await db
-      .select()
+      .select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        passwordHash: users.passwordHash,
+        tenantId: users.tenantId,
+        roleId: users.roleId,
+        isPlatformAdmin: users.isPlatformAdmin,
+        isActive: users.isActive,
+        roleName: roles.name,
+        tenantIsActive: tenants.isActive,
+      })
       .from(users)
+      .leftJoin(roles, eq(users.roleId, roles.id))
+      .leftJoin(tenants, eq(users.tenantId, tenants.id))
       .where(eq(users.username, username))
       .limit(1);
 
@@ -44,11 +57,33 @@ export async function loginAction(
       return { success: false, error: "Invalid username or password." };
     }
 
+    if (!user.isPlatformAdmin && (!user.tenantId || !user.roleId)) {
+      return {
+        success: false,
+        error: "User is not assigned to a tenant role. Contact your admin.",
+      };
+    }
+
+    if (!user.isPlatformAdmin && user.tenantIsActive === false) {
+      return {
+        success: false,
+        error: "This station is suspended. Contact support.",
+      };
+    }
+
+    await db
+      .update(users)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(users.id, user.id));
+
     await saveSession({
       userId: user.id,
       username: user.username,
       name: user.name,
-      role: user.role,
+      tenantId: user.tenantId,
+      roleId: user.roleId,
+      roleName: user.roleName,
+      isPlatformAdmin: user.isPlatformAdmin,
       isLoggedIn: true,
     });
   } catch {
@@ -59,7 +94,7 @@ export async function loginAction(
   }
 
   const session = await getSession();
-  redirect(await getDefaultPath(session.role));
+  redirect(await getDefaultPath(session));
 }
 
 export async function logoutAction() {

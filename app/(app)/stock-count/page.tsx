@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { StockCountView } from "@/components/stock-count/stock-count-view";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { parseStockDisplayUnit } from "@/lib/format";
 import {
   getLowStockAlerts,
@@ -17,11 +18,12 @@ export default async function StockCountPage({
     unit?: string;
   }>;
 }) {
+  const session = await requireTenantSession();
   const params = await searchParams;
   const unit = parseStockDisplayUnit(params.unit);
   const [stock, lowStock] = await Promise.all([
-    getStockSummary(),
-    getLowStockAlerts(),
+    getStockSummary(session.tenantId),
+    getLowStockAlerts(session.tenantId),
   ]);
 
   return (

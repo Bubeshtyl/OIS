@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { DailySalesReportView } from "@/components/daily-sales/daily-sales-report-view";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { parseDailySalesFilters } from "@/lib/daily-sales/filters";
 import {
   getDailySalesFilterOptions,
@@ -13,13 +14,14 @@ export default async function DailySalesReportPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const session = await requireTenantSession();
   const params = await searchParams;
   const filters = parseDailySalesFilters(params);
   const page = Number.parseInt(params.page ?? "1", 10);
 
   const [report, options] = await Promise.all([
-    getDailySalesReportPage({ filters, page }),
-    getDailySalesFilterOptions(),
+    getDailySalesReportPage({ tenantId: session.tenantId, filters, page }),
+    getDailySalesFilterOptions(session.tenantId),
   ]);
 
   return (

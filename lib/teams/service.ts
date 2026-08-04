@@ -1,29 +1,44 @@
-import { eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { teams, users, type Team, type User } from "@/lib/db/schema";
+import { roles, teams, users, type Team, type User } from "@/lib/db/schema";
 
 export type TeamWithManager = Team & {
   manager: User | null;
 };
 
-export async function getActiveTeams() {
+export type SystemUser = User & { roleName: string | null };
+
+export async function getActiveTeams(tenantId: string) {
   const db = getDb();
-  return db.select().from(teams).where(eq(teams.isActive, true));
+  return db
+    .select()
+    .from(teams)
+    .where(and(eq(teams.tenantId, tenantId), eq(teams.isActive, true)));
 }
 
-export async function getTeamById(id: string) {
+export async function getTeamById(tenantId: string, id: string) {
   const db = getDb();
-  const [team] = await db.select().from(teams).where(eq(teams.id, id)).limit(1);
+  const [team] = await db
+    .select()
+    .from(teams)
+    .where(and(eq(teams.id, id), eq(teams.tenantId, tenantId)))
+    .limit(1);
   return team ?? null;
 }
 
-export async function getTeamsWithManagers(): Promise<TeamWithManager[]> {
+export async function getTeamsWithManagers(
+  tenantId: string
+): Promise<TeamWithManager[]> {
   const db = getDb();
-  const allTeams = await db.select().from(teams).orderBy(teams.name);
+  const allTeams = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.tenantId, tenantId))
+    .orderBy(teams.name);
   const managers = await db
     .select()
     .from(users)
-    .where(eq(users.role, "MANAGER"));
+    .where(eq(users.tenantId, tenantId));
 
   const managerByTeamId = new Map(
     managers
@@ -37,20 +52,26 @@ export async function getTeamsWithManagers(): Promise<TeamWithManager[]> {
   }));
 }
 
-export async function getSystemUsers() {
+/** Users not attached to any team, i.e. head-office roles (Admin, Accounts, etc). */
+export async function getSystemUsers(tenantId: string): Promise<SystemUser[]> {
   const db = getDb();
-  return db
-    .select()
+  const rows = await db
+    .select({
+      user: users,
+      roleName: roles.name,
+    })
     .from(users)
-    .where(or(eq(users.role, "ADMIN"), eq(users.role, "ACCOUNTS")))
+    .leftJoin(roles, eq(users.roleId, roles.id))
+    .where(and(eq(users.tenantId, tenantId), isNull(users.teamId)))
     .orderBy(users.name);
+
+  return rows.map(({ user, roleName }) => ({ ...user, roleName }));
 }
 
-export async function getUnassignedManagers() {
+export async function getUnassignedManagers(tenantId: string) {
   const db = getDb();
   return db
     .select()
     .from(users)
-    .where(eq(users.role, "MANAGER"))
-    .then((rows) => rows.filter((row) => !row.teamId));
+    .where(and(eq(users.tenantId, tenantId), isNull(users.teamId)));
 }

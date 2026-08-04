@@ -62,6 +62,7 @@ export default function RootLayout({
   return (
     <html
       lang="en-IN"
+      dir="ltr"
       className={cn("h-full font-sans antialiased", roboto.variable)}
     >
       <body className="min-h-full bg-background text-foreground">

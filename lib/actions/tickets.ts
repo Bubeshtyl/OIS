@@ -2,8 +2,8 @@
 
 import { z } from "zod";
 import { revalidateTicketPages } from "@/lib/actions/revalidate";
-import { requireSession } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/rbac";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { getActiveQuestionsOrdered } from "@/lib/questions/service";
 import { getActiveTeams } from "@/lib/teams/service";
 import {
@@ -19,8 +19,8 @@ export async function createTicketAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "tickets:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "tickets:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -36,13 +36,13 @@ export async function createTicketAction(
     return { success: false, error: "Please check all required fields." };
   }
 
-  const activeTeams = await getActiveTeams();
+  const activeTeams = await getActiveTeams(session.tenantId);
   const team = activeTeams.find((t) => t.id === teamIdParsed.data);
   if (!team) {
     return { success: false, error: "Please choose a valid team." };
   }
 
-  const questions = await getActiveQuestionsOrdered();
+  const questions = await getActiveQuestionsOrdered(session.tenantId);
   const answers: TicketAnswer[] = [];
 
   for (const question of questions) {
@@ -76,6 +76,7 @@ export async function createTicketAction(
   }
 
   const ticket = await createTicket({
+    tenantId: session.tenantId,
     teamId: team.id,
     answers,
     requesterName: requesterNameParsed.data,
@@ -84,7 +85,7 @@ export async function createTicketAction(
 
   revalidateTicketPages();
 
-  const ticketNumber = await formatTicketNumber(ticket.ticketSeq);
+  const ticketNumber = await formatTicketNumber(session.tenantId, ticket.ticketSeq);
   await notifyTeam(team, ticket);
 
   return { success: true, message: `Ticket ${ticketNumber} created.` };
@@ -100,8 +101,8 @@ export async function updateTicketStatusAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "tickets:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "tickets:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -116,6 +117,7 @@ export async function updateTicketStatusAction(
   }
 
   await updateTicketStatus(
+    session.tenantId,
     parsed.data.id,
     parsed.data.status,
     parsed.data.resolutionNote

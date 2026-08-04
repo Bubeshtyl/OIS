@@ -1,11 +1,13 @@
 import { SessionOptions } from "iron-session";
-import type { UserRole } from "@/lib/db/schema";
 
 export interface SessionData {
   userId: string;
   username: string;
   name: string;
-  role: UserRole;
+  tenantId: string | null;
+  roleId: string | null;
+  roleName: string | null;
+  isPlatformAdmin: boolean;
   isLoggedIn: boolean;
 }
 
@@ -13,12 +15,17 @@ export const defaultSession: SessionData = {
   userId: "",
   username: "",
   name: "",
-  role: "MANAGER",
+  tenantId: null,
+  roleId: null,
+  roleName: null,
+  isPlatformAdmin: false,
   isLoggedIn: false,
 };
 
 export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || "dev-only-secret-change-in-production-32chars",
+  password:
+    process.env.SESSION_SECRET ||
+    "dev-only-secret-change-in-production-32chars",
   cookieName: "ois_session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",

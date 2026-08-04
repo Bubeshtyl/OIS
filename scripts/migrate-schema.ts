@@ -1,9 +1,17 @@
+import bcrypt from "bcryptjs";
 import { config } from "dotenv";
 import { sql } from "drizzle-orm";
 import { getDb } from "../lib/db";
+import {
+  ADMIN_PERMISSIONS,
+  LEGACY_ROLE_PERMISSIONS,
+  SYSTEM_ADMIN_ROLE_NAME,
+} from "../lib/auth/role-defaults";
 
 config({ path: ".env.local" });
 config({ path: ".env" });
+
+type Db = ReturnType<typeof getDb>;
 
 async function migrateSchema() {
   const db = getDb();
@@ -134,11 +142,16 @@ async function migrateSchema() {
     )
   `);
 
-  await db.execute(sql`
-    INSERT INTO ticket_settings (id, prefix, padding_width)
-    VALUES (1, 'JCK', 6)
-    ON CONFLICT (id) DO NOTHING
-  `);
+  // Legacy singleton seed. Multi-tenant ticket_settings uses uuid id — skip then.
+  try {
+    await db.execute(sql`
+      INSERT INTO ticket_settings (id, prefix, padding_width)
+      VALUES (1, 'JCK', 6)
+      ON CONFLICT (id) DO NOTHING
+    `);
+  } catch {
+    // ignore type mismatch after multi-tenant migration
+  }
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS tickets (
@@ -279,29 +292,572 @@ async function migrateSchema() {
     )
   `);
 
-  await db.execute(sql`
-    INSERT INTO role_permissions (role, permission)
-    VALUES
-      ('MANAGER', 'dashboard:read'),
-      ('MANAGER', 'receive:write'),
-      ('MANAGER', 'transfer:write'),
-      ('MANAGER', 'sales:write'),
-      ('MANAGER', 'reports:read'),
-      ('MANAGER', 'file-upload:read'),
-      ('MANAGER', 'daily-sales:read'),
-      ('MANAGER', 'sales-data-analytics:read'),
-      ('MANAGER', 'tickets:read'),
-      ('MANAGER', 'tickets:manage'),
-      ('ACCOUNTS', 'dashboard:read'),
-      ('ACCOUNTS', 'reports:read'),
-      ('ACCOUNTS', 'file-upload:read'),
-      ('ACCOUNTS', 'daily-sales:read'),
-      ('ACCOUNTS', 'sales-data-analytics:read'),
-      ('ACCOUNTS', 'tickets:read')
-    ON CONFLICT (role, permission) DO NOTHING
-  `);
+  // Legacy role_permissions (role enum). Multi-tenant uses (role_id, permission).
+  try {
+    await db.execute(sql`
+      INSERT INTO role_permissions (role, permission)
+      VALUES
+        ('MANAGER', 'dashboard:read'),
+        ('MANAGER', 'receive:write'),
+        ('MANAGER', 'transfer:write'),
+        ('MANAGER', 'sales:write'),
+        ('MANAGER', 'reports:read'),
+        ('MANAGER', 'file-upload:read'),
+        ('MANAGER', 'daily-sales:read'),
+        ('MANAGER', 'sales-data-analytics:read'),
+        ('MANAGER', 'tickets:read'),
+        ('MANAGER', 'tickets:manage'),
+        ('ACCOUNTS', 'dashboard:read'),
+        ('ACCOUNTS', 'reports:read'),
+        ('ACCOUNTS', 'file-upload:read'),
+        ('ACCOUNTS', 'daily-sales:read'),
+        ('ACCOUNTS', 'sales-data-analytics:read'),
+        ('ACCOUNTS', 'tickets:read')
+      ON CONFLICT (role, permission) DO NOTHING
+    `);
+  } catch {
+    // ignore after multi-tenant migration renamed/replaced this table
+  }
+
+  console.log("Legacy schema migration applied.");
+
+  await migrateToMultiTenant(db);
 
   console.log("Schema migration applied.");
+}
+
+// ---------------------------------------------------------------------------
+// Multi-tenant migration
+//
+// Everything below is idempotent: it inspects information_schema/pg_catalog
+// before altering anything, so re-running this script after a partial or
+// full previous run is always safe.
+// ---------------------------------------------------------------------------
+
+async function tableExists(db: Db, table: string): Promise<boolean> {
+  const rows = await db.execute<{ exists: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ${table}
+    ) AS exists
+  `);
+  return Boolean(rows[0]?.exists);
+}
+
+async function columnExists(
+  db: Db,
+  table: string,
+  column: string
+): Promise<boolean> {
+  const rows = await db.execute<{ exists: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = ${table} AND column_name = ${column}
+    ) AS exists
+  `);
+  return Boolean(rows[0]?.exists);
+}
+
+async function columnDataType(
+  db: Db,
+  table: string,
+  column: string
+): Promise<string | null> {
+  const rows = await db.execute<{ data_type: string }>(sql`
+    SELECT data_type FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = ${table} AND column_name = ${column}
+  `);
+  return rows[0]?.data_type ?? null;
+}
+
+async function primaryKeyInfo(
+  db: Db,
+  table: string
+): Promise<{ constraintName: string; columns: string[] } | null> {
+  const rows = await db.execute<{
+    constraint_name: string;
+    column_name: string;
+  }>(sql`
+    SELECT tc.constraint_name, kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name = ${table}
+      AND tc.constraint_type = 'PRIMARY KEY'
+    ORDER BY kcu.ordinal_position
+  `);
+
+  if (rows.length === 0) return null;
+
+  return {
+    constraintName: rows[0]!.constraint_name,
+    columns: rows.map((row) => row.column_name),
+  };
+}
+
+/** Finds a single/composite UNIQUE constraint whose column set matches exactly. */
+async function findUniqueConstraint(
+  db: Db,
+  table: string,
+  columns: string[]
+): Promise<string | null> {
+  const rows = await db.execute<{
+    constraint_name: string;
+    column_name: string;
+  }>(sql`
+    SELECT tc.constraint_name, kcu.column_name, kcu.ordinal_position
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name = ${table}
+      AND tc.constraint_type = 'UNIQUE'
+    ORDER BY tc.constraint_name, kcu.ordinal_position
+  `);
+
+  const grouped = new Map<string, string[]>();
+  for (const row of rows) {
+    const cols = grouped.get(row.constraint_name) ?? [];
+    cols.push(row.column_name);
+    grouped.set(row.constraint_name, cols);
+  }
+
+  for (const [name, cols] of grouped) {
+    if (cols.length === columns.length && cols.every((c, i) => c === columns[i])) {
+      return name;
+    }
+  }
+  return null;
+}
+
+async function constraintExists(db: Db, name: string): Promise<boolean> {
+  const rows = await db.execute<{ exists: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = ${name}
+    ) AS exists
+  `);
+  return Boolean(rows[0]?.exists);
+}
+
+async function dropConstraintIfExists(db: Db, table: string, name: string) {
+  await db.execute(
+    sql`ALTER TABLE ${sql.identifier(table)} DROP CONSTRAINT IF EXISTS ${sql.identifier(name)}`
+  );
+}
+
+/** Only used when migrating pre-tenant data that still has NULL tenant_id. */
+async function ensureLegacyMigrationTenant(db: Db): Promise<string> {
+  const existing = await db.execute<{ id: string }>(sql`
+    SELECT id FROM tenants WHERE slug = 'legacy-migration' LIMIT 1
+  `);
+  if (existing.length > 0) return existing[0]!.id;
+
+  const inserted = await db.execute<{ id: string }>(sql`
+    INSERT INTO tenants (slug, name, onboarding_complete, is_active)
+    VALUES ('legacy-migration', 'Legacy Migration', true, true)
+    RETURNING id
+  `);
+  console.log(
+    "Created temporary 'Legacy Migration' tenant to hold pre-tenant data. Rename or replace it from Platform."
+  );
+  return inserted[0]!.id;
+}
+
+async function needsLegacyTenantBackfill(
+  db: Db,
+  tenantScopedTables: string[]
+): Promise<boolean> {
+  if (await columnExists(db, "users", "role")) {
+    return true;
+  }
+
+  for (const table of tenantScopedTables) {
+    if (!(await tableExists(db, table))) continue;
+    if (!(await columnExists(db, table, "tenant_id"))) continue;
+    const rows = await db.execute<{ has_null: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM ${sql.identifier(table)} WHERE tenant_id IS NULL
+      ) AS has_null
+    `);
+    if (rows[0]?.has_null) return true;
+  }
+
+  return false;
+}
+
+async function ensureSystemRole(
+  db: Db,
+  tenantId: string,
+  name: string
+): Promise<string> {
+  const existing = await db.execute<{ id: string }>(sql`
+    SELECT id FROM roles WHERE tenant_id = ${tenantId} AND name = ${name} LIMIT 1
+  `);
+  if (existing.length > 0) return existing[0]!.id;
+
+  const inserted = await db.execute<{ id: string }>(sql`
+    INSERT INTO roles (tenant_id, name, is_system)
+    VALUES (${tenantId}, ${name}, true)
+    RETURNING id
+  `);
+  return inserted[0]!.id;
+}
+
+async function grantPermission(db: Db, roleId: string, permission: string) {
+  await db.execute(sql`
+    INSERT INTO role_permissions (role_id, permission)
+    VALUES (${roleId}, ${permission})
+    ON CONFLICT (role_id, permission) DO NOTHING
+  `);
+}
+
+/** Reads permissions for a legacy MANAGER/ACCOUNTS role from the pre-tenant
+ * role_permissions_legacy table when present, otherwise falls back to the
+ * hard-coded defaults that used to be seeded by this script. */
+async function legacyPermissionsFor(
+  db: Db,
+  role: "MANAGER" | "ACCOUNTS"
+): Promise<string[]> {
+  if (await tableExists(db, "role_permissions_legacy")) {
+    const rows = await db.execute<{ permission: string }>(sql`
+      SELECT permission FROM role_permissions_legacy WHERE role::text = ${role}
+    `);
+    if (rows.length > 0) {
+      return rows.map((row) => row.permission);
+    }
+  }
+  return LEGACY_ROLE_PERMISSIONS[role];
+}
+
+async function addTenantIdColumn(db: Db, table: string) {
+  await db.execute(
+    sql`ALTER TABLE ${sql.identifier(table)} ADD COLUMN IF NOT EXISTS tenant_id uuid REFERENCES tenants(id) ON DELETE CASCADE`
+  );
+}
+
+async function backfillTenantId(db: Db, table: string, tenantId: string) {
+  await db.execute(
+    sql`UPDATE ${sql.identifier(table)} SET tenant_id = ${tenantId} WHERE tenant_id IS NULL`
+  );
+}
+
+async function setTenantIdNotNull(db: Db, table: string) {
+  await db.execute(
+    sql`ALTER TABLE ${sql.identifier(table)} ALTER COLUMN tenant_id SET NOT NULL`
+  );
+}
+
+async function migrateToMultiTenant(db: Db) {
+  // a. tenants
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      slug text NOT NULL UNIQUE,
+      name text NOT NULL,
+      address_line1 text,
+      address_line2 text,
+      city text,
+      state text,
+      pincode text,
+      phone text,
+      onboarding_complete boolean NOT NULL DEFAULT false,
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE tenants
+    ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS last_login_at timestamptz
+  `);
+
+  // b. roles
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS roles (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name text NOT NULL,
+      is_system boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT roles_tenant_name_unique UNIQUE (tenant_id, name)
+    )
+  `);
+
+  // c. rename the old (role, permission) role_permissions table out of the way
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'role_permissions'
+          AND column_name = 'role'
+          AND udt_name = 'user_role'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'role_permissions_legacy'
+      ) THEN
+        ALTER TABLE role_permissions RENAME TO role_permissions_legacy;
+      END IF;
+    END
+    $$;
+  `);
+
+  // d. new role_permissions keyed by role_id
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS role_permissions (
+      role_id uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      permission text NOT NULL,
+      PRIMARY KEY (role_id, permission)
+    )
+  `);
+
+  // e. tenant/role columns on users
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id uuid REFERENCES tenants(id) ON DELETE CASCADE
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS role_id uuid REFERENCES roles(id)
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_admin boolean NOT NULL DEFAULT false
+  `);
+
+  // f. tenant_id on every tenant-scoped business table
+  const tenantScopedTables = [
+    "oil_products",
+    "inventory_transactions",
+    "stock_balance",
+    "daily_sales",
+    "daily_sales_uploads",
+    "teams",
+    "ticket_questions",
+    "tickets",
+    "telegram_sessions",
+  ];
+  for (const table of tenantScopedTables) {
+    await addTenantIdColumn(db, table);
+  }
+
+  // g–j. Only create a migration tenant when pre-tenant rows still need a home.
+  // Fresh / already-migrated DBs skip this so "Default Station" is never recreated.
+  const shouldBackfill = await needsLegacyTenantBackfill(db, tenantScopedTables);
+  let migrationTenantId: string | null = null;
+  let adminRoleId: string | null = null;
+
+  if (shouldBackfill) {
+    migrationTenantId = await ensureLegacyMigrationTenant(db);
+
+    adminRoleId = await ensureSystemRole(
+      db,
+      migrationTenantId,
+      SYSTEM_ADMIN_ROLE_NAME
+    );
+    const managerRoleId = await ensureSystemRole(
+      db,
+      migrationTenantId,
+      "Manager"
+    );
+    const accountsRoleId = await ensureSystemRole(
+      db,
+      migrationTenantId,
+      "Accounts"
+    );
+
+    for (const permission of ADMIN_PERMISSIONS) {
+      await grantPermission(db, adminRoleId, permission);
+    }
+
+    const managerPermissions = await legacyPermissionsFor(db, "MANAGER");
+    for (const permission of managerPermissions) {
+      await grantPermission(db, managerRoleId, permission);
+    }
+
+    const accountsPermissions = await legacyPermissionsFor(db, "ACCOUNTS");
+    for (const permission of accountsPermissions) {
+      await grantPermission(db, accountsRoleId, permission);
+    }
+
+    for (const table of tenantScopedTables) {
+      await backfillTenantId(db, table, migrationTenantId);
+    }
+
+    if (await columnExists(db, "users", "role")) {
+      const roleToRoleId: Record<string, string> = {
+        ADMIN: adminRoleId,
+        MANAGER: managerRoleId,
+        ACCOUNTS: accountsRoleId,
+      };
+
+      for (const [legacyRole, roleId] of Object.entries(roleToRoleId)) {
+        await db.execute(sql`
+          UPDATE users
+          SET role_id = COALESCE(role_id, ${roleId}),
+              tenant_id = COALESCE(tenant_id, ${migrationTenantId})
+          WHERE role::text = ${legacyRole}
+        `);
+      }
+    }
+  }
+
+  // k. daily_sales primary key -> (tenant_id, receipt_no)
+  const dailySalesPk = await primaryKeyInfo(db, "daily_sales");
+  if (
+    dailySalesPk &&
+    dailySalesPk.columns.length === 1 &&
+    dailySalesPk.columns[0] === "receipt_no"
+  ) {
+    if (migrationTenantId) {
+      await backfillTenantId(db, "daily_sales", migrationTenantId);
+    }
+    await dropConstraintIfExists(db, "daily_sales", dailySalesPk.constraintName);
+    await db.execute(sql`
+      ALTER TABLE daily_sales ADD PRIMARY KEY (tenant_id, receipt_no)
+    `);
+  }
+
+  // l. stock_balance primary key -> (tenant_id, product_id, location)
+  const stockBalancePk = await primaryKeyInfo(db, "stock_balance");
+  if (
+    stockBalancePk &&
+    stockBalancePk.columns.length === 2 &&
+    stockBalancePk.columns.includes("product_id") &&
+    stockBalancePk.columns.includes("location")
+  ) {
+    if (migrationTenantId) {
+      await backfillTenantId(db, "stock_balance", migrationTenantId);
+    }
+    await dropConstraintIfExists(db, "stock_balance", stockBalancePk.constraintName);
+    await db.execute(sql`
+      ALTER TABLE stock_balance ADD PRIMARY KEY (tenant_id, product_id, location)
+    `);
+  }
+
+  // m. teams: unique(name) -> unique(tenant_id, name)
+  const teamsNameUnique = await findUniqueConstraint(db, "teams", ["name"]);
+  if (teamsNameUnique) {
+    await dropConstraintIfExists(db, "teams", teamsNameUnique);
+  }
+  if (!(await constraintExists(db, "teams_tenant_name_unique"))) {
+    await db.execute(sql`
+      ALTER TABLE teams ADD CONSTRAINT teams_tenant_name_unique UNIQUE (tenant_id, name)
+    `);
+  }
+
+  // n. ticket_questions: "order" is no longer globally unique (per-tenant instead)
+  const ticketQuestionsOrderUnique = await findUniqueConstraint(db, "ticket_questions", [
+    "order",
+  ]);
+  if (ticketQuestionsOrderUnique) {
+    await dropConstraintIfExists(db, "ticket_questions", ticketQuestionsOrderUnique);
+  }
+
+  // o. ticket_settings: single integer-keyed row -> uuid-keyed row per tenant
+  const ticketSettingsIdType = await columnDataType(db, "ticket_settings", "id");
+  if (ticketSettingsIdType === "integer" && migrationTenantId) {
+    if (!(await columnExists(db, "ticket_settings", "tenant_id"))) {
+      await db.execute(sql`
+        ALTER TABLE ticket_settings ADD COLUMN tenant_id uuid REFERENCES tenants(id) ON DELETE CASCADE
+      `);
+    }
+    await backfillTenantId(db, "ticket_settings", migrationTenantId);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS ticket_settings_new (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        prefix text NOT NULL DEFAULT 'JCK',
+        padding_width integer NOT NULL DEFAULT 6,
+        access_code text,
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT ticket_settings_tenant_unique UNIQUE (tenant_id)
+      )
+    `);
+
+    await db.execute(sql`
+      INSERT INTO ticket_settings_new (tenant_id, prefix, padding_width, access_code, updated_at)
+      SELECT tenant_id, prefix, padding_width, access_code, updated_at
+      FROM ticket_settings
+      WHERE tenant_id IS NOT NULL
+      ON CONFLICT (tenant_id) DO NOTHING
+    `);
+
+    await db.execute(sql`DROP TABLE ticket_settings`);
+    await db.execute(sql`ALTER TABLE ticket_settings_new RENAME TO ticket_settings`);
+  }
+
+  // p. tenant_id NOT NULL on business tables (daily_sales/stock_balance already
+  // enforced via their new primary keys; users/telegram_sessions stay nullable)
+  const tablesRequiringNotNullTenant = [
+    "oil_products",
+    "inventory_transactions",
+    "daily_sales_uploads",
+    "teams",
+    "ticket_questions",
+    "tickets",
+  ];
+  for (const table of tablesRequiringNotNullTenant) {
+    await setTenantIdNotNull(db, table);
+  }
+
+  // q. drop the legacy enum-based role column now that role_id is populated
+  if (await columnExists(db, "users", "role")) {
+    await db.execute(sql`ALTER TABLE users DROP COLUMN role`);
+  }
+
+  // r. drop the legacy role_permissions table
+  await db.execute(sql`DROP TABLE IF EXISTS role_permissions_legacy`);
+
+  // s. platform admin + safety net for the seed tenant's admin user
+  const platformAdminUsername = process.env.PLATFORM_ADMIN_USERNAME || "platform";
+
+  const existingPlatformAdmin = await db.execute<{ id: string }>(sql`
+    SELECT id FROM users WHERE is_platform_admin = true LIMIT 1
+  `);
+
+  if (existingPlatformAdmin.length === 0) {
+    const candidate = await db.execute<{ id: string }>(sql`
+      SELECT id FROM users WHERE username = ${platformAdminUsername} LIMIT 1
+    `);
+
+    if (candidate.length > 0) {
+      await db.execute(sql`
+        UPDATE users SET is_platform_admin = true WHERE id = ${candidate[0]!.id}
+      `);
+      console.log(`Promoted existing user '${platformAdminUsername}' to platform admin.`);
+    } else {
+      const passwordHash = await bcrypt.hash("platform123", 10);
+      await db.execute(sql`
+        INSERT INTO users (name, username, password_hash, tenant_id, role_id, is_platform_admin, is_active)
+        VALUES ('Platform Admin', ${platformAdminUsername}, ${passwordHash}, NULL, NULL, true, true)
+      `);
+      console.log(
+        `Created platform admin user '${platformAdminUsername}' / platform123 — change this password immediately.`
+      );
+    }
+  } else {
+    console.log("Platform admin already exists, skipping.");
+  }
+
+  // Keep a legacy admin user tied to the migration tenant when one was created.
+  if (migrationTenantId && adminRoleId) {
+    await db.execute(sql`
+      UPDATE users
+      SET tenant_id = COALESCE(tenant_id, ${migrationTenantId}),
+          role_id = COALESCE(role_id, ${adminRoleId})
+      WHERE username = 'admin' AND is_platform_admin = false
+    `);
+  }
+
+  console.log("Multi-tenant migration applied.");
 }
 
 migrateSchema().catch((error) => {

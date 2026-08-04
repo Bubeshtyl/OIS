@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import type { StockLocation } from "@/lib/db/schema";
 
 export async function computeBalanceFromLedger(
+  tenantId: string,
   productId: string,
   location: StockLocation
 ): Promise<number> {
@@ -25,7 +26,7 @@ export async function computeBalanceFromLedger(
       END
     ), 0)::text AS quantity
     FROM inventory_transactions
-    WHERE product_id = ${productId}
+    WHERE tenant_id = ${tenantId} AND product_id = ${productId}
   `);
 
   return row ? Number(row.quantity) : 0;

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { ReportsView } from "@/components/reports/reports-view";
-import { getSession } from "@/lib/auth/session";
+import { canWriteInventory, hasPermission } from "@/lib/auth/rbac";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import {
   defaultRangeEnd,
   defaultRangeStart,
@@ -26,6 +27,7 @@ import { getIstTodayString } from "@/lib/timezone";
 export const dynamic = "force-dynamic";
 
 async function loadReportData(
+  tenantId: string,
   report: ReportType,
   start: string,
   end: string
@@ -38,15 +40,22 @@ async function loadReportData(
 
   const [stockSummary, variance, ledger] = await Promise.all([
     report === "stock-summary"
-      ? getStockSummaryReport(start, end)
+      ? getStockSummaryReport(tenantId, start, end)
       : Promise.resolve(null),
-    report === "variance" ? getVarianceReport(start, end) : Promise.resolve(null),
-    needsLedger ? getLedger({ startDate: start, endDate: end }) : Promise.resolve([]),
+    report === "variance"
+      ? getVarianceReport(tenantId, start, end)
+      : Promise.resolve(null),
+    needsLedger
+      ? getLedger(tenantId, { startDate: start, endDate: end })
+      : Promise.resolve([]),
   ]);
 
   const reversedIds =
     needsLedger && ledger.length > 0
-      ? await getReversedTransactionIdsFor(ledger.map((row) => row.id))
+      ? await getReversedTransactionIdsFor(
+          tenantId,
+          ledger.map((row) => row.id)
+        )
       : [];
 
   return { stockSummary, variance, ledger, reversedIds };
@@ -64,7 +73,9 @@ export default async function ReportsPage({
 }) {
   const params = await searchParams;
   const unit = parseStockDisplayUnit(params.unit);
-  const session = await getSession();
+  const session = await requireTenantSession();
+  const canWrite = await canWriteInventory(session);
+  const canReverse = await hasPermission(session, "reversal:write");
   const today = getIstTodayString();
   const defaultStart = defaultRangeStart(today);
   const defaultEnd = defaultRangeEnd(today);
@@ -74,9 +85,10 @@ export default async function ReportsPage({
   );
   const report = isReportType(params.report)
     ? params.report
-    : defaultReportForRole(session.role);
+    : defaultReportForRole(canWrite);
 
   const { stockSummary, variance, ledger, reversedIds } = await loadReportData(
+    session.tenantId,
     report,
     start,
     end
@@ -95,7 +107,7 @@ export default async function ReportsPage({
         variance={variance}
         ledger={ledger}
         reversedIds={Array.from(reversedIds)}
-        isAdmin={session.role === "ADMIN"}
+        isAdmin={canReverse}
         unit={unit}
       />
     </Suspense>

@@ -1,11 +1,16 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { revalidateTeamPages } from "@/lib/actions/revalidate";
-import { requireSession } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/rbac";
+import {
+  ensureTenantRoleByName,
+  requireTenantSession,
+} from "@/lib/auth/permissions";
+import { LEGACY_ROLE_PERMISSIONS, SYSTEM_MANAGER_ROLE_NAME } from "@/lib/auth/role-defaults";
+import { getUserRoleOptions } from "@/lib/actions/admin";
 import { getDb } from "@/lib/db";
 import { teams, users } from "@/lib/db/schema";
 import type { ActionState } from "@/lib/actions/inventory";
@@ -36,10 +41,10 @@ export async function saveTeamAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
+  const session = await requireTenantSession();
   if (
-    !(await hasPermission(session.role, "teams:manage")) ||
-    !(await hasPermission(session.role, "users:manage"))
+    !(await hasPermission(session, "teams:manage")) ||
+    !(await hasPermission(session, "users:manage"))
   ) {
     return { success: false, error: "You do not have permission." };
   }
@@ -70,8 +75,16 @@ export async function saveTeamAction(
     };
   }
 
+  const tenantId = session.tenantId;
+  const managerRoleId = await ensureTenantRoleByName(
+    tenantId,
+    SYSTEM_MANAGER_ROLE_NAME,
+    LEGACY_ROLE_PERMISSIONS.MANAGER
+  );
+
   const db = getDb();
   const teamValues = {
+    tenantId,
     name: parsed.data.name,
     telegramChatId: parsed.data.telegramChatId,
     isActive: parsed.data.isActive,
@@ -82,7 +95,10 @@ export async function saveTeamAction(
       let teamId = parsed.data.id;
 
       if (teamId) {
-        await tx.update(teams).set(teamValues).where(eq(teams.id, teamId));
+        await tx
+          .update(teams)
+          .set(teamValues)
+          .where(and(eq(teams.id, teamId), eq(teams.tenantId, tenantId)));
       } else {
         const [inserted] = await tx
           .insert(teams)
@@ -94,7 +110,8 @@ export async function saveTeamAction(
       const managerValues = {
         name: parsed.data.managerName,
         username: parsed.data.managerUsername.toLowerCase(),
-        role: "MANAGER" as const,
+        tenantId,
+        roleId: managerRoleId,
         teamId,
         isActive: parsed.data.isActive,
       };
@@ -103,7 +120,8 @@ export async function saveTeamAction(
         const update: {
           name: string;
           username: string;
-          role: "MANAGER";
+          tenantId: string;
+          roleId: string;
           teamId: string;
           isActive: boolean;
           passwordHash?: string;
@@ -116,7 +134,12 @@ export async function saveTeamAction(
         await tx
           .update(users)
           .set(update)
-          .where(eq(users.id, parsed.data.managerUserId));
+          .where(
+            and(
+              eq(users.id, parsed.data.managerUserId),
+              eq(users.tenantId, tenantId)
+            )
+          );
       } else {
         await tx.insert(users).values({
           ...managerValues,
@@ -136,27 +159,28 @@ export async function saveTeamAction(
 }
 
 export async function getAllTeams() {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "teams:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "teams:manage"))) {
     return [];
   }
 
-  return getTeamsWithManagers();
+  return getTeamsWithManagers(session.tenantId);
 }
 
 export async function getTeamConfiguration() {
-  const session = await requireSession();
+  const session = await requireTenantSession();
   if (
-    !(await hasPermission(session.role, "teams:manage")) ||
-    !(await hasPermission(session.role, "users:manage"))
+    !(await hasPermission(session, "teams:manage")) ||
+    !(await hasPermission(session, "users:manage"))
   ) {
-    return { teams: [], systemUsers: [] };
+    return { teams: [], systemUsers: [], roleOptions: [] };
   }
 
-  const [teamsWithManagers, systemUsers] = await Promise.all([
-    getTeamsWithManagers(),
-    getSystemUsers(),
+  const [teamsWithManagers, systemUsers, roleOptions] = await Promise.all([
+    getTeamsWithManagers(session.tenantId),
+    getSystemUsers(session.tenantId),
+    getUserRoleOptions(),
   ]);
 
-  return { teams: teamsWithManagers, systemUsers };
+  return { teams: teamsWithManagers, systemUsers, roleOptions };
 }

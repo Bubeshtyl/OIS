@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission } from "@/lib/auth/rbac";
-import { getSession } from "@/lib/auth/session";
+import { getOptionalTenantSession } from "@/lib/auth/permissions";
 import {
   buildDailySalesWorkbook,
   dailySalesWorkbookToBuffer,
@@ -11,11 +11,8 @@ import { getDailySalesExportRows } from "@/lib/queries/daily-sales";
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (
-    !session.isLoggedIn ||
-    !(await hasPermission(session.role, "daily-sales:read"))
-  ) {
+  const session = await getOptionalTenantSession();
+  if (!session || !(await hasPermission(session, "daily-sales:read"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -29,7 +26,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const rows = await getDailySalesExportRows(filters);
+  const rows = await getDailySalesExportRows(session.tenantId, filters);
   const workbook = buildDailySalesWorkbook(rows);
   const buffer = dailySalesWorkbookToBuffer(workbook);
   const stamp = new Date().toISOString().slice(0, 10);

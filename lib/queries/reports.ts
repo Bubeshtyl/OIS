@@ -56,10 +56,14 @@ function emptyPeriod() {
   };
 }
 
-export async function getStockSummaryReport(startDate: string, endDate: string) {
+export async function getStockSummaryReport(
+  tenantId: string,
+  startDate: string,
+  endDate: string
+) {
   const [stock, activity] = await Promise.all([
-    getStockSummary(),
-    getProductActivityForRange(startDate, endDate),
+    getStockSummary(tenantId),
+    getProductActivityForRange(tenantId, startDate, endDate),
   ]);
 
   const rows: StockSummaryReportRow[] = stock.products.map((product) => {
@@ -138,10 +142,14 @@ export async function getStockSummaryReport(startDate: string, endDate: string) 
   return { rows, totals };
 }
 
-export async function getVarianceReport(startDate: string, endDate: string) {
+export async function getVarianceReport(
+  tenantId: string,
+  startDate: string,
+  endDate: string
+) {
   const [stock, activity] = await Promise.all([
-    getStockSummary(),
-    getProductActivityForRange(startDate, endDate),
+    getStockSummary(tenantId),
+    getProductActivityForRange(tenantId, startDate, endDate),
   ]);
 
   const rows: VarianceReportRow[] = stock.products.map((product) => {

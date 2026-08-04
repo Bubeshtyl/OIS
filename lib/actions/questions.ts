@@ -1,10 +1,10 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { revalidateQuestionPages } from "@/lib/actions/revalidate";
-import { requireSession } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/rbac";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { getDb } from "@/lib/db";
 import { ticketQuestions } from "@/lib/db/schema";
 import type { ActionState } from "@/lib/actions/inventory";
@@ -45,8 +45,8 @@ export async function saveQuestionAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "questions:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "questions:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -69,6 +69,7 @@ export async function saveQuestionAction(
   }
 
   const db = getDb();
+  const tenantId = session.tenantId;
 
   let dependsOnQuestionId: string | null = null;
   let choices: string[] | null = null;
@@ -78,7 +79,12 @@ export async function saveQuestionAction(
     const [parent] = await db
       .select()
       .from(ticketQuestions)
-      .where(eq(ticketQuestions.id, parsed.data.dependsOnQuestionId))
+      .where(
+        and(
+          eq(ticketQuestions.id, parsed.data.dependsOnQuestionId),
+          eq(ticketQuestions.tenantId, tenantId)
+        )
+      )
       .limit(1);
 
     if (!parent || parent.answerType !== "CHOICE") {
@@ -130,9 +136,14 @@ export async function saveQuestionAction(
     await db
       .update(ticketQuestions)
       .set(values)
-      .where(eq(ticketQuestions.id, parsed.data.id));
+      .where(
+        and(
+          eq(ticketQuestions.id, parsed.data.id),
+          eq(ticketQuestions.tenantId, tenantId)
+        )
+      );
   } else {
-    await db.insert(ticketQuestions).values(values);
+    await db.insert(ticketQuestions).values({ ...values, tenantId });
   }
 
   revalidateQuestionPages();
@@ -140,8 +151,8 @@ export async function saveQuestionAction(
 }
 
 export async function getAllQuestions() {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "questions:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "questions:manage"))) {
     return [];
   }
 
@@ -149,5 +160,6 @@ export async function getAllQuestions() {
   return db
     .select()
     .from(ticketQuestions)
+    .where(eq(ticketQuestions.tenantId, session.tenantId))
     .orderBy(ticketQuestions.order);
 }

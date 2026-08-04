@@ -9,21 +9,25 @@ import {
   transactionPacketCount,
 } from "@/lib/packaging";
 
-export async function getActiveProducts() {
+export async function getActiveProducts(tenantId: string) {
   const db = getDb();
   return db
     .select()
     .from(oilProducts)
-    .where(eq(oilProducts.isActive, true))
+    .where(and(eq(oilProducts.tenantId, tenantId), eq(oilProducts.isActive, true)))
     .orderBy(oilProducts.name);
 }
 
-export async function getAllProducts() {
+export async function getAllProducts(tenantId: string) {
   const db = getDb();
-  return db.select().from(oilProducts).orderBy(oilProducts.name);
+  return db
+    .select()
+    .from(oilProducts)
+    .where(eq(oilProducts.tenantId, tenantId))
+    .orderBy(oilProducts.name);
 }
 
-async function getComputedBalancesFromLedger() {
+async function getComputedBalancesFromLedger(tenantId: string) {
   const db = getDb();
   const rows = await db.execute<{
     product_id: string;
@@ -42,6 +46,7 @@ async function getComputedBalancesFromLedger() {
           END
         ) AS quantity
       FROM inventory_transactions
+      WHERE tenant_id = ${tenantId}
       GROUP BY product_id
       UNION ALL
       SELECT
@@ -55,6 +60,7 @@ async function getComputedBalancesFromLedger() {
           END
         ) AS quantity
       FROM inventory_transactions
+      WHERE tenant_id = ${tenantId}
       GROUP BY product_id
     )
     SELECT product_id, location, COALESCE(SUM(quantity), 0)::text AS quantity
@@ -81,7 +87,7 @@ async function getComputedBalancesFromLedger() {
   return byProduct;
 }
 
-export async function getStockSummary() {
+export async function getStockSummary(tenantId: string) {
   const db = getDb();
   const [products, balances] = await Promise.all([
     db
@@ -96,9 +102,9 @@ export async function getStockSummary() {
         volumePerPacket: oilProducts.volumePerPacket,
       })
       .from(oilProducts)
-      .where(eq(oilProducts.isActive, true))
+      .where(and(eq(oilProducts.tenantId, tenantId), eq(oilProducts.isActive, true)))
       .orderBy(oilProducts.name),
-    getComputedBalancesFromLedger(),
+    getComputedBalancesFromLedger(tenantId),
   ]);
 
   let depotQty = 0;
@@ -153,6 +159,7 @@ export async function getStockSummary() {
 }
 
 export async function getProductActivityForRange(
+  tenantId: string,
   startDate: string,
   endDate: string
 ) {
@@ -173,6 +180,7 @@ export async function getProductActivityForRange(
     )
     .where(
       and(
+        eq(inventoryTransactions.tenantId, tenantId),
         gte(inventoryTransactions.transactionDate, startDate),
         lte(inventoryTransactions.transactionDate, endDate),
         inArray(inventoryTransactions.type, [
@@ -246,7 +254,11 @@ export async function getProductActivityForRange(
   return byProduct;
 }
 
-export async function getActivityForRange(startDate: string, endDate: string) {
+export async function getActivityForRange(
+  tenantId: string,
+  startDate: string,
+  endDate: string
+) {
   const db = getDb();
   const rows = await db
     .select({
@@ -265,6 +277,7 @@ export async function getActivityForRange(startDate: string, endDate: string) {
     )
     .where(
       and(
+        eq(inventoryTransactions.tenantId, tenantId),
         gte(inventoryTransactions.transactionDate, startDate),
         lte(inventoryTransactions.transactionDate, endDate)
       )
@@ -328,34 +341,44 @@ export async function getActivityForRange(startDate: string, endDate: string) {
   };
 }
 
-export async function getTodayActivity(date = getIstTodayString()) {
-  return getActivityForRange(date, date);
+export async function getTodayActivity(tenantId: string, date = getIstTodayString()) {
+  return getActivityForRange(tenantId, date, date);
 }
 
-export async function getTotalSalesQuantity() {
+export async function getTotalSalesQuantity(tenantId: string) {
   const db = getDb();
   const rows = await db
     .select({ quantity: inventoryTransactions.quantity })
     .from(inventoryTransactions)
-    .where(eq(inventoryTransactions.type, "SALE"));
+    .where(
+      and(
+        eq(inventoryTransactions.tenantId, tenantId),
+        eq(inventoryTransactions.type, "SALE")
+      )
+    );
 
   return rows.reduce((sum, row) => sum + Number(row.quantity), 0);
 }
 
-async function getProductIdsIssuedToManager() {
+async function getProductIdsIssuedToManager(tenantId: string) {
   const db = getDb();
   const rows = await db
     .selectDistinct({ productId: inventoryTransactions.productId })
     .from(inventoryTransactions)
-    .where(eq(inventoryTransactions.type, "TRANSFER"));
+    .where(
+      and(
+        eq(inventoryTransactions.tenantId, tenantId),
+        eq(inventoryTransactions.type, "TRANSFER")
+      )
+    );
 
   return new Set(rows.map((row) => row.productId));
 }
 
-export async function getLowStockAlerts() {
+export async function getLowStockAlerts(tenantId: string) {
   const [summary, issuedToManager] = await Promise.all([
-    getStockSummary(),
-    getProductIdsIssuedToManager(),
+    getStockSummary(tenantId),
+    getProductIdsIssuedToManager(tenantId),
   ]);
 
   return summary.products.filter(
@@ -368,12 +391,13 @@ export async function getLowStockAlerts() {
 }
 
 export async function getRecentTransactions(
+  tenantId: string,
   type?: "RECEIVE" | "TRANSFER" | "SALE",
   limit = 10,
   range?: { startDate: string; endDate: string }
 ) {
   const db = getDb();
-  const conditions = [];
+  const conditions = [eq(inventoryTransactions.tenantId, tenantId)];
 
   if (type) {
     conditions.push(eq(inventoryTransactions.type, type));
@@ -404,12 +428,16 @@ export async function getRecentTransactions(
       oilProducts,
       eq(inventoryTransactions.productId, oilProducts.id)
     )
-    .where(conditions.length ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(inventoryTransactions.createdAt))
     .limit(limit);
 }
 
-export async function getSalesForDateRange(startDate: string, endDate: string) {
+export async function getSalesForDateRange(
+  tenantId: string,
+  startDate: string,
+  endDate: string
+) {
   const db = getDb();
   const rows = await db
     .select({
@@ -426,6 +454,7 @@ export async function getSalesForDateRange(startDate: string, endDate: string) {
     )
     .where(
       and(
+        eq(inventoryTransactions.tenantId, tenantId),
         eq(inventoryTransactions.type, "SALE"),
         gte(inventoryTransactions.transactionDate, startDate),
         lte(inventoryTransactions.transactionDate, endDate)
@@ -476,12 +505,12 @@ export async function getSalesForDateRange(startDate: string, endDate: string) {
   }));
 }
 
-export async function getSalesLast7Days() {
+export async function getSalesLast7Days(tenantId: string) {
   const today = getIstTodayString();
-  return getSalesForDateRange(addIstDays(today, -6), today);
+  return getSalesForDateRange(tenantId, addIstDays(today, -6), today);
 }
 
-export async function getTodaySales(date = getIstTodayString()) {
+export async function getTodaySales(tenantId: string, date = getIstTodayString()) {
   const db = getDb();
   return db
     .select({
@@ -500,6 +529,7 @@ export async function getTodaySales(date = getIstTodayString()) {
     )
     .where(
       and(
+        eq(inventoryTransactions.tenantId, tenantId),
         eq(inventoryTransactions.type, "SALE"),
         eq(inventoryTransactions.transactionDate, date)
       )
@@ -507,14 +537,17 @@ export async function getTodaySales(date = getIstTodayString()) {
     .orderBy(oilProducts.name);
 }
 
-export async function getLedger(filters?: {
-  type?: string;
-  productId?: string;
-  startDate?: string;
-  endDate?: string;
-}) {
+export async function getLedger(
+  tenantId: string,
+  filters?: {
+    type?: string;
+    productId?: string;
+    startDate?: string;
+    endDate?: string;
+  }
+) {
   const db = getDb();
-  const conditions = [];
+  const conditions = [eq(inventoryTransactions.tenantId, tenantId)];
 
   if (filters?.type && filters.type !== "ALL") {
     conditions.push(
@@ -559,14 +592,18 @@ export async function getLedger(filters?: {
       oilProducts,
       eq(inventoryTransactions.productId, oilProducts.id)
     )
-    .where(conditions.length ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(
       desc(inventoryTransactions.createdAt),
       desc(inventoryTransactions.transactionDate)
     );
 }
 
-export async function getDailySummary(startDate: string, endDate: string) {
+export async function getDailySummary(
+  tenantId: string,
+  startDate: string,
+  endDate: string
+) {
   const db = getDb();
   const rows = await db
     .select({
@@ -584,6 +621,7 @@ export async function getDailySummary(startDate: string, endDate: string) {
     )
     .where(
       and(
+        eq(inventoryTransactions.tenantId, tenantId),
         gte(inventoryTransactions.transactionDate, startDate),
         lte(inventoryTransactions.transactionDate, endDate)
       )
@@ -621,7 +659,10 @@ export async function getDailySummary(startDate: string, endDate: string) {
     .map(([date, values]) => ({ date, ...values }));
 }
 
-export async function getReversedTransactionIdsFor(transactionIds: string[]) {
+export async function getReversedTransactionIdsFor(
+  tenantId: string,
+  transactionIds: string[]
+) {
   if (transactionIds.length === 0) {
     return new Set<string>();
   }
@@ -634,6 +675,7 @@ export async function getReversedTransactionIdsFor(transactionIds: string[]) {
     .from(inventoryTransactions)
     .where(
       and(
+        eq(inventoryTransactions.tenantId, tenantId),
         eq(inventoryTransactions.type, "REVERSAL"),
         inArray(inventoryTransactions.reversesTransactionId, transactionIds)
       )

@@ -1,14 +1,19 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { ticketQuestions } from "@/lib/db/schema";
 import type { TicketAnswer, TicketQuestionQueueItem } from "@/lib/db/schema";
 
-export async function getActiveQuestionsOrdered() {
+export async function getActiveQuestionsOrdered(tenantId: string) {
   const db = getDb();
   return db
     .select()
     .from(ticketQuestions)
-    .where(eq(ticketQuestions.isActive, true))
+    .where(
+      and(
+        eq(ticketQuestions.tenantId, tenantId),
+        eq(ticketQuestions.isActive, true)
+      )
+    )
     .orderBy(asc(ticketQuestions.order));
 }
 

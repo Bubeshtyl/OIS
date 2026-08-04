@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import {
   parseAnalyticsGranularity,
   parseAnalyticsMetric,
@@ -54,6 +55,7 @@ export default async function SalesDataAnalyticsPage({
     ranges?: string;
   }>;
 }) {
+  const session = await requireTenantSession();
   const params = await searchParams;
   const metric = parseAnalyticsMetric(params.metric);
 
@@ -108,7 +110,7 @@ export default async function SalesDataAnalyticsPage({
     (metric === "footfall-by-price" && footfallByPriceApplied);
 
   const filterOptions = needsProducts
-    ? await getDailySalesFilterOptions()
+    ? await getDailySalesFilterOptions(session.tenantId)
     : { products: [] as string[], mopTypes: [] as string[] };
 
   const selectedProduct =
@@ -123,25 +125,30 @@ export default async function SalesDataAnalyticsPage({
   ] = applied
     ? await Promise.all([
         footfallBounds
-          ? getFootfallByHourOfDay({
+          ? getFootfallByHourOfDay(session.tenantId, {
               ...footfallBounds,
               product: selectedProduct,
             })
           : Promise.resolve([]),
         footfallByPriceBounds
-          ? getFootfallByAmountRanges({
+          ? getFootfallByAmountRanges(session.tenantId, {
               ...footfallByPriceBounds,
               product: selectedProduct,
             })
           : Promise.resolve([]),
         salesApplied
-          ? getDailySalesMetricsByPeriod(start!, end!, granularity)
+          ? getDailySalesMetricsByPeriod(
+              session.tenantId,
+              start!,
+              end!,
+              granularity
+            )
           : Promise.resolve([]),
         salesApplied
-          ? getDailySalesMetricsByProduct(start!, end!)
+          ? getDailySalesMetricsByProduct(session.tenantId, start!, end!)
           : Promise.resolve([]),
         salesApplied
-          ? getDailySalesMetricsByMopType(start!, end!)
+          ? getDailySalesMetricsByMopType(session.tenantId, start!, end!)
           : Promise.resolve([]),
       ])
     : [[], [], [], [], []];

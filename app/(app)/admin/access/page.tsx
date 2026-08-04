@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/shared/page-blocks";
 import { getAccessConfiguration } from "@/lib/actions/access";
 import { getDefaultPath } from "@/lib/auth/rbac";
 import { getSession } from "@/lib/auth/session";
-import { isRbacAccessUiEnabled } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 
@@ -14,24 +13,21 @@ export default async function AdminAccessPage() {
     redirect("/login");
   }
 
-  if (!isRbacAccessUiEnabled() || session.role !== "ADMIN") {
-    redirect(await getDefaultPath(session.role));
-  }
-
   const config = await getAccessConfiguration();
   if (!config) {
-    redirect(await getDefaultPath(session.role));
+    redirect(await getDefaultPath(session));
   }
 
   return (
     <div>
       <PageHeader
-        title="Access"
-        subtitle="Choose which sidebar routes Manager and Accounts roles can use. Changes apply to navigation and URL access."
+        title="Roles & Access"
+        subtitle="Create roles, choose which routes each role can use, then assign users under Teams."
       />
       <AccessAdmin
         catalog={config.catalog}
-        permissionsByRole={config.permissionsByRole}
+        roles={config.roles}
+        permissionsByRoleId={config.permissionsByRoleId}
       />
     </div>
   );

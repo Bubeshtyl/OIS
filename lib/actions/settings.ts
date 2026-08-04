@@ -3,8 +3,8 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { revalidateSettingsPages } from "@/lib/actions/revalidate";
-import { requireSession } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/rbac";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { getDb } from "@/lib/db";
 import { ticketSettings } from "@/lib/db/schema";
 import type { ActionState } from "@/lib/actions/inventory";
@@ -19,8 +19,8 @@ export async function saveTicketSettingsAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "settings:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "settings:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -43,9 +43,9 @@ export async function saveTicketSettingsAction(
   const db = getDb();
   await db
     .insert(ticketSettings)
-    .values({ id: 1, ...values })
+    .values({ tenantId: session.tenantId, ...values })
     .onConflictDoUpdate({
-      target: ticketSettings.id,
+      target: ticketSettings.tenantId,
       set: { ...values, updatedAt: new Date() },
     });
 
@@ -53,12 +53,20 @@ export async function saveTicketSettingsAction(
   return { success: true, message: "Settings saved." };
 }
 
-export async function getTicketSettings() {
+export async function getTicketSettings(tenantId: string) {
   const db = getDb();
   const [settings] = await db
     .select()
     .from(ticketSettings)
-    .where(eq(ticketSettings.id, 1))
+    .where(eq(ticketSettings.tenantId, tenantId))
     .limit(1);
-  return settings ?? { id: 1, prefix: "JCK", paddingWidth: 6, accessCode: null };
+  return (
+    settings ?? {
+      id: null as string | null,
+      tenantId,
+      prefix: "JCK",
+      paddingWidth: 6,
+      accessCode: null as string | null,
+    }
+  );
 }

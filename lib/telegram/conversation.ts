@@ -30,6 +30,7 @@ import {
 } from "@/lib/tickets/service";
 import { formatTicketNumberWithSettings } from "@/lib/tickets/format";
 import { getTicketSettings } from "@/lib/actions/settings";
+import { getDefaultTenantId } from "@/lib/tenants/service";
 import type {
   TelegramSession,
   TicketAnswer,
@@ -52,8 +53,8 @@ function requesterName(from: { first_name: string; last_name?: string }) {
   return [from.first_name, from.last_name].filter(Boolean).join(" ").trim();
 }
 
-async function promptTeamSelection(chatId: string) {
-  const activeTeams = await getActiveTeams();
+async function promptTeamSelection(chatId: string, tenantId: string) {
+  const activeTeams = await getActiveTeams(tenantId);
   if (activeTeams.length === 0) {
     await sendMessage(
       chatId,
@@ -64,6 +65,7 @@ async function promptTeamSelection(chatId: string) {
   }
 
   await upsertSession(chatId, {
+    tenantId,
     step: "AWAITING_TEAM",
     teamId: null,
     questionQueue: [],
@@ -80,8 +82,10 @@ async function promptTeamSelection(chatId: string) {
 async function startFlow(chatId: string, message: TelegramMessage) {
   await deleteSession(chatId);
 
+  const tenantId = await getDefaultTenantId();
   const from = message.from;
   await upsertSession(chatId, {
+    tenantId,
     step: "AWAITING_TEAM",
     teamId: null,
     questionQueue: [],
@@ -93,7 +97,7 @@ async function startFlow(chatId: string, message: TelegramMessage) {
     telegramLastName: from?.last_name ?? null,
   });
 
-  const settings = await getTicketSettings();
+  const settings = await getTicketSettings(tenantId);
   const accessCode = settings.accessCode?.trim();
 
   if (accessCode) {
@@ -102,7 +106,7 @@ async function startFlow(chatId: string, message: TelegramMessage) {
     return;
   }
 
-  await promptTeamSelection(chatId);
+  await promptTeamSelection(chatId, tenantId);
 }
 
 async function cancelFlow(chatId: string) {
@@ -111,9 +115,10 @@ async function cancelFlow(chatId: string) {
 }
 
 async function listMyTickets(chatId: string) {
+  const tenantId = await getDefaultTenantId();
   const [tickets, settings] = await Promise.all([
-    getRecentTicketsForRequester(chatId, MY_TICKETS_LIMIT),
-    getTicketSettings(),
+    getRecentTicketsForRequester(tenantId, chatId, MY_TICKETS_LIMIT),
+    getTicketSettings(tenantId),
   ]);
 
   if (tickets.length === 0) {
@@ -226,12 +231,14 @@ async function handleMessage(message: TelegramMessage) {
     return;
   }
 
+  const tenantId = session.tenantId ?? (await getDefaultTenantId());
+
   if (session.step === "AWAITING_ACCESS_CODE") {
-    const settings = await getTicketSettings();
+    const settings = await getTicketSettings(tenantId);
     const accessCode = settings.accessCode?.trim();
 
     if (!accessCode || text === accessCode) {
-      await promptTeamSelection(chatId);
+      await promptTeamSelection(chatId, tenantId);
       return;
     }
 
@@ -266,7 +273,9 @@ async function handleMessage(message: TelegramMessage) {
     return;
   }
 
-  const team = session.teamId ? await getTeamById(session.teamId) : null;
+  const team = session.teamId
+    ? await getTeamById(tenantId, session.teamId)
+    : null;
   if (!team) {
     await sendMessage(chatId, "Something went wrong. Please /start again.");
     await deleteSession(chatId);
@@ -299,6 +308,8 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
     return;
   }
 
+  const tenantId = session.tenantId ?? (await getDefaultTenantId());
+
   const parsed = parseCallbackData(callbackQuery.data);
   if (!parsed) return;
 
@@ -309,7 +320,7 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
     if (!messageId) return;
 
     if (parsed.list === "team" && session.step === "AWAITING_TEAM") {
-      const activeTeams = await getActiveTeams();
+      const activeTeams = await getActiveTeams(tenantId);
       await editMessageReplyMarkup(chatId, messageId, buildTeamKeyboard(activeTeams, parsed.page));
       return;
     }
@@ -340,14 +351,14 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
       return;
     }
 
-    const team = await getTeamById(parsed.teamId);
+    const team = await getTeamById(tenantId, parsed.teamId);
     if (!team || !team.isActive) {
       await sendMessage(chatId, "That team is no longer available. Please /start again.");
       await deleteSession(chatId);
       return;
     }
 
-    const questions = await getActiveQuestionsOrdered();
+    const questions = await getActiveQuestionsOrdered(tenantId);
     const rawQueue: TicketQuestionQueueItem[] = questions.map((q) => ({
       id: q.id,
       prompt: q.prompt,
@@ -393,7 +404,9 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
       return;
     }
 
-    const team = session.teamId ? await getTeamById(session.teamId) : null;
+    const team = session.teamId
+      ? await getTeamById(tenantId, session.teamId)
+      : null;
     if (!team) {
       await sendMessage(chatId, "Something went wrong. Please /start again.");
       await deleteSession(chatId);
@@ -432,7 +445,7 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
       return;
     }
 
-    const team = await getTeamById(session.teamId);
+    const team = await getTeamById(tenantId, session.teamId);
     if (!team) {
       await sendMessage(chatId, "Something went wrong. Please /start again.");
       await deleteSession(chatId);
@@ -445,6 +458,7 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
     };
 
     const ticket = await createTicket({
+      tenantId,
       teamId: session.teamId,
       answers: session.answers,
       requesterTelegramUserId: session.telegramUserId,
@@ -455,7 +469,7 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
 
     await deleteSession(chatId);
 
-    const ticketNumber = await formatTicketNumber(ticket.ticketSeq);
+    const ticketNumber = await formatTicketNumber(tenantId, ticket.ticketSeq);
     await sendMessage(
       chatId,
       `Ticket ${ticketNumber} created. The ${team.name} team has been notified.`

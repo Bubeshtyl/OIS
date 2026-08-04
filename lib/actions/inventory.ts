@@ -2,9 +2,9 @@
 
 import { z } from "zod";
 import { revalidateInventoryPages } from "@/lib/actions/revalidate";
-import { requireSession } from "@/lib/auth/session";
 import { hasPermission } from "@/lib/auth/rbac";
-import { eq } from "drizzle-orm";
+import { requireTenantSession } from "@/lib/auth/permissions";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { oilProducts } from "@/lib/db/schema";
 import {
@@ -46,12 +46,12 @@ function buildReferenceNote(packageCount: number, userNote: string) {
   return [`Packages: ${packageCount}`, userNote || null].filter(Boolean).join("\n");
 }
 
-async function getProductById(productId: string) {
+async function getProductById(tenantId: string, productId: string) {
   const db = getDb();
   const [product] = await db
     .select()
     .from(oilProducts)
-    .where(eq(oilProducts.id, productId))
+    .where(and(eq(oilProducts.id, productId), eq(oilProducts.tenantId, tenantId)))
     .limit(1);
   return product ?? null;
 }
@@ -70,8 +70,8 @@ export async function receiveStockAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "receive:write"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "receive:write"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -102,11 +102,12 @@ export async function receiveStockAction(
   try {
     await createInventoryTransaction({
       ...parsed.data,
+      tenantId: session.tenantId,
       type: "RECEIVE",
       createdBy: session.userId,
     });
     revalidateInventoryPages();
-    const product = await getProductById(parsed.data.productId);
+    const product = await getProductById(session.tenantId, parsed.data.productId);
     return {
       success: true,
       message: `${boxToastMessage(packageCount, product)} received at Depot`,
@@ -126,8 +127,8 @@ export async function transferStockAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "transfer:write"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "transfer:write"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -153,11 +154,12 @@ export async function transferStockAction(
   try {
     await createInventoryTransaction({
       ...parsed.data,
+      tenantId: session.tenantId,
       type: "TRANSFER",
       createdBy: session.userId,
     });
     revalidateInventoryPages();
-    const product = await getProductById(parsed.data.productId);
+    const product = await getProductById(session.tenantId, parsed.data.productId);
     return {
       success: true,
       message: `${boxToastMessage(packageCount, product)} transferred to Manager`,
@@ -177,8 +179,8 @@ export async function recordSaleAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "sales:write"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "sales:write"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -217,7 +219,7 @@ export async function recordSaleAction(
     consumptionType === "RETURNED" ||
     consumptionType === "DAMAGED"
   ) {
-    const balance = await getProductBalance(parsed.data.productId, "MANAGER");
+    const balance = await getProductBalance(session.tenantId, parsed.data.productId, "MANAGER");
     if (balance <= 0) {
       return {
         success: false,
@@ -235,6 +237,7 @@ export async function recordSaleAction(
   try {
     await createInventoryTransaction({
       ...parsed.data,
+      tenantId: session.tenantId,
       type: consumptionType as "SALE" | "RETURNED" | "DAMAGED",
       createdBy: session.userId,
     });
@@ -264,24 +267,26 @@ export async function recordSaleAction(
 
 export async function getDepotBalanceAction(productId: string) {
   if (!productId) return 0;
-  return getProductBalance(productId, "DEPOT");
+  const session = await requireTenantSession();
+  return getProductBalance(session.tenantId, productId, "DEPOT");
 }
 
 export async function getManagerBalanceAction(productId: string) {
   if (!productId) return 0;
-  return getProductBalance(productId, "MANAGER");
+  const session = await requireTenantSession();
+  return getProductBalance(session.tenantId, productId, "MANAGER");
 }
 
 export async function reverseTransactionAction(
   transactionId: string
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "reversal:write"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "reversal:write"))) {
     return { success: false, error: "Only admins can reverse transactions." };
   }
 
   try {
-    await reverseTransaction(transactionId, session.userId);
+    await reverseTransaction(session.tenantId, transactionId, session.userId);
     revalidateInventoryPages();
     return { success: true, message: "Transaction reversed successfully." };
   } catch (error) {

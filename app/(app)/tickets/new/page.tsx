@@ -1,16 +1,16 @@
 import { NewTicketForm } from "@/components/tickets/new-ticket-form";
 import { PageHeader } from "@/components/shared/page-blocks";
-import { getSession } from "@/lib/auth/session";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { getActiveQuestionsOrdered } from "@/lib/questions/service";
 import { getActiveTeams } from "@/lib/teams/service";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewTicketPage() {
-  const [session, teams, questions] = await Promise.all([
-    getSession(),
-    getActiveTeams(),
-    getActiveQuestionsOrdered(),
+  const session = await requireTenantSession();
+  const [teams, questions] = await Promise.all([
+    getActiveTeams(session.tenantId),
+    getActiveQuestionsOrdered(session.tenantId),
   ]);
 
   return (
@@ -19,7 +19,7 @@ export default async function NewTicketPage() {
       <NewTicketForm
         teams={teams}
         questions={questions}
-        defaultRequesterName={session.isLoggedIn ? session.name : ""}
+        defaultRequesterName={session.name}
       />
     </div>
   );

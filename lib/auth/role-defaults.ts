@@ -1,5 +1,3 @@
-import type { UserRole } from "@/lib/db/schema";
-
 export type Permission =
   | "dashboard:read"
   | "receive:write"
@@ -18,28 +16,31 @@ export type Permission =
   | "questions:manage"
   | "settings:manage";
 
-export type EditableRole = "MANAGER" | "ACCOUNTS";
+/** Full permission set for the system Admin role on every tenant. */
+export const ADMIN_PERMISSIONS: Permission[] = [
+  "dashboard:read",
+  "receive:write",
+  "transfer:write",
+  "sales:write",
+  "reports:read",
+  "file-upload:read",
+  "daily-sales:read",
+  "sales-data-analytics:read",
+  "products:manage",
+  "users:manage",
+  "reversal:write",
+  "tickets:read",
+  "tickets:manage",
+  "teams:manage",
+  "questions:manage",
+  "settings:manage",
+];
 
-/** Hard-coded defaults — used when the Access UI flag is off, and as Admin’s always-on set. */
-export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  ADMIN: [
-    "dashboard:read",
-    "receive:write",
-    "transfer:write",
-    "sales:write",
-    "reports:read",
-    "file-upload:read",
-    "daily-sales:read",
-    "sales-data-analytics:read",
-    "products:manage",
-    "users:manage",
-    "reversal:write",
-    "tickets:read",
-    "tickets:manage",
-    "teams:manage",
-    "questions:manage",
-    "settings:manage",
-  ],
+/** Defaults used when seeding Manager / Accounts on migration. */
+export const LEGACY_ROLE_PERMISSIONS: Record<
+  "MANAGER" | "ACCOUNTS",
+  Permission[]
+> = {
   MANAGER: [
     "dashboard:read",
     "receive:write",
@@ -61,3 +62,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     "tickets:read",
   ],
 };
+
+export const SYSTEM_ADMIN_ROLE_NAME = "Admin";
+export const SYSTEM_MANAGER_ROLE_NAME = "Manager";
+export const SYSTEM_ACCOUNTS_ROLE_NAME = "Accounts";

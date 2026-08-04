@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission } from "@/lib/auth/rbac";
-import { getSession } from "@/lib/auth/session";
+import { getOptionalTenantSession } from "@/lib/auth/permissions";
 import {
   defaultRangeEnd,
   defaultRangeStart,
@@ -15,8 +15,8 @@ import { loadAllReportsData } from "@/lib/reports/load-all-reports";
 import { getIstTodayString } from "@/lib/timezone";
 
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session.isLoggedIn || !(await hasPermission(session.role, "reports:read"))) {
+  const session = await getOptionalTenantSession();
+  if (!session || !(await hasPermission(session, "reports:read"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     isValidDateString(endParam) ? endParam : defaultEnd
   );
 
-  const data = await loadAllReportsData(start, end);
+  const data = await loadAllReportsData(session.tenantId, start, end);
   const workbook = buildReportsWorkbook(data, start, end);
   const buffer = workbookToBuffer(workbook);
   const filename = `ois-reports-${start}-to-${end}.xlsx`;

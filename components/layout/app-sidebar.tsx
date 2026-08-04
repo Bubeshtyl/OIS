@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Building2,
   ChartColumn,
   ChevronRight,
   Container,
@@ -14,6 +15,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  MapPin,
   Settings,
   SquareArrowDown,
   SquareArrowUp,
@@ -66,6 +68,8 @@ const iconMap: Record<NavIcon, LucideIcon> = {
   questions: ListChecks,
   settings: Settings,
   access: KeyRound,
+  station: MapPin,
+  platform: Building2,
 };
 
 const groupMeta: Record<

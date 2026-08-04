@@ -1,16 +1,22 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   revalidateProductPages,
   revalidateUserPages,
 } from "@/lib/actions/revalidate";
 import { getDb } from "@/lib/db";
-import { oilProducts, users } from "@/lib/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { oilProducts, roles, users } from "@/lib/db/schema";
 import { hasPermission } from "@/lib/auth/rbac";
+import {
+  assertTenantRole,
+  isSystemAdminRole,
+  listRolesForTenant,
+  requireTenantSession,
+} from "@/lib/auth/permissions";
+import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
 import type { ActionState } from "@/lib/actions/inventory";
 
 const productSchema = z
@@ -40,8 +46,8 @@ export async function saveProductAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "products:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "products:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -93,9 +99,14 @@ export async function saveProductAction(
     await db
       .update(oilProducts)
       .set(values)
-      .where(eq(oilProducts.id, parsed.data.id));
+      .where(
+        and(
+          eq(oilProducts.id, parsed.data.id),
+          eq(oilProducts.tenantId, session.tenantId)
+        )
+      );
   } else {
-    await db.insert(oilProducts).values(values);
+    await db.insert(oilProducts).values({ ...values, tenantId: session.tenantId });
   }
 
   revalidateProductPages();
@@ -105,8 +116,8 @@ export async function saveProductAction(
 export async function deactivateProductAction(
   productId: string
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "products:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "products:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -119,7 +130,12 @@ export async function deactivateProductAction(
   await db
     .update(oilProducts)
     .set({ isActive: false })
-    .where(eq(oilProducts.id, parsedId.data));
+    .where(
+      and(
+        eq(oilProducts.id, parsedId.data),
+        eq(oilProducts.tenantId, session.tenantId)
+      )
+    );
 
   revalidateProductPages();
   return { success: true, message: "Product deactivated." };
@@ -128,8 +144,8 @@ export async function deactivateProductAction(
 export async function reactivateProductAction(
   productId: string
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "products:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "products:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -142,7 +158,12 @@ export async function reactivateProductAction(
   await db
     .update(oilProducts)
     .set({ isActive: true })
-    .where(eq(oilProducts.id, parsedId.data));
+    .where(
+      and(
+        eq(oilProducts.id, parsedId.data),
+        eq(oilProducts.tenantId, session.tenantId)
+      )
+    );
 
   revalidateProductPages();
   return { success: true, message: "Product reactivated." };
@@ -156,7 +177,7 @@ const userSchema = z.object({
     .min(3)
     .max(32)
     .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores."),
-  role: z.enum(["ADMIN", "MANAGER", "ACCOUNTS"]),
+  roleId: z.string().uuid(),
   password: z.string().min(6).optional(),
   isActive: z.coerce.boolean(),
 });
@@ -165,8 +186,8 @@ export async function saveUserAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "users:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "users:manage"))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -174,7 +195,7 @@ export async function saveUserAction(
     id: formData.get("id") || undefined,
     name: formData.get("name"),
     username: formData.get("username"),
-    role: formData.get("role"),
+    roleId: formData.get("roleId"),
     password: formData.get("password") || undefined,
     isActive: formData.get("isActive") === "true",
   });
@@ -187,19 +208,50 @@ export async function saveUserAction(
     return { success: false, error: "Password is required for new users." };
   }
 
+  if (!(await assertTenantRole(session.tenantId, parsed.data.roleId))) {
+    return { success: false, error: "Invalid role." };
+  }
+
+  if (
+    (await isSystemAdminRole(parsed.data.roleId)) &&
+    !(await isSystemAdminRole(session.roleId))
+  ) {
+    return {
+      success: false,
+      error: "Only an Admin can assign the Admin role.",
+    };
+  }
+
   const db = getDb();
 
   if (parsed.data.id) {
+    const [existing] = await db
+      .select({
+        tenantId: users.tenantId,
+        isPlatformAdmin: users.isPlatformAdmin,
+      })
+      .from(users)
+      .where(eq(users.id, parsed.data.id))
+      .limit(1);
+
+    if (
+      !existing ||
+      existing.isPlatformAdmin ||
+      existing.tenantId !== session.tenantId
+    ) {
+      return { success: false, error: "User not found." };
+    }
+
     const update: {
       name: string;
       username: string;
-      role: "ADMIN" | "MANAGER" | "ACCOUNTS";
+      roleId: string;
       isActive: boolean;
       passwordHash?: string;
     } = {
       name: parsed.data.name,
       username: parsed.data.username.toLowerCase(),
-      role: parsed.data.role,
+      roleId: parsed.data.roleId,
       isActive: parsed.data.isActive,
     };
 
@@ -210,10 +262,12 @@ export async function saveUserAction(
     await db.update(users).set(update).where(eq(users.id, parsed.data.id));
   } else {
     await db.insert(users).values({
+      tenantId: session.tenantId,
+      roleId: parsed.data.roleId,
       name: parsed.data.name,
       username: parsed.data.username.toLowerCase(),
-      role: parsed.data.role,
       isActive: parsed.data.isActive,
+      isPlatformAdmin: false,
       passwordHash: await bcrypt.hash(parsed.data.password!, 10),
     });
   }
@@ -223,11 +277,44 @@ export async function saveUserAction(
 }
 
 export async function getAllUsers() {
-  const session = await requireSession();
-  if (!(await hasPermission(session.role, "users:manage"))) {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "users:manage"))) {
     return [];
   }
 
   const db = getDb();
-  return db.select().from(users).orderBy(users.name);
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      isActive: users.isActive,
+      roleId: users.roleId,
+      roleName: roles.name,
+      teamId: users.teamId,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .leftJoin(roles, eq(users.roleId, roles.id))
+    .where(eq(users.tenantId, session.tenantId))
+    .orderBy(users.name);
+}
+
+/** Role choices for the Add/Edit User form — hides the Admin role unless the
+ * current user is themselves an Admin. */
+export async function getUserRoleOptions() {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "users:manage"))) {
+    return [];
+  }
+
+  const canAssignAdmin = await isSystemAdminRole(session.roleId);
+  const tenantRoles = await listRolesForTenant(session.tenantId);
+
+  return tenantRoles
+    .filter(
+      (role) =>
+        canAssignAdmin || !(role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME)
+    )
+    .map(({ id, name }) => ({ id, name }));
 }

@@ -39,6 +39,7 @@ export type {
 export { TRANSACTION_LIST_PAGE_SIZE } from "@/lib/transactions/types";
 
 function buildConditions(filters: {
+  tenantId: string;
   types: TransactionListType[];
   startDate: string;
   endDate: string;
@@ -47,6 +48,7 @@ function buildConditions(filters: {
   search?: string;
 }) {
   const conditions = [
+    eq(inventoryTransactions.tenantId, filters.tenantId),
     inArray(inventoryTransactions.type, filters.types),
     gte(inventoryTransactions.transactionDate, filters.startDate),
     lte(inventoryTransactions.transactionDate, filters.endDate),
@@ -105,6 +107,7 @@ function baseQuery() {
 }
 
 export async function getDistinctCreatorsForType(
+  tenantId: string,
   type: TransactionListType,
   startDate: string,
   endDate: string
@@ -119,6 +122,7 @@ export async function getDistinctCreatorsForType(
     .innerJoin(users, eq(inventoryTransactions.createdBy, users.id))
     .where(
       and(
+        eq(inventoryTransactions.tenantId, tenantId),
         eq(inventoryTransactions.type, type),
         gte(inventoryTransactions.transactionDate, startDate),
         lte(inventoryTransactions.transactionDate, endDate)
@@ -235,6 +239,7 @@ async function computeSummary(
 }
 
 export async function getAllTransactionRows(filters: {
+  tenantId: string;
   types: TransactionListType[];
   startDate: string;
   endDate: string;

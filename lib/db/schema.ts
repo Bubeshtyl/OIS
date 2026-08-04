@@ -11,6 +11,7 @@ import {
   serial,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -37,12 +38,6 @@ export const locationEnum = pgEnum("location", [
 
 export const stockLocationEnum = pgEnum("stock_location", ["DEPOT", "MANAGER"]);
 
-export const userRoleEnum = pgEnum("user_role", [
-  "ADMIN",
-  "MANAGER",
-  "ACCOUNTS",
-]);
-
 export const ticketStatusEnum = pgEnum("ticket_status", [
   "OPEN",
   "IN_PROGRESS",
@@ -62,14 +57,63 @@ export const telegramSessionStepEnum = pgEnum("telegram_session_step", [
   "AWAITING_CONFIRMATION",
 ]);
 
+export const tenants = pgTable("tenants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  state: text("state"),
+  pincode: text("pincode"),
+  phone: text("phone"),
+  onboardingComplete: boolean("onboarding_complete").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+export const roles = pgTable(
+  "roles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    isSystem: boolean("is_system").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [unique("roles_tenant_name_unique").on(table.tenantId, table.name)]
+);
+
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    permission: text("permission").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.roleId, table.permission] })]
+);
+
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => tenants.id, {
+    onDelete: "cascade",
+  }),
+  roleId: uuid("role_id").references(() => roles.id),
   name: text("name").notNull(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  role: userRoleEnum("role").notNull(),
   teamId: uuid("team_id").references(() => teams.id),
+  isPlatformAdmin: boolean("is_platform_admin").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
@@ -77,6 +121,9 @@ export const users = pgTable("users", {
 
 export const oilProducts = pgTable("oil_products", {
   id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   unit: productUnitEnum("unit").notNull(),
   costPrice: numeric("cost_price", { precision: 12, scale: 2 }).notNull(),
@@ -102,6 +149,9 @@ export const oilProducts = pgTable("oil_products", {
 
 export const inventoryTransactions = pgTable("inventory_transactions", {
   id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
   productId: uuid("product_id")
     .notNull()
     .references(() => oilProducts.id),
@@ -123,6 +173,9 @@ export const inventoryTransactions = pgTable("inventory_transactions", {
 export const stockBalance = pgTable(
   "stock_balance",
   {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
     productId: uuid("product_id")
       .notNull()
       .references(() => oilProducts.id),
@@ -134,40 +187,53 @@ export const stockBalance = pgTable(
       .default(sql`now()`)
       .notNull(),
   },
-  (table) => [primaryKey({ columns: [table.productId, table.location] })]
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.productId, table.location] }),
+  ]
 );
 
-/** Pump daily sales import — standalone, no FKs. Upserted by receipt_no. */
-export const dailySales = pgTable("daily_sales", {
-  receiptNo: text("receipt_no").primaryKey(),
-  startDate: timestamp("start_date", { withTimezone: false }).notNull(),
-  endDate: timestamp("end_date", { withTimezone: false }).notNull(),
-  product: text("product").notNull(),
-  amount: numeric("amount", { precision: 14, scale: 3 }).notNull(),
-  volumeLitre: numeric("volume_litre", { precision: 14, scale: 3 }).notNull(),
-  ratePerLtr: numeric("rate_per_ltr", { precision: 14, scale: 3 }).notNull(),
-  mopType: text("mop_type").notNull(),
-  dsmName: text("dsm_name").notNull(),
-  bayNo: integer("bay_no"),
-  nozzleNo: integer("nozzle_no"),
-  startTot: numeric("start_tot", { precision: 16, scale: 3 }).notNull(),
-  endTot: numeric("end_tot", { precision: 16, scale: 3 }).notNull(),
-  discountAmount: numeric("discount_amount", { precision: 14, scale: 3 })
-    .notNull()
-    .default("0"),
-  netAmount: numeric("net_amount", { precision: 14, scale: 3 }).notNull(),
-  vehicleNo: text("vehicle_no"),
-  vehicleSegment: text("vehicle_segment"),
-  mobileNo: text("mobile_no"),
-  loadedAt: timestamp("loaded_at", { withTimezone: true })
-    .default(sql`now()`)
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }),
-});
+/** Pump daily sales import — upserted by (tenant_id, receipt_no). */
+export const dailySales = pgTable(
+  "daily_sales",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    receiptNo: text("receipt_no").notNull(),
+    startDate: timestamp("start_date", { withTimezone: false }).notNull(),
+    endDate: timestamp("end_date", { withTimezone: false }).notNull(),
+    product: text("product").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 3 }).notNull(),
+    volumeLitre: numeric("volume_litre", { precision: 14, scale: 3 }).notNull(),
+    ratePerLtr: numeric("rate_per_ltr", { precision: 14, scale: 3 }).notNull(),
+    mopType: text("mop_type").notNull(),
+    dsmName: text("dsm_name").notNull(),
+    bayNo: integer("bay_no"),
+    nozzleNo: integer("nozzle_no"),
+    startTot: numeric("start_tot", { precision: 16, scale: 3 }).notNull(),
+    endTot: numeric("end_tot", { precision: 16, scale: 3 }).notNull(),
+    discountAmount: numeric("discount_amount", { precision: 14, scale: 3 })
+      .notNull()
+      .default("0"),
+    netAmount: numeric("net_amount", { precision: 14, scale: 3 }).notNull(),
+    vehicleNo: text("vehicle_no"),
+    vehicleSegment: text("vehicle_segment"),
+    mobileNo: text("mobile_no"),
+    loadedAt: timestamp("loaded_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.tenantId, table.receiptNo] }),
+  ]
+);
 
-/** Successful daily sales file uploads — used for recent upload history. */
 export const dailySalesUploads = pgTable("daily_sales_uploads", {
   id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
   fileName: text("file_name").notNull(),
   uploadedBy: uuid("uploaded_by").references(() => users.id),
   inserted: integer("inserted").notNull().default(0),
@@ -179,28 +245,29 @@ export const dailySalesUploads = pgTable("daily_sales_uploads", {
     .notNull(),
 });
 
-export const teams = pgTable("teams", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  name: text("name").notNull().unique(),
-  telegramChatId: text("telegram_chat_id").notNull(),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .default(sql`now()`)
-    .notNull(),
-});
-
-export const rolePermissions = pgTable(
-  "role_permissions",
+export const teams = pgTable(
+  "teams",
   {
-    role: userRoleEnum("role").notNull(),
-    permission: text("permission").notNull(),
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    telegramChatId: text("telegram_chat_id").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
   },
-  (table) => [primaryKey({ columns: [table.role, table.permission] })]
+  (table) => [unique("teams_tenant_name_unique").on(table.tenantId, table.name)]
 );
 
 export const ticketQuestions = pgTable("ticket_questions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  order: integer("order").notNull().unique(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  order: integer("order").notNull(),
   prompt: text("prompt").notNull(),
   answerType: questionAnswerTypeEnum("answer_type").notNull().default("TEXT"),
   choices: jsonb("choices").$type<string[]>(),
@@ -212,15 +279,22 @@ export const ticketQuestions = pgTable("ticket_questions", {
     .notNull(),
 });
 
-export const ticketSettings = pgTable("ticket_settings", {
-  id: integer("id").primaryKey().default(1),
-  prefix: text("prefix").notNull().default("JCK"),
-  paddingWidth: integer("padding_width").notNull().default(6),
-  accessCode: text("access_code"),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .default(sql`now()`)
-    .notNull(),
-});
+export const ticketSettings = pgTable(
+  "ticket_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    prefix: text("prefix").notNull().default("JCK"),
+    paddingWidth: integer("padding_width").notNull().default(6),
+    accessCode: text("access_code"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [unique("ticket_settings_tenant_unique").on(table.tenantId)]
+);
 
 export type TicketAnswer = {
   questionId: string;
@@ -240,6 +314,9 @@ export type TicketQuestionQueueItem = {
 
 export const tickets = pgTable("tickets", {
   id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
   ticketSeq: serial("ticket_seq").notNull().unique(),
   teamId: uuid("team_id")
     .notNull()
@@ -263,6 +340,9 @@ export const tickets = pgTable("tickets", {
 
 export const telegramSessions = pgTable("telegram_sessions", {
   chatId: text("chat_id").primaryKey(),
+  tenantId: uuid("tenant_id").references(() => tenants.id, {
+    onDelete: "cascade",
+  }),
   step: telegramSessionStepEnum("step").notNull().default("AWAITING_TEAM"),
   teamId: uuid("team_id").references(() => teams.id),
   questionQueue: jsonb("question_queue")
@@ -290,7 +370,39 @@ export const telegramProcessedUpdates = pgTable("telegram_processed_updates", {
     .notNull(),
 });
 
+export const tenantsRelations = relations(tenants, ({ many }) => ({
+  roles: many(roles),
+  users: many(users),
+}));
+
+export const rolesRelations = relations(roles, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [roles.tenantId],
+    references: [tenants.id],
+  }),
+  permissions: many(rolePermissions),
+  users: many(users),
+}));
+
+export const rolePermissionsRelations = relations(
+  rolePermissions,
+  ({ one }) => ({
+    role: one(roles, {
+      fields: [rolePermissions.roleId],
+      references: [roles.id],
+    }),
+  })
+);
+
 export const usersRelations = relations(users, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [users.tenantId],
+    references: [tenants.id],
+  }),
+  role: one(roles, {
+    fields: [users.roleId],
+    references: [roles.id],
+  }),
   team: one(teams, {
     fields: [users.teamId],
     references: [teams.id],
@@ -298,7 +410,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   transactions: many(inventoryTransactions),
 }));
 
-export const oilProductsRelations = relations(oilProducts, ({ many }) => ({
+export const oilProductsRelations = relations(oilProducts, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [oilProducts.tenantId],
+    references: [tenants.id],
+  }),
   transactions: many(inventoryTransactions),
   balances: many(stockBalance),
 }));
@@ -328,7 +444,11 @@ export const stockBalanceRelations = relations(stockBalance, ({ one }) => ({
   }),
 }));
 
-export const teamsRelations = relations(teams, ({ many }) => ({
+export const teamsRelations = relations(teams, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [teams.tenantId],
+    references: [tenants.id],
+  }),
   tickets: many(tickets),
   telegramSessions: many(telegramSessions),
   members: many(users),
@@ -351,12 +471,13 @@ export const telegramSessionsRelations = relations(
   })
 );
 
+export type Tenant = typeof tenants.$inferSelect;
+export type Role = typeof roles.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type OilProduct = typeof oilProducts.$inferSelect;
 export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
 export type StockBalance = typeof stockBalance.$inferSelect;
 export type DailySale = typeof dailySales.$inferSelect;
-export type UserRole = (typeof userRoleEnum.enumValues)[number];
 export type TransactionType = (typeof transactionTypeEnum.enumValues)[number];
 export type Location = (typeof locationEnum.enumValues)[number];
 export type StockLocation = (typeof stockLocationEnum.enumValues)[number];

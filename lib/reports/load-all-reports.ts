@@ -4,11 +4,15 @@ import {
   getVarianceReport,
 } from "@/lib/queries/reports";
 
-export async function loadAllReportsData(startDate: string, endDate: string) {
+export async function loadAllReportsData(
+  tenantId: string,
+  startDate: string,
+  endDate: string
+) {
   const [stockSummary, variance, ledger] = await Promise.all([
-    getStockSummaryReport(startDate, endDate),
-    getVarianceReport(startDate, endDate),
-    getLedger({ startDate, endDate }),
+    getStockSummaryReport(tenantId, startDate, endDate),
+    getVarianceReport(tenantId, startDate, endDate),
+    getLedger(tenantId, { startDate, endDate }),
   ]);
 
   return {

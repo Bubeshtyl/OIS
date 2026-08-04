@@ -3,8 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { User } from "@/lib/db/schema";
-import type { TeamWithManager } from "@/lib/teams/service";
+import type { SystemUser, TeamWithManager } from "@/lib/teams/service";
 import { saveTeamAction } from "@/lib/actions/teams";
 import type { ActionState } from "@/lib/actions/inventory";
 import { UsersAdmin } from "@/components/admin/users-admin";
@@ -167,9 +166,11 @@ function TeamFormSheet({
 export function TeamsAdmin({
   teams,
   systemUsers,
+  roleOptions,
 }: {
   teams: TeamWithManager[];
-  systemUsers: User[];
+  systemUsers: SystemUser[];
+  roleOptions: { id: string; name: string }[];
 }) {
   return (
     <div className="space-y-10">
@@ -219,7 +220,7 @@ export function TeamsAdmin({
               Admin and accounts logins that are not tied to a team.
             </p>
           </div>
-          <UsersAdmin users={systemUsers} />
+          <UsersAdmin users={systemUsers} roleOptions={roleOptions} />
         </div>
       )}
     </div>

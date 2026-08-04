@@ -5,7 +5,7 @@ import { getTeamConfiguration } from "@/lib/actions/teams";
 export const dynamic = "force-dynamic";
 
 export default async function AdminTeamsPage() {
-  const { teams, systemUsers } = await getTeamConfiguration();
+  const { teams, systemUsers, roleOptions } = await getTeamConfiguration();
 
   return (
     <div>
@@ -13,7 +13,11 @@ export default async function AdminTeamsPage() {
         title="Teams"
         subtitle="Configure ticket teams, Telegram groups, and manager logins in one place."
       />
-      <TeamsAdmin teams={teams} systemUsers={systemUsers} />
+      <TeamsAdmin
+        teams={teams}
+        systemUsers={systemUsers}
+        roleOptions={roleOptions}
+      />
     </div>
   );
 }

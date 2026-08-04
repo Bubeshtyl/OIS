@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getIronSession } from "iron-session";
+import { canAccessRoute, getDefaultPath } from "@/lib/auth/rbac";
 import {
-  canAccessRoute,
-  getDefaultPath,
-} from "@/lib/auth/rbac";
-import {
-  defaultSession,
   sessionOptions,
   type SessionData,
 } from "@/lib/auth/session-config";
@@ -33,12 +29,12 @@ export async function proxy(request: NextRequest) {
 
   if (session.isLoggedIn && pathname === "/login") {
     return NextResponse.redirect(
-      new URL(await getDefaultPath(session.role), request.url)
+      new URL(await getDefaultPath(session), request.url)
     );
   }
 
-  if (session.isLoggedIn && !(await canAccessRoute(session.role, pathname))) {
-    const defaultPath = await getDefaultPath(session.role);
+  if (session.isLoggedIn && !(await canAccessRoute(session, pathname))) {
+    const defaultPath = await getDefaultPath(session);
     if (pathname !== defaultPath) {
       return NextResponse.redirect(new URL(defaultPath, request.url));
     }

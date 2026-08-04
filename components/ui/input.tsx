@@ -1,11 +1,14 @@
-import * as React from "react"
-import { Input as InputPrimitive } from "@base-ui/react/input"
+import * as React from "react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
+/**
+ * Native input — avoids Base UI Field.Control's shared default context when used
+ * outside <Field.Root>, which can break typing direction/caret behavior.
+ */
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
-    <InputPrimitive
+    <input
       type={type}
       data-slot="input"
       className={cn(
@@ -13,8 +16,14 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         className
       )}
       {...props}
+      dir="ltr"
+      style={{
+        ...props.style,
+        direction: "ltr",
+        unicodeBidi: "isolate",
+      }}
     />
-  )
+  );
 }
 
-export { Input }
+export { Input };

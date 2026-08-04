@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db";
 import type { DailySalesRow } from "@/lib/daily-sales/parse-workbook";
@@ -14,7 +15,8 @@ const STAGE_CHUNK_SIZE = 2500;
 
 /** Matches the TEMP stage table created inside the upsert transaction. */
 const dailySalesStage = pgTable("daily_sales_stage", {
-  receiptNo: text("receipt_no").primaryKey(),
+  tenantId: uuid("tenant_id").notNull(),
+  receiptNo: text("receipt_no").notNull(),
   startDate: timestamp("start_date", { withTimezone: false }).notNull(),
   endDate: timestamp("end_date", { withTimezone: false }).notNull(),
   product: text("product").notNull(),
@@ -40,8 +42,9 @@ export type UpsertDailySalesResult = {
   total: number;
 };
 
-function toInsertValues(row: DailySalesRow) {
+function toInsertValues(tenantId: string, row: DailySalesRow) {
   return {
+    tenantId,
     receiptNo: row.receiptNo,
     startDate: row.startDate,
     endDate: row.endDate,
@@ -68,6 +71,7 @@ function toInsertValues(row: DailySalesRow) {
  * Keeps loaded_at on insert only; sets updated_at only on conflict updates.
  */
 export async function upsertDailySales(
+  tenantId: string,
   rows: DailySalesRow[]
 ): Promise<UpsertDailySalesResult> {
   if (rows.length === 0) {
@@ -79,7 +83,8 @@ export async function upsertDailySales(
   return db.transaction(async (tx) => {
     await tx.execute(sql`
       CREATE TEMP TABLE daily_sales_stage (
-        receipt_no text PRIMARY KEY,
+        tenant_id uuid NOT NULL,
+        receipt_no text NOT NULL,
         start_date timestamp NOT NULL,
         end_date timestamp NOT NULL,
         product text NOT NULL,
@@ -96,19 +101,23 @@ export async function upsertDailySales(
         net_amount numeric(14, 3) NOT NULL,
         vehicle_no text,
         vehicle_segment text,
-        mobile_no text
+        mobile_no text,
+        PRIMARY KEY (tenant_id, receipt_no)
       ) ON COMMIT DROP
     `);
 
     for (let i = 0; i < rows.length; i += STAGE_CHUNK_SIZE) {
-      const chunk = rows.slice(i, i + STAGE_CHUNK_SIZE).map(toInsertValues);
+      const chunk = rows
+        .slice(i, i + STAGE_CHUNK_SIZE)
+        .map((row) => toInsertValues(tenantId, row));
       await tx.insert(dailySalesStage).values(chunk);
     }
 
     const countResult = await tx.execute(sql`
       SELECT count(*)::int AS updated
       FROM daily_sales_stage s
-      INNER JOIN daily_sales d ON d.receipt_no = s.receipt_no
+      INNER JOIN daily_sales d
+        ON d.tenant_id = s.tenant_id AND d.receipt_no = s.receipt_no
     `);
     const updated = Number(
       (countResult[0] as { updated?: number | string } | undefined)?.updated ?? 0
@@ -117,6 +126,7 @@ export async function upsertDailySales(
 
     await tx.execute(sql`
       INSERT INTO daily_sales (
+        tenant_id,
         receipt_no,
         start_date,
         end_date,
@@ -139,6 +149,7 @@ export async function upsertDailySales(
         updated_at
       )
       SELECT
+        s.tenant_id,
         s.receipt_no,
         s.start_date,
         s.end_date,
@@ -160,7 +171,7 @@ export async function upsertDailySales(
         now(),
         NULL
       FROM daily_sales_stage s
-      ON CONFLICT (receipt_no) DO UPDATE SET
+      ON CONFLICT (tenant_id, receipt_no) DO UPDATE SET
         start_date = EXCLUDED.start_date,
         end_date = EXCLUDED.end_date,
         product = EXCLUDED.product,

@@ -20,6 +20,6 @@ export function isReportType(value?: string): value is ReportType {
   return Boolean(value && REPORT_TYPES.includes(value as ReportType));
 }
 
-export function defaultReportForRole(role: string): ReportType {
-  return role === "ACCOUNTS" ? "consumption" : "stock-summary";
+export function defaultReportForRole(canWriteInventory: boolean): ReportType {
+  return canWriteInventory ? "stock-summary" : "consumption";
 }

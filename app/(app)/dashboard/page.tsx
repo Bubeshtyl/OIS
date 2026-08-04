@@ -3,7 +3,7 @@ import type { DashboardLocation } from "@/components/dashboard/dashboard-locatio
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { canWriteInventory } from "@/lib/auth/rbac";
-import { getSession } from "@/lib/auth/session";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { parseStockDisplayUnit } from "@/lib/format";
 import {
   defaultRangeEnd,
@@ -47,7 +47,7 @@ export default async function DashboardPage({
     unit?: string;
   }>;
 }) {
-  const session = await getSession();
+  const session = await requireTenantSession();
   const params = await searchParams;
   const today = getIstTodayString();
   const defaultStart = defaultRangeStart(today);
@@ -60,13 +60,16 @@ export default async function DashboardPage({
   const unit = parseStockDisplayUnit(params.unit);
   const [stock, activity, chartData, recent, productActivity, daily, lowStock] =
     await Promise.all([
-      getStockSummary(),
-      getActivityForRange(start, end),
-      getSalesForDateRange(start, end),
-      getRecentTransactions(undefined, 6, { startDate: start, endDate: end }),
-      getProductActivityForRange(start, end),
-      getDailySummary(start, end),
-      getLowStockAlerts(),
+      getStockSummary(session.tenantId),
+      getActivityForRange(session.tenantId, start, end),
+      getSalesForDateRange(session.tenantId, start, end),
+      getRecentTransactions(session.tenantId, undefined, 6, {
+        startDate: start,
+        endDate: end,
+      }),
+      getProductActivityForRange(session.tenantId, start, end),
+      getDailySummary(session.tenantId, start, end),
+      getLowStockAlerts(session.tenantId),
     ]);
 
   const dailyAsc = [...daily].sort((a, b) => a.date.localeCompare(b.date));
@@ -213,7 +216,7 @@ export default async function DashboardPage({
       <DashboardView
         location={location}
         unit={unit}
-        canWrite={await canWriteInventory(session.role)}
+        canWrite={await canWriteInventory(session)}
         stockKpi={stockKpi}
         varianceKpi={varianceKpi}
         activity={{

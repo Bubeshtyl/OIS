@@ -115,8 +115,11 @@ function conditionToSql(condition: DailySalesCondition): SQL | undefined {
   }
 }
 
-function buildFilterWhere(filters: DailySalesFilters): SQL | undefined {
-  const parts: SQL[] = [];
+function buildFilterWhere(
+  tenantId: string,
+  filters: DailySalesFilters
+): SQL | undefined {
+  const parts: SQL[] = [eq(dailySales.tenantId, tenantId)];
 
   if (filters.start) {
     parts.push(
@@ -176,7 +179,6 @@ function buildFilterWhere(filters: DailySalesFilters): SQL | undefined {
     if (clause) parts.push(clause);
   }
 
-  if (parts.length === 0) return undefined;
   return and(...parts);
 }
 
@@ -203,16 +205,18 @@ const dailySalesSelect = {
   updatedAt: dailySales.updatedAt,
 };
 
-export async function getDailySalesFilterOptions() {
+export async function getDailySalesFilterOptions(tenantId: string) {
   const db = getDb();
   const [products, mopTypes] = await Promise.all([
     db
       .selectDistinct({ product: dailySales.product })
       .from(dailySales)
+      .where(eq(dailySales.tenantId, tenantId))
       .orderBy(asc(dailySales.product)),
     db
       .selectDistinct({ mopType: dailySales.mopType })
       .from(dailySales)
+      .where(eq(dailySales.tenantId, tenantId))
       .orderBy(asc(dailySales.mopType)),
   ]);
 
@@ -223,9 +227,11 @@ export async function getDailySalesFilterOptions() {
 }
 
 export async function getDailySalesReportPage({
+  tenantId,
   filters,
   page,
 }: {
+  tenantId: string;
   filters: DailySalesFilters;
   page: number;
 }): Promise<{
@@ -247,7 +253,7 @@ export async function getDailySalesReportPage({
 
   const db = getDb();
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-  const where = buildFilterWhere(filters);
+  const where = buildFilterWhere(tenantId, filters);
 
   const [totalRow] = await db
     .select({ total: count() })
@@ -277,6 +283,7 @@ export async function getDailySalesReportPage({
 
 /** All rows matching filters (no pagination) for Excel export. */
 export async function getDailySalesExportRows(
+  tenantId: string,
   filters: DailySalesFilters
 ): Promise<DailySalesReportRow[]> {
   if (!filters.applied) return [];
@@ -285,7 +292,7 @@ export async function getDailySalesExportRows(
   return db
     .select(dailySalesSelect)
     .from(dailySales)
-    .where(buildFilterWhere(filters))
+    .where(buildFilterWhere(tenantId, filters))
     .orderBy(asc(dailySales.receiptNo));
 }
 
@@ -317,7 +324,11 @@ function normalizeAnalyticsBounds(start: string, end: string) {
   return { start: end, end: start };
 }
 
-function analyticsDateTimeWhere(startDateTime: string, endDateTime: string) {
+function analyticsDateTimeWhere(
+  tenantId: string,
+  startDateTime: string,
+  endDateTime: string
+) {
   if (
     !ANALYTICS_DATETIME_RE.test(startDateTime) ||
     !ANALYTICS_DATETIME_RE.test(endDateTime)
@@ -330,6 +341,7 @@ function analyticsDateTimeWhere(startDateTime: string, endDateTime: string) {
     start,
     end,
     where: and(
+      eq(dailySales.tenantId, tenantId),
       gte(
         dailySales.startDate,
         sql`${wallDateTimeToTimestamp(start, "start")}::timestamp`
@@ -348,11 +360,12 @@ export type DailySalesBreakdownPoint = {
 };
 
 async function getDailySalesAmountBreakdown(
+  tenantId: string,
   startDateTime: string,
   endDateTime: string,
   dimension: "product" | "mopType"
 ): Promise<DailySalesBreakdownPoint[]> {
-  const bounds = analyticsDateTimeWhere(startDateTime, endDateTime);
+  const bounds = analyticsDateTimeWhere(tenantId, startDateTime, endDateTime);
   if (!bounds) return [];
 
   const groupColumn =
@@ -378,17 +391,29 @@ async function getDailySalesAmountBreakdown(
 }
 
 export async function getDailySalesMetricsByProduct(
+  tenantId: string,
   startDateTime: string,
   endDateTime: string
 ): Promise<DailySalesBreakdownPoint[]> {
-  return getDailySalesAmountBreakdown(startDateTime, endDateTime, "product");
+  return getDailySalesAmountBreakdown(
+    tenantId,
+    startDateTime,
+    endDateTime,
+    "product"
+  );
 }
 
 export async function getDailySalesMetricsByMopType(
+  tenantId: string,
   startDateTime: string,
   endDateTime: string
 ): Promise<DailySalesBreakdownPoint[]> {
-  return getDailySalesAmountBreakdown(startDateTime, endDateTime, "mopType");
+  return getDailySalesAmountBreakdown(
+    tenantId,
+    startDateTime,
+    endDateTime,
+    "mopType"
+  );
 }
 
 function periodBucketExpr(granularity: AnalyticsGranularity) {
@@ -408,11 +433,12 @@ function periodBucketExpr(granularity: AnalyticsGranularity) {
 
 /** Period totals for amount / net / volume between inclusive datetime bounds (`yyyy-MM-ddTHH:mm`). */
 export async function getDailySalesMetricsByPeriod(
+  tenantId: string,
   startDateTime: string,
   endDateTime: string,
   granularity: AnalyticsGranularity
 ): Promise<DailySalesMetricPoint[]> {
-  const bounds = analyticsDateTimeWhere(startDateTime, endDateTime);
+  const bounds = analyticsDateTimeWhere(tenantId, startDateTime, endDateTime);
   if (!bounds) return [];
 
   const { start, end, where } = bounds;
@@ -463,11 +489,12 @@ export async function getDailySalesMetricsByPeriod(
 
 /** Footfall = receipt count, bucketed by period. */
 export async function getFootfallMetricsByPeriod(
+  tenantId: string,
   startDateTime: string,
   endDateTime: string,
   granularity: AnalyticsGranularity
 ): Promise<FootfallMetricPoint[]> {
-  const bounds = analyticsDateTimeWhere(startDateTime, endDateTime);
+  const bounds = analyticsDateTimeWhere(tenantId, startDateTime, endDateTime);
   if (!bounds) return [];
 
   const { start, end, where } = bounds;
@@ -503,6 +530,7 @@ export async function getFootfallMetricsByPeriod(
  * on each day (not one continuous datetime span).
  */
 export async function getFootfallByHourOfDay(
+  tenantId: string,
   bounds: FootfallFilterBounds
 ): Promise<FootfallHourPoint[]> {
   const {
@@ -517,6 +545,7 @@ export async function getFootfallByHourOfDay(
   const hourExpr = sql<number>`extract(hour from ${dailySales.startDate})::int`;
 
   const parts: SQL[] = [
+    eq(dailySales.tenantId, tenantId),
     sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') >= ${startDate}`,
     sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') <= ${endDate}`,
     sql`extract(hour from ${dailySales.startDate})::int >= ${startHour}`,
@@ -560,6 +589,7 @@ export type FootfallAmountRangePoint = {
  * (min inclusive, max exclusive), within a calendar date span.
  */
 export async function getFootfallByAmountRanges(
+  tenantId: string,
   bounds: FootfallByPriceBounds
 ): Promise<FootfallAmountRangePoint[]> {
   const { startDate, endDate, ranges, product } = bounds;
@@ -567,6 +597,7 @@ export async function getFootfallByAmountRanges(
 
   const db = getDb();
   const parts: SQL[] = [
+    eq(dailySales.tenantId, tenantId),
     sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') >= ${startDate}`,
     sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') <= ${endDate}`,
   ];
@@ -596,10 +627,11 @@ export async function getFootfallByAmountRanges(
 
 /** Daily totals for amount / net / volume between inclusive datetime bounds (`yyyy-MM-ddTHH:mm`). */
 export async function getDailySalesMetricsByDay(
+  tenantId: string,
   startDateTime: string,
   endDateTime: string
 ): Promise<DailySalesMetricPoint[]> {
-  return getDailySalesMetricsByPeriod(startDateTime, endDateTime, "day");
+  return getDailySalesMetricsByPeriod(tenantId, startDateTime, endDateTime, "day");
 }
 
 export type RecentDailySalesUpload = {
@@ -614,6 +646,7 @@ export type RecentDailySalesUpload = {
 };
 
 export async function recordDailySalesUpload(input: {
+  tenantId: string;
   fileName: string;
   uploadedBy: string | null;
   inserted: number;
@@ -625,6 +658,7 @@ export async function recordDailySalesUpload(input: {
   const [row] = await db
     .insert(dailySalesUploads)
     .values({
+      tenantId: input.tenantId,
       fileName: input.fileName,
       uploadedBy: input.uploadedBy,
       inserted: input.inserted,
@@ -637,6 +671,7 @@ export async function recordDailySalesUpload(input: {
 }
 
 export async function getRecentDailySalesUploads(
+  tenantId: string,
   limit = 5
 ): Promise<RecentDailySalesUpload[]> {
   const db = getDb();
@@ -653,6 +688,7 @@ export async function getRecentDailySalesUploads(
     })
     .from(dailySalesUploads)
     .leftJoin(users, eq(dailySalesUploads.uploadedBy, users.id))
+    .where(eq(dailySalesUploads.tenantId, tenantId))
     .orderBy(desc(dailySalesUploads.createdAt))
     .limit(limit);
 

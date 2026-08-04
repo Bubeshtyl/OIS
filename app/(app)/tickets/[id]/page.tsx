@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { TicketStatusForm } from "@/components/tickets/ticket-status-form";
 import { hasPermission } from "@/lib/auth/rbac";
-import { getSession } from "@/lib/auth/session";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { getTicketSettings } from "@/lib/actions/settings";
 import { getTicketById } from "@/lib/tickets/service";
 import { formatTicketNumberWithSettings } from "@/lib/tickets/format";
@@ -16,10 +16,10 @@ export default async function TicketDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [session, ticket, settings] = await Promise.all([
-    getSession(),
-    getTicketById(id),
-    getTicketSettings(),
+  const session = await requireTenantSession();
+  const [ticket, settings] = await Promise.all([
+    getTicketById(session.tenantId, id),
+    getTicketSettings(session.tenantId),
   ]);
 
   if (!ticket) {
@@ -31,9 +31,7 @@ export default async function TicketDetailPage({
     settings.prefix,
     settings.paddingWidth
   );
-  const canManage =
-    session.isLoggedIn &&
-    (await hasPermission(session.role, "tickets:manage"));
+  const canManage = await hasPermission(session, "tickets:manage");
 
   return (
     <div className="max-w-2xl space-y-6">

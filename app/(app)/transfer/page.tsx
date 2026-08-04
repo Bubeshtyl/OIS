@@ -1,5 +1,6 @@
 import { TransactionListShell } from "@/components/transactions/transaction-list-shell";
-import { getSession } from "@/lib/auth/session";
+import { hasPermission } from "@/lib/auth/rbac";
+import { requireTenantSession } from "@/lib/auth/permissions";
 import { loadTransactionPage } from "@/lib/transactions/load-page";
 
 export const dynamic = "force-dynamic";
@@ -14,14 +15,13 @@ export default async function TransferPage({
   }>;
 }) {
   const params = await searchParams;
-  const session = await getSession();
-  const data = await loadTransactionPage("issued", params);
+  const session = await requireTenantSession();
+  const [canReverse, data] = await Promise.all([
+    hasPermission(session, "reversal:write"),
+    loadTransactionPage(session.tenantId, "issued", params),
+  ]);
 
   return (
-    <TransactionListShell
-      pageKind="issued"
-      isAdmin={session.role === "ADMIN"}
-      {...data}
-    />
+    <TransactionListShell pageKind="issued" isAdmin={canReverse} {...data} />
   );
 }

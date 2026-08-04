@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { User } from "@/lib/db/schema";
+import type { SystemUser } from "@/lib/teams/service";
 import { saveUserAction } from "@/lib/actions/admin";
 import type { ActionState } from "@/lib/actions/inventory";
 import { Button } from "@/components/ui/button";
@@ -37,9 +37,11 @@ const initialState: ActionState = { success: false };
 
 function UserFormSheet({
   user,
+  roleOptions,
   children,
 }: {
-  user?: User;
+  user?: SystemUser;
+  roleOptions: { id: string; name: string }[];
   children: React.ReactElement;
 }) {
   const router = useRouter();
@@ -49,7 +51,9 @@ function UserFormSheet({
     initialState
   );
   const [isActive, setIsActive] = useState(user?.isActive ?? true);
-  const [role, setRole] = useState(user?.role ?? "MANAGER");
+  const [roleId, setRoleId] = useState(
+    user?.roleId ?? roleOptions[0]?.id ?? ""
+  );
 
   useEffect(() => {
     if (state.success) {
@@ -70,7 +74,7 @@ function UserFormSheet({
         <form action={formAction} className="space-y-3">
           {user && <input type="hidden" name="id" value={user.id} />}
           <input type="hidden" name="isActive" value={String(isActive)} />
-          <input type="hidden" name="role" value={role} />
+          <input type="hidden" name="roleId" value={roleId} />
           <div className="space-y-2">
             <Label htmlFor="name">Name *</Label>
             <Input
@@ -96,23 +100,22 @@ function UserFormSheet({
           <div className="space-y-2">
             <Label>Role *</Label>
             <Select
-              value={role}
-              onValueChange={(value) =>
-                value && setRole(value as typeof role)
-              }
-              items={[
-                { value: "ADMIN", label: "Admin" },
-                { value: "MANAGER", label: "Manager" },
-                { value: "ACCOUNTS", label: "Accounts" },
-              ]}
+              value={roleId}
+              onValueChange={(value) => value && setRoleId(value)}
+              items={roleOptions.map((role) => ({
+                value: role.id,
+                label: role.name,
+              }))}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-                <SelectItem value="MANAGER">Manager</SelectItem>
-                <SelectItem value="ACCOUNTS">Accounts</SelectItem>
+                {roleOptions.map((role) => (
+                  <SelectItem key={role.id} value={role.id}>
+                    {role.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -153,11 +156,17 @@ function UserFormSheet({
   );
 }
 
-export function UsersAdmin({ users }: { users: User[] }) {
+export function UsersAdmin({
+  users,
+  roleOptions,
+}: {
+  users: SystemUser[];
+  roleOptions: { id: string; name: string }[];
+}) {
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <UserFormSheet>
+        <UserFormSheet roleOptions={roleOptions}>
           <Button className="min-h-11">
             + Add
           </Button>
@@ -176,10 +185,10 @@ export function UsersAdmin({ users }: { users: User[] }) {
           {users.map((user) => (
             <TableRow key={user.id}>
               <TableCell>{user.name}</TableCell>
-              <TableCell>{user.role}</TableCell>
+              <TableCell>{user.roleName ?? "—"}</TableCell>
               <TableCell>{user.isActive ? "Active" : "Inactive"}</TableCell>
               <TableCell>
-                <UserFormSheet user={user}>
+                <UserFormSheet user={user} roleOptions={roleOptions}>
                   <Button variant="outline" size="sm">
                     Edit
                   </Button>

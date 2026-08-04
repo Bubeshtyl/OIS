@@ -80,6 +80,7 @@ function getBalanceDelta(
 
 async function getBalance(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
+  tenantId: string,
   productId: string,
   location: StockLocation
 ): Promise<number> {
@@ -88,6 +89,7 @@ async function getBalance(
     .from(stockBalance)
     .where(
       and(
+        eq(stockBalance.tenantId, tenantId),
         eq(stockBalance.productId, productId),
         eq(stockBalance.location, location)
       )
@@ -99,6 +101,7 @@ async function getBalance(
 
 async function applyBalanceDelta(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
+  tenantId: string,
   productId: string,
   delta: BalanceDelta
 ) {
@@ -106,7 +109,7 @@ async function applyBalanceDelta(
     const change = delta[location];
     if (change === undefined || change === 0) continue;
 
-    const current = await getBalance(tx, productId, location);
+    const current = await getBalance(tx, tenantId, productId, location);
     const next = current + change;
 
     if (next < 0) {
@@ -118,13 +121,14 @@ async function applyBalanceDelta(
     await tx
       .insert(stockBalance)
       .values({
+        tenantId,
         productId,
         location,
         quantity: String(next),
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: [stockBalance.productId, stockBalance.location],
+        target: [stockBalance.tenantId, stockBalance.productId, stockBalance.location],
         set: {
           quantity: String(next),
           updatedAt: new Date(),
@@ -134,6 +138,7 @@ async function applyBalanceDelta(
 }
 
 export interface CreateTransactionInput {
+  tenantId: string;
   productId: string;
   type: Exclude<TransactionType, "REVERSAL">;
   quantity: number;
@@ -152,7 +157,12 @@ export async function createInventoryTransaction(input: CreateTransactionInput) 
   const [product] = await db
     .select()
     .from(oilProducts)
-    .where(eq(oilProducts.id, input.productId))
+    .where(
+      and(
+        eq(oilProducts.id, input.productId),
+        eq(oilProducts.tenantId, input.tenantId)
+      )
+    )
     .limit(1);
 
   if (!product || !product.isActive) {
@@ -200,7 +210,7 @@ export async function createInventoryTransaction(input: CreateTransactionInput) 
     for (const location of ["DEPOT", "MANAGER"] as StockLocation[]) {
       const change = delta[location];
       if (change !== undefined && change < 0) {
-        const current = await getBalance(tx, input.productId, location);
+        const current = await getBalance(tx, input.tenantId, input.productId, location);
         if (current + change < 0) {
           throw new InventoryError(
             `Only ${current.toFixed(1)} available at ${location === "DEPOT" ? "Depot" : "Manager"}`
@@ -212,6 +222,7 @@ export async function createInventoryTransaction(input: CreateTransactionInput) 
     const [txn] = await tx
       .insert(inventoryTransactions)
       .values({
+        tenantId: input.tenantId,
         productId: input.productId,
         type: input.type,
         quantity: String(input.quantity),
@@ -223,12 +234,13 @@ export async function createInventoryTransaction(input: CreateTransactionInput) 
       })
       .returning();
 
-    await applyBalanceDelta(tx, input.productId, delta);
+    await applyBalanceDelta(tx, input.tenantId, input.productId, delta);
     return txn;
   });
 }
 
 export async function reverseTransaction(
+  tenantId: string,
   transactionId: string,
   createdBy: string,
   referenceNote?: string
@@ -239,7 +251,12 @@ export async function reverseTransaction(
     const [original] = await tx
       .select()
       .from(inventoryTransactions)
-      .where(eq(inventoryTransactions.id, transactionId))
+      .where(
+        and(
+          eq(inventoryTransactions.id, transactionId),
+          eq(inventoryTransactions.tenantId, tenantId)
+        )
+      )
       .limit(1);
 
     if (!original) {
@@ -253,7 +270,12 @@ export async function reverseTransaction(
     const [existingReversal] = await tx
       .select({ id: inventoryTransactions.id })
       .from(inventoryTransactions)
-      .where(eq(inventoryTransactions.reversesTransactionId, transactionId))
+      .where(
+        and(
+          eq(inventoryTransactions.tenantId, tenantId),
+          eq(inventoryTransactions.reversesTransactionId, transactionId)
+        )
+      )
       .limit(1);
 
     if (existingReversal) {
@@ -274,7 +296,7 @@ export async function reverseTransaction(
     for (const location of ["DEPOT", "MANAGER"] as StockLocation[]) {
       const change = delta[location];
       if (change !== undefined && change < 0) {
-        const current = await getBalance(tx, original.productId, location);
+        const current = await getBalance(tx, tenantId, original.productId, location);
         if (current + change < 0) {
           throw new InventoryError(
             `Reversal would cause negative stock at ${location === "DEPOT" ? "Depot" : "Manager"}`
@@ -286,6 +308,7 @@ export async function reverseTransaction(
     const [reversal] = await tx
       .insert(inventoryTransactions)
       .values({
+        tenantId,
         productId: original.productId,
         type: "REVERSAL",
         quantity: original.quantity,
@@ -298,28 +321,31 @@ export async function reverseTransaction(
       })
       .returning();
 
-    await applyBalanceDelta(tx, original.productId, delta);
+    await applyBalanceDelta(tx, tenantId, original.productId, delta);
     return reversal;
   });
 }
 
 export async function getProductBalance(
+  tenantId: string,
   productId: string,
   location: StockLocation
 ): Promise<number> {
-  return computeBalanceFromLedger(productId, location);
+  return computeBalanceFromLedger(tenantId, productId, location);
 }
 
 export async function reconcileBalances() {
   const db = getDb();
 
   const computed = await db.execute<{
+    tenant_id: string;
     product_id: string;
     location: StockLocation;
     quantity: string;
   }>(sql`
     WITH movements AS (
       SELECT
+        tenant_id,
         product_id,
         'DEPOT'::stock_location AS location,
         SUM(
@@ -330,9 +356,10 @@ export async function reconcileBalances() {
           END
         ) AS quantity
       FROM inventory_transactions
-      GROUP BY product_id
+      GROUP BY tenant_id, product_id
       UNION ALL
       SELECT
+        tenant_id,
         product_id,
         'MANAGER'::stock_location AS location,
         SUM(
@@ -343,15 +370,16 @@ export async function reconcileBalances() {
           END
         ) AS quantity
       FROM inventory_transactions
-      GROUP BY product_id
+      GROUP BY tenant_id, product_id
     )
-    SELECT product_id, location, COALESCE(SUM(quantity), 0)::text AS quantity
+    SELECT tenant_id, product_id, location, COALESCE(SUM(quantity), 0)::text AS quantity
     FROM movements
-    GROUP BY product_id, location
+    GROUP BY tenant_id, product_id, location
   `);
 
   const rows = computed;
   const drifts: Array<{
+    tenantId: string;
     productId: string;
     location: StockLocation;
     cached: number;
@@ -359,10 +387,11 @@ export async function reconcileBalances() {
   }> = [];
 
   for (const row of rows) {
-    const cached = await getProductBalance(row.product_id, row.location);
+    const cached = await getProductBalance(row.tenant_id, row.product_id, row.location);
     const computedQty = Number(row.quantity);
     if (Math.abs(cached - computedQty) > 0.001) {
       drifts.push({
+        tenantId: row.tenant_id,
         productId: row.product_id,
         location: row.location,
         cached,
@@ -373,13 +402,14 @@ export async function reconcileBalances() {
     await db
       .insert(stockBalance)
       .values({
+        tenantId: row.tenant_id,
         productId: row.product_id,
         location: row.location,
         quantity: String(computedQty),
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: [stockBalance.productId, stockBalance.location],
+        target: [stockBalance.tenantId, stockBalance.productId, stockBalance.location],
         set: {
           quantity: String(computedQty),
           updatedAt: new Date(),
