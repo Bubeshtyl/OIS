@@ -1,4 +1,4 @@
-import { parse } from "date-fns";
+import { isMatch, isValid, parse } from "date-fns";
 import * as XLSX from "xlsx";
 
 export const REQUIRED_HEADERS = [
@@ -22,7 +22,7 @@ export const REQUIRED_HEADERS = [
   "Mobile No",
 ] as const;
 
-const DATE_FORMAT = "dd-MM-yyyy HH:mm:ss";
+const DATE_FORMATS = ["dd-MM-yyyy HH:mm:ss", "dd-MM-yyyy HH:mm"] as const;
 
 export type DailySalesRow = {
   receiptNo: string;
@@ -127,10 +127,18 @@ function parsePumpDate(value: unknown, field: string): Date {
   if (!text) {
     throw new DailySalesParseError(`Missing date for ${field}`);
   }
-  const parsed = parse(text, DATE_FORMAT, new Date());
-  if (Number.isNaN(parsed.getTime())) {
+  let parsed: Date | null = null;
+  for (const format of DATE_FORMATS) {
+    if (!isMatch(text, format)) continue;
+    const candidate = parse(text, format, new Date());
+    if (isValid(candidate)) {
+      parsed = candidate;
+      break;
+    }
+  }
+  if (!parsed) {
     throw new DailySalesParseError(
-      `Invalid date for ${field}: expected ${DATE_FORMAT}, got "${text}"`
+      `Invalid date for ${field}: expected ${DATE_FORMATS.join(" or ")}, got "${text}"`
     );
   }
   // Preserve wall-clock time in timestamp-without-tz columns (no local offset shift).

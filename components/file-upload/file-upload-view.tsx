@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils";
 const ACCEPT =
   ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv";
 
+/** Stay under Vercel's ~4.5MB function body limit (multipart overhead). */
+const MAX_UPLOAD_PAYLOAD_BYTES = 4 * 1024 * 1024;
+
 type UploadResult = {
   kind: "success";
   inserted: number;
@@ -42,6 +45,14 @@ function isSupportedUploadFile(file: File) {
   );
 }
 
+async function gzipBlob(file: Blob): Promise<Blob> {
+  if (typeof CompressionStream === "undefined") {
+    return file;
+  }
+  const stream = file.stream().pipeThrough(new CompressionStream("gzip"));
+  return new Response(stream).blob();
+}
+
 export function FileUploadView() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -70,8 +81,23 @@ export function FileUploadView() {
     const fileName = file.name;
 
     try {
+      const gzipped = await gzipBlob(file);
+      const useGzip = gzipped.size < file.size;
+      const payloadBlob = useGzip ? gzipped : file;
+
+      if (payloadBlob.size > MAX_UPLOAD_PAYLOAD_BYTES) {
+        const message =
+          "File is too large to upload (over ~4MB after compression). Export a smaller date range, or use CSV instead of Excel.";
+        setFeedback({ kind: "error", message, fileName });
+        toast.error(message, { duration: 8000 });
+        return;
+      }
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", payloadBlob, file.name);
+      if (useGzip) {
+        formData.append("encoding", "gzip");
+      }
 
       const response = await fetch("/api/daily-sales/upload", {
         method: "POST",
@@ -91,7 +117,7 @@ export function FileUploadView() {
         const message =
           payload?.error ??
           (response.status === 413
-            ? "File is too large."
+            ? "File is too large for the server (Vercel 4.5MB request limit). Try CSV or a smaller export."
             : `Upload failed (${response.status}).`);
         setFeedback({ kind: "error", message, fileName });
         toast.error(message, { duration: 8000 });

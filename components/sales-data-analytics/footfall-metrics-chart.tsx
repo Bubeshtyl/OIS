@@ -17,16 +17,6 @@ function formatCount(value: number) {
   return value.toLocaleString("en-IN");
 }
 
-function formatCountCompact(value: number) {
-  if (Math.abs(value) >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-  if (Math.abs(value) >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}k`;
-  }
-  return formatCount(value);
-}
-
 export function FootfallMetricsChart({
   data,
 }: {
@@ -80,9 +70,9 @@ export function FootfallMetricsChart({
           />
           <YAxis
             tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-            width={48}
+            width={56}
             allowDecimals={false}
-            tickFormatter={(value) => formatCountCompact(Number(value))}
+            tickFormatter={(value) => formatCount(Number(value))}
           />
           <Tooltip
             formatter={(value) => [formatCount(Number(value)), "Footfall"]}

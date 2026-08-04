@@ -1,3 +1,4 @@
+import { gunzipSync } from "node:zlib";
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission } from "@/lib/auth/rbac";
 import { getSession } from "@/lib/auth/session";
@@ -9,12 +10,25 @@ import { upsertDailySales } from "@/lib/daily-sales/upsert";
 
 export const maxDuration = 300;
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** Uncompressed workbook/CSV size after optional gzip decode. */
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+/**
+ * Vercel Functions reject request bodies over ~4.5MB (413). Keep a headroom
+ * under that for multipart framing; clients should gzip large CSVs.
+ */
+const MAX_REQUEST_PAYLOAD_BYTES = 4 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 
 function hasAllowedExtension(name: string) {
   const lower = name.toLowerCase();
   return ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
 }
 
 export async function POST(request: NextRequest) {
@@ -31,6 +45,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file");
+    const encoding = formData.get("encoding");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -56,15 +71,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File is empty." }, { status: 400 });
     }
 
-    if (file.size > MAX_FILE_BYTES) {
+    if (file.size > MAX_REQUEST_PAYLOAD_BYTES) {
       return NextResponse.json(
-        { error: "File is too large. Maximum size is 10MB." },
+        {
+          error:
+            "Upload payload is too large for the server (max ~4MB after compression). Try a smaller date range or CSV instead of Excel.",
+        },
+        { status: 413 }
+      );
+    }
+
+    const raw = Buffer.from(await file.arrayBuffer());
+    let bytes: Uint8Array = raw;
+
+    if (encoding === "gzip") {
+      try {
+        bytes = gunzipSync(raw);
+      } catch {
+        return NextResponse.json(
+          { error: "Failed to decompress gzipped upload." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (bytes.byteLength > MAX_FILE_BYTES) {
+      return NextResponse.json(
+        { error: "File is too large. Maximum uncompressed size is 25MB." },
         { status: 400 }
       );
     }
 
-    const buffer = await file.arrayBuffer();
-    const parsed = parseDailySalesWorkbook(buffer, file.name);
+    const parsed = parseDailySalesWorkbook(toArrayBuffer(bytes), file.name);
     const result = await upsertDailySales(parsed.rows);
 
     return NextResponse.json({
