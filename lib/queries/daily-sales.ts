@@ -2,6 +2,7 @@ import {
   and,
   asc,
   count,
+  desc,
   eq,
   gte,
   ilike,
@@ -28,7 +29,7 @@ import {
   type FootfallFilterBounds,
 } from "@/lib/daily-sales/footfall-filters";
 import { getDb } from "@/lib/db";
-import { dailySales } from "@/lib/db/schema";
+import { dailySales, dailySalesUploads, users } from "@/lib/db/schema";
 
 export const DAILY_SALES_PAGE_SIZE = 50;
 
@@ -599,4 +600,61 @@ export async function getDailySalesMetricsByDay(
   endDateTime: string
 ): Promise<DailySalesMetricPoint[]> {
   return getDailySalesMetricsByPeriod(startDateTime, endDateTime, "day");
+}
+
+export type RecentDailySalesUpload = {
+  id: string;
+  fileName: string;
+  uploadedByName: string | null;
+  inserted: number;
+  updated: number;
+  total: number;
+  skipped: number;
+  createdAt: Date;
+};
+
+export async function recordDailySalesUpload(input: {
+  fileName: string;
+  uploadedBy: string | null;
+  inserted: number;
+  updated: number;
+  total: number;
+  skipped: number;
+}) {
+  const db = getDb();
+  const [row] = await db
+    .insert(dailySalesUploads)
+    .values({
+      fileName: input.fileName,
+      uploadedBy: input.uploadedBy,
+      inserted: input.inserted,
+      updated: input.updated,
+      total: input.total,
+      skipped: input.skipped,
+    })
+    .returning({ id: dailySalesUploads.id });
+  return row;
+}
+
+export async function getRecentDailySalesUploads(
+  limit = 5
+): Promise<RecentDailySalesUpload[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: dailySalesUploads.id,
+      fileName: dailySalesUploads.fileName,
+      uploadedByName: users.name,
+      inserted: dailySalesUploads.inserted,
+      updated: dailySalesUploads.updated,
+      total: dailySalesUploads.total,
+      skipped: dailySalesUploads.skipped,
+      createdAt: dailySalesUploads.createdAt,
+    })
+    .from(dailySalesUploads)
+    .leftJoin(users, eq(dailySalesUploads.uploadedBy, users.id))
+    .orderBy(desc(dailySalesUploads.createdAt))
+    .limit(limit);
+
+  return rows;
 }

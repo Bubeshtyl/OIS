@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, FileUp, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ async function gzipBlob(file: Blob): Promise<Blob> {
 }
 
 export function FileUploadView() {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -152,6 +154,7 @@ export function FileUploadView() {
         { duration: 8000 }
       );
       setFile(null);
+      router.refresh();
     } catch {
       const message = "Upload failed. Please try again.";
       setFeedback({ kind: "error", message, fileName });

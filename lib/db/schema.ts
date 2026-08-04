@@ -165,6 +165,20 @@ export const dailySales = pgTable("daily_sales", {
   updatedAt: timestamp("updated_at", { withTimezone: true }),
 });
 
+/** Successful daily sales file uploads — used for recent upload history. */
+export const dailySalesUploads = pgTable("daily_sales_uploads", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  fileName: text("file_name").notNull(),
+  uploadedBy: uuid("uploaded_by").references(() => users.id),
+  inserted: integer("inserted").notNull().default(0),
+  updated: integer("updated").notNull().default(0),
+  total: integer("total").notNull().default(0),
+  skipped: integer("skipped").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
 export const teams = pgTable("teams", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull().unique(),

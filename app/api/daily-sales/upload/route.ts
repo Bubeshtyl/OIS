@@ -7,6 +7,7 @@ import {
   parseDailySalesWorkbook,
 } from "@/lib/daily-sales/parse-workbook";
 import { upsertDailySales } from "@/lib/daily-sales/upsert";
+import { recordDailySalesUpload } from "@/lib/queries/daily-sales";
 
 export const maxDuration = 300;
 
@@ -104,6 +105,15 @@ export async function POST(request: NextRequest) {
 
     const parsed = parseDailySalesWorkbook(toArrayBuffer(bytes), file.name);
     const result = await upsertDailySales(parsed.rows);
+
+    await recordDailySalesUpload({
+      fileName: file.name,
+      uploadedBy: session.userId || null,
+      inserted: result.inserted,
+      updated: result.updated,
+      total: result.total,
+      skipped: parsed.skipped,
+    });
 
     return NextResponse.json({
       inserted: result.inserted,

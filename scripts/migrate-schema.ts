@@ -259,6 +259,19 @@ async function migrateSchema() {
   `);
 
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS daily_sales_uploads (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      file_name text NOT NULL,
+      uploaded_by uuid REFERENCES users(id),
+      inserted integer NOT NULL DEFAULT 0,
+      updated integer NOT NULL DEFAULT 0,
+      total integer NOT NULL DEFAULT 0,
+      skipped integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS role_permissions (
       role user_role NOT NULL,
       permission text NOT NULL,
