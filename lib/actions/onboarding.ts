@@ -7,7 +7,7 @@ import {
   isSystemAdminRole,
   requireTenantSession,
 } from "@/lib/auth/permissions";
-import { stationProfileSchema } from "@/lib/actions/station";
+import { stationProfileSchema } from "@/lib/tenants/station-profile-schema";
 import {
   completeTenantOnboarding,
   getTenantById,

@@ -1,26 +1,16 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/lib/actions/inventory";
 import {
   isSystemAdminRole,
   requireTenantSession,
 } from "@/lib/auth/permissions";
+import { stationProfileSchema } from "@/lib/tenants/station-profile-schema";
 import {
   getTenantById,
   updateStationProfile,
 } from "@/lib/tenants/service";
-
-export const stationProfileSchema = z.object({
-  name: z.string().min(2, "Station name is required."),
-  addressLine1: z.string().min(2, "Address is required."),
-  addressLine2: z.string().optional(),
-  city: z.string().min(1, "City is required."),
-  state: z.string().min(1, "State is required."),
-  pincode: z.string().min(4, "Pincode is required."),
-  phone: z.string().optional(),
-});
 
 export async function getStationProfile() {
   const session = await requireTenantSession();
