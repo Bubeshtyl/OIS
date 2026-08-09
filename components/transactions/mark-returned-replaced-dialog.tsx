@@ -15,7 +15,6 @@ import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -80,17 +79,13 @@ export function MarkReturnedReplacedDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[min(85vh,28rem)] gap-3 overflow-y-auto p-3 sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Mark replaced</DialogTitle>
-          <DialogDescription>
-            Record a replacement receive. Enter only the cases arriving now —
-            remaining open cases can be replaced later on another invoice.
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-1 rounded-md border bg-muted/40 px-3 py-2 text-sm">
-          <p className="font-medium">{row.productName}</p>
+        <div className="rounded-md border bg-muted/40 px-2.5 py-1.5 text-xs leading-snug">
+          <p className="font-medium text-sm">{row.productName}</p>
           <p className="text-muted-foreground">
             {row.dealerSource} · Invoice {row.invoice} · {packSize}
           </p>
@@ -103,8 +98,8 @@ export function MarkReturnedReplacedDialog({
           </p>
         </div>
 
-        <form action={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+        <form action={handleSubmit} className="space-y-3">
+          <div className="space-y-1.5">
             <Label htmlFor="replacementInvoice">Replacement invoice *</Label>
             <Input
               id="replacementInvoice"
@@ -113,38 +108,42 @@ export function MarkReturnedReplacedDialog({
               placeholder="e.g. BPCL-INV-2102"
               required
               disabled={pending}
+              className="h-8"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="replacementDate">Date *</Label>
-            <DatePicker
-              id="replacementDate"
-              value={transactionDate}
-              onChange={setTransactionDate}
-              required
-              className="h-8 shadow-none"
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="replacementDate">Date *</Label>
+              <DatePicker
+                id="replacementDate"
+                value={transactionDate}
+                onChange={setTransactionDate}
+                required
+                className="h-8 shadow-none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="casesReplaced">Cases now *</Label>
+              <Input
+                id="casesReplaced"
+                type="number"
+                min={1}
+                max={row.casesPending}
+                step={1}
+                inputMode="numeric"
+                value={casesReplaced}
+                onChange={(e) => setCasesReplaced(e.target.value)}
+                required
+                disabled={pending}
+                className="h-8"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="casesReplaced">Cases replaced now *</Label>
-            <Input
-              id="casesReplaced"
-              type="number"
-              min={1}
-              max={row.casesPending}
-              step={1}
-              inputMode="numeric"
-              value={casesReplaced}
-              onChange={(e) => setCasesReplaced(e.target.value)}
-              required
-              disabled={pending}
-            />
-            <p className="text-xs text-muted-foreground">
-              Max {row.casesPending}. Leave some for a later replacement if
-              needed.
-            </p>
-          </div>
-          <div className="space-y-2">
+          <p className="-mt-1 text-xs text-muted-foreground">
+            Max {row.casesPending} open case
+            {row.casesPending === 1 ? "" : "s"}.
+          </p>
+          <div className="space-y-1.5">
             <Label htmlFor="replacementNotes">Note (optional)</Label>
             <Input
               id="replacementNotes"
@@ -152,12 +151,14 @@ export function MarkReturnedReplacedDialog({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Optional note"
               disabled={pending}
+              className="h-8"
             />
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => onOpenChange(false)}
               disabled={pending}
             >
@@ -165,6 +166,7 @@ export function MarkReturnedReplacedDialog({
             </Button>
             <Button
               type="submit"
+              size="sm"
               disabled={
                 pending ||
                 !replacementInvoice.trim() ||
