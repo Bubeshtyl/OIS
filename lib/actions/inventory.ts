@@ -12,13 +12,16 @@ import {
   createInventoryTransaction,
   getProductBalance,
   InventoryError,
-  reverseTransaction,
+  markReturnedCaseReplaced,
+  updateBpclReceiveBatch,
+  type BpclReceiveLineInput,
 } from "@/lib/inventory/service";
 import {
   allocateInvoiceDiscount,
   computeLandingPrice,
   invoiceDiscountPerPacket,
 } from "@/lib/inventory/landing-price";
+import { bpclInvoiceExists } from "@/lib/queries/bpcl-invoice";
 import {
   buildReceiveReferenceNote,
   formatBoxCount,
@@ -28,6 +31,7 @@ import {
   litresFromBoxes,
   totalPacketsFromBoxes,
 } from "@/lib/packaging";
+import type { OilProduct } from "@/lib/db/schema";
 
 const transactionSchema = z.object({
   productId: z.string().uuid(),
@@ -84,11 +88,193 @@ const bpclHeaderSchema = z.object({
 const bpclLineSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.coerce.number().int().positive(),
+  returned: z.coerce.number().int().nonnegative().default(0),
   taxableValue: z.coerce.number().nonnegative(),
   cgstAmount: z.coerce.number().nonnegative(),
   sgstAmount: z.coerce.number().nonnegative(),
   discountAmount: z.coerce.number().nonnegative().default(0),
 });
+
+type BpclLineInput = z.infer<typeof bpclLineSchema>;
+
+function resolveBpclBatchLines(
+  lines: BpclLineInput[],
+  productById: Map<string, OilProduct>,
+  additionalDiscount: number
+): { ok: true; batchLines: BpclReceiveLineInput[] } | { ok: false; error: string } {
+  let totalPackets = 0;
+  const resolved: Array<{
+    line: BpclLineInput;
+    product: OilProduct;
+    packetsPerBox: number;
+    litres: number;
+    linePackets: number;
+    goodCases: number;
+  }> = [];
+
+  for (const line of lines) {
+    const product = productById.get(line.productId);
+    if (!product || !product.isActive) {
+      return { ok: false, error: "One or more products are inactive or missing." };
+    }
+    if (!hasBoxPackaging(product)) {
+      return {
+        ok: false,
+        error: `${product.name} is missing box packaging. Update the product first.`,
+      };
+    }
+    if (line.returned > line.quantity) {
+      return {
+        ok: false,
+        error: `${product.name}: returned cases cannot exceed quantity.`,
+      };
+    }
+    const goodCases = line.quantity - line.returned;
+    if (goodCases < 1) {
+      return {
+        ok: false,
+        error: `${product.name}: at least one good case is required after returned.`,
+      };
+    }
+    const packetsPerBox = getPacketsPerBox(product);
+    if (packetsPerBox == null) {
+      return {
+        ok: false,
+        error: `${product.name} is missing packets per box.`,
+      };
+    }
+    const litres = litresFromBoxes(goodCases, product);
+    if (litres == null) {
+      return {
+        ok: false,
+        error: `Could not compute volume for ${product.name}.`,
+      };
+    }
+    const linePackets = goodCases * packetsPerBox;
+    totalPackets += linePackets;
+    resolved.push({
+      line,
+      product,
+      packetsPerBox,
+      litres,
+      linePackets,
+      goodCases,
+    });
+  }
+
+  const perPacketInvoiceDiscount = invoiceDiscountPerPacket(
+    additionalDiscount,
+    totalPackets
+  );
+
+  const batchLines: BpclReceiveLineInput[] = [];
+  for (const {
+    line,
+    product,
+    packetsPerBox,
+    litres,
+    linePackets,
+    goodCases,
+  } of resolved) {
+    const allocatedInvoiceDiscount = allocateInvoiceDiscount(
+      additionalDiscount,
+      linePackets,
+      totalPackets
+    );
+    const discountAmount = line.discountAmount + allocatedInvoiceDiscount;
+    const landingPrice = computeLandingPrice({
+      taxableValue: line.taxableValue,
+      discountAmount: line.discountAmount,
+      cgstAmount: line.cgstAmount,
+      sgstAmount: line.sgstAmount,
+      boxQuantity: goodCases,
+      packetsPerBox,
+      invoiceDiscountPerPacket: perPacketInvoiceDiscount,
+    });
+    if (landingPrice == null) {
+      return {
+        ok: false,
+        error: `Could not compute landing price for ${product.name}.`,
+      };
+    }
+
+    batchLines.push({
+      productId: line.productId,
+      quantityLitres: litres,
+      packageCount: goodCases,
+      returnedCases: line.returned,
+      taxableValue: line.taxableValue,
+      cgstAmount: line.cgstAmount,
+      sgstAmount: line.sgstAmount,
+      discountAmount,
+      landingPrice,
+    });
+  }
+
+  return { ok: true, batchLines };
+}
+
+async function parseBpclFormPayload(formData: FormData, tenantId: string) {
+  const header = bpclHeaderSchema.safeParse({
+    invoice: formData.get("invoice"),
+    transactionDate: formData.get("transactionDate"),
+    additionalDiscount: formData.get("additionalDiscount") || 0,
+  });
+  if (!header.success) {
+    return {
+      ok: false as const,
+      error:
+        header.error.issues[0]?.message ?? "Invoice number and date are required.",
+    };
+  }
+
+  let rawLines: unknown;
+  try {
+    rawLines = JSON.parse(String(formData.get("lines") || "[]"));
+  } catch {
+    return { ok: false as const, error: "Invalid product lines." };
+  }
+
+  if (!Array.isArray(rawLines) || rawLines.length === 0) {
+    return {
+      ok: false as const,
+      error: "Enter quantity for at least one product.",
+    };
+  }
+
+  const parsedLines = z.array(bpclLineSchema).safeParse(rawLines);
+  if (!parsedLines.success) {
+    return {
+      ok: false as const,
+      error:
+        parsedLines.error.issues[0]?.message ?? "Please check product line values.",
+    };
+  }
+
+  const db = getDb();
+  const productIds = parsedLines.data.map((line) => line.productId);
+  const products = await db
+    .select()
+    .from(oilProducts)
+    .where(
+      and(eq(oilProducts.tenantId, tenantId), inArray(oilProducts.id, productIds))
+    );
+  const productById = new Map(products.map((p) => [p.id, p] as const));
+  const resolved = resolveBpclBatchLines(
+    parsedLines.data,
+    productById,
+    header.data.additionalDiscount
+  );
+  if (!resolved.ok) {
+    return { ok: false as const, error: resolved.error };
+  }
+
+  return {
+    ok: true as const,
+    header: header.data,
+    batchLines: resolved.batchLines,
+  };
+}
 
 export async function receiveBpclStockAction(
   _prev: ActionState,
@@ -99,136 +285,30 @@ export async function receiveBpclStockAction(
     return { success: false, error: "You do not have permission." };
   }
 
-  const header = bpclHeaderSchema.safeParse({
-    invoice: formData.get("invoice"),
-    transactionDate: formData.get("transactionDate"),
-    additionalDiscount: formData.get("additionalDiscount") || 0,
-  });
-  if (!header.success) {
+  const parsed = await parseBpclFormPayload(formData, session.tenantId);
+  if (!parsed.ok) {
+    return { success: false, error: parsed.error };
+  }
+
+  if (await bpclInvoiceExists(session.tenantId, parsed.header.invoice)) {
     return {
       success: false,
-      error: header.error.issues[0]?.message ?? "Invoice number and date are required.",
+      error: `Invoice ${parsed.header.invoice} already exists. Edit the existing invoice instead.`,
     };
-  }
-
-  let rawLines: unknown;
-  try {
-    rawLines = JSON.parse(String(formData.get("lines") || "[]"));
-  } catch {
-    return { success: false, error: "Invalid product lines." };
-  }
-
-  if (!Array.isArray(rawLines) || rawLines.length === 0) {
-    return { success: false, error: "Enter quantity for at least one product." };
-  }
-
-  const parsedLines = z.array(bpclLineSchema).safeParse(rawLines);
-  if (!parsedLines.success) {
-    return {
-      success: false,
-      error: parsedLines.error.issues[0]?.message ?? "Please check product line values.",
-    };
-  }
-
-  const db = getDb();
-  const productIds = parsedLines.data.map((line) => line.productId);
-  const products = await db
-    .select()
-    .from(oilProducts)
-    .where(
-      and(
-        eq(oilProducts.tenantId, session.tenantId),
-        inArray(oilProducts.id, productIds)
-      )
-    );
-
-  const productById = new Map(products.map((p) => [p.id, p] as const));
-
-  let totalPackets = 0;
-  const resolved = [];
-  for (const line of parsedLines.data) {
-    const product = productById.get(line.productId);
-    if (!product || !product.isActive) {
-      return { success: false, error: "One or more products are inactive or missing." };
-    }
-    if (!hasBoxPackaging(product)) {
-      return {
-        success: false,
-        error: `${product.name} is missing box packaging. Update the product first.`,
-      };
-    }
-    const packetsPerBox = getPacketsPerBox(product);
-    if (packetsPerBox == null) {
-      return {
-        success: false,
-        error: `${product.name} is missing packets per box.`,
-      };
-    }
-    const litres = litresFromBoxes(line.quantity, product);
-    if (litres == null) {
-      return {
-        success: false,
-        error: `Could not compute volume for ${product.name}.`,
-      };
-    }
-    const linePackets = line.quantity * packetsPerBox;
-    totalPackets += linePackets;
-    resolved.push({ line, product, packetsPerBox, litres, linePackets });
-  }
-
-  const perPacketInvoiceDiscount = invoiceDiscountPerPacket(
-    header.data.additionalDiscount,
-    totalPackets
-  );
-
-  const batchLines = [];
-  for (const { line, product, packetsPerBox, litres, linePackets } of resolved) {
-    const allocatedInvoiceDiscount = allocateInvoiceDiscount(
-      header.data.additionalDiscount,
-      linePackets,
-      totalPackets
-    );
-    const discountAmount = line.discountAmount + allocatedInvoiceDiscount;
-    const landingPrice = computeLandingPrice({
-      taxableValue: line.taxableValue,
-      discountAmount: line.discountAmount,
-      cgstAmount: line.cgstAmount,
-      sgstAmount: line.sgstAmount,
-      boxQuantity: line.quantity,
-      packetsPerBox,
-      invoiceDiscountPerPacket: perPacketInvoiceDiscount,
-    });
-    if (landingPrice == null) {
-      return {
-        success: false,
-        error: `Could not compute landing price for ${product.name}.`,
-      };
-    }
-
-    batchLines.push({
-      productId: line.productId,
-      quantityLitres: litres,
-      packageCount: line.quantity,
-      taxableValue: line.taxableValue,
-      cgstAmount: line.cgstAmount,
-      sgstAmount: line.sgstAmount,
-      discountAmount,
-      landingPrice,
-    });
   }
 
   try {
     await createBpclReceiveBatch({
       tenantId: session.tenantId,
-      transactionDate: header.data.transactionDate,
-      invoice: header.data.invoice,
+      transactionDate: parsed.header.transactionDate,
+      invoice: parsed.header.invoice,
       createdBy: session.userId,
-      lines: batchLines,
+      lines: parsed.batchLines,
     });
     revalidateInventoryPages();
     return {
       success: true,
-      message: `${batchLines.length} product${batchLines.length === 1 ? "" : "s"} received from BPCL`,
+      message: `${parsed.batchLines.length} product${parsed.batchLines.length === 1 ? "" : "s"} received from BPCL`,
     };
   } catch (error) {
     return {
@@ -237,6 +317,50 @@ export async function receiveBpclStockAction(
         error instanceof InventoryError
           ? error.message
           : "Failed to record BPCL receipt.",
+    };
+  }
+}
+
+export async function updateBpclStockAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "receive:write"))) {
+    return { success: false, error: "You do not have permission." };
+  }
+
+  const originalInvoice = String(formData.get("originalInvoice") || "").trim();
+  if (!originalInvoice) {
+    return { success: false, error: "Original invoice number is required." };
+  }
+
+  const parsed = await parseBpclFormPayload(formData, session.tenantId);
+  if (!parsed.ok) {
+    return { success: false, error: parsed.error };
+  }
+
+  try {
+    await updateBpclReceiveBatch({
+      tenantId: session.tenantId,
+      originalInvoice,
+      transactionDate: parsed.header.transactionDate,
+      invoice: parsed.header.invoice,
+      createdBy: session.userId,
+      lines: parsed.batchLines,
+    });
+    revalidateInventoryPages();
+    return {
+      success: true,
+      message: `Invoice ${parsed.header.invoice} updated`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof InventoryError
+          ? error.message
+          : "Failed to update BPCL invoice.",
     };
   }
 }
@@ -440,6 +564,65 @@ export async function recordSaleAction(
   }
 }
 
+const markReplacedSchema = z.object({
+  returnedCaseId: z.string().uuid(),
+  replacementInvoice: z.string().trim().min(1, "Replacement invoice is required."),
+  transactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date is required."),
+  casesReplaced: z.coerce.number().int().positive(),
+  notes: z.string().trim().optional(),
+});
+
+export async function markReturnedCaseReplacedAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "receive:write"))) {
+    return { success: false, error: "You do not have permission." };
+  }
+
+  const parsed = markReplacedSchema.safeParse({
+    returnedCaseId: formData.get("returnedCaseId"),
+    replacementInvoice: formData.get("replacementInvoice"),
+    transactionDate: formData.get("transactionDate"),
+    casesReplaced: formData.get("casesReplaced"),
+    notes: formData.get("notes") || undefined,
+  });
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Please check the form values.",
+    };
+  }
+
+  try {
+    const result = await markReturnedCaseReplaced({
+      tenantId: session.tenantId,
+      returnedCaseId: parsed.data.returnedCaseId,
+      replacementInvoice: parsed.data.replacementInvoice,
+      transactionDate: parsed.data.transactionDate,
+      casesReplaced: parsed.data.casesReplaced,
+      createdBy: session.userId,
+      notes: parsed.data.notes,
+    });
+    revalidateInventoryPages();
+    return {
+      success: true,
+      message: result.fullyReplaced
+        ? `All ${result.totalReturned} returned case${result.totalReturned === 1 ? "" : "s"} replaced on invoice ${parsed.data.replacementInvoice}`
+        : `Replacement recorded (${result.totalReplaced}/${result.totalReturned}); ${result.remainingCases} case${result.remainingCases === 1 ? "" : "s"} still open for later`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof InventoryError
+          ? error.message
+          : "Failed to record replacement.",
+    };
+  }
+}
+
 export async function getDepotBalanceAction(productId: string) {
   if (!productId) return 0;
   const session = await requireTenantSession();
@@ -450,27 +633,4 @@ export async function getManagerBalanceAction(productId: string) {
   if (!productId) return 0;
   const session = await requireTenantSession();
   return getProductBalance(session.tenantId, productId, "MANAGER");
-}
-
-export async function reverseTransactionAction(
-  transactionId: string
-): Promise<ActionState> {
-  const session = await requireTenantSession();
-  if (!(await hasPermission(session, "reversal:write"))) {
-    return { success: false, error: "Only admins can reverse transactions." };
-  }
-
-  try {
-    await reverseTransaction(session.tenantId, transactionId, session.userId);
-    revalidateInventoryPages();
-    return { success: true, message: "Transaction reversed successfully." };
-  } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof InventoryError
-          ? error.message
-          : "Failed to reverse transaction.",
-    };
-  }
 }

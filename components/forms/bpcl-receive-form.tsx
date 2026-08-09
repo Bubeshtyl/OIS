@@ -6,14 +6,16 @@ import { toast } from "sonner";
 import type { OilProduct } from "@/lib/db/schema";
 import {
   receiveBpclStockAction,
+  updateBpclStockAction,
   type ActionState,
 } from "@/lib/actions/inventory";
+import type { BpclInvoiceLine } from "@/lib/queries/bpcl-invoice";
 import {
   computeLandingPrice,
   formatLandingPrice,
   invoiceDiscountPerPacket,
 } from "@/lib/inventory/landing-price";
-import { formatPackSizes } from "@/lib/products/display";
+import { formatPacketSizeLabel } from "@/lib/products/display";
 import { getPacketsPerBox, hasBoxPackaging } from "@/lib/packaging";
 import { getIstTodayString } from "@/lib/timezone";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,7 @@ const initialState: ActionState = { success: false };
 
 type LineState = {
   quantity: string;
+  returned: string;
   taxableValue: string;
   cgstAmount: string;
   sgstAmount: string;
@@ -43,6 +46,7 @@ type LineState = {
 function emptyLine(): LineState {
   return {
     quantity: "",
+    returned: "",
     taxableValue: "",
     cgstAmount: "",
     sgstAmount: "",
@@ -56,56 +60,115 @@ function parseMoney(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function parseReturnedCases(value: string): number {
+  if (value.trim() === "") return 0;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : 0;
+}
+
+function goodCasesForLine(line: LineState): number | null {
+  const qty = Number(line.quantity);
+  const returned = parseReturnedCases(line.returned);
+  if (!Number.isInteger(qty) || qty < 1) return null;
+  if (returned > qty) return null;
+  const good = qty - returned;
+  return good >= 1 ? good : null;
+}
+
+function moneyInput(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return "";
+  return String(value);
+}
+
 function lineLandingPrice(
   product: OilProduct,
   line: LineState,
   perPacketInvoiceDiscount = 0
 ): number | null {
-  const qty = Number(line.quantity);
+  const goodCases = goodCasesForLine(line);
   const packetsPerBox = getPacketsPerBox(product);
-  if (!Number.isInteger(qty) || qty < 1 || packetsPerBox == null) return null;
+  if (goodCases == null || packetsPerBox == null) return null;
   return computeLandingPrice({
     taxableValue: parseMoney(line.taxableValue),
     discountAmount: parseMoney(line.discountAmount),
     cgstAmount: parseMoney(line.cgstAmount),
     sgstAmount: parseMoney(line.sgstAmount),
-    boxQuantity: qty,
+    boxQuantity: goodCases,
     packetsPerBox,
     invoiceDiscountPerPacket: perPacketInvoiceDiscount,
   });
 }
 
-export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
+function linesFromInvoice(
+  products: OilProduct[],
+  invoiceLines: BpclInvoiceLine[]
+): Record<string, LineState> {
+  const byProduct = new Map(invoiceLines.map((line) => [line.productId, line]));
+  return Object.fromEntries(
+    products.map((product) => {
+      const existing = byProduct.get(product.id);
+      if (!existing) return [product.id, emptyLine()] as const;
+      const invoiceQty = existing.packageCount + existing.returnedCases;
+      return [
+        product.id,
+        {
+          quantity: invoiceQty > 0 ? String(invoiceQty) : "",
+          returned:
+            existing.returnedCases > 0 ? String(existing.returnedCases) : "",
+          taxableValue: moneyInput(existing.taxableValue),
+          cgstAmount: moneyInput(existing.cgstAmount),
+          sgstAmount: moneyInput(existing.sgstAmount),
+          discountAmount: moneyInput(existing.discountAmount),
+        },
+      ] as const;
+    })
+  );
+}
+
+export function BpclReceiveForm({
+  products,
+  editInvoice,
+}: {
+  products: OilProduct[];
+  editInvoice?: {
+    originalInvoice: string;
+    transactionDate: string;
+    lines: BpclInvoiceLine[];
+  };
+}) {
   const router = useRouter();
+  const isEdit = editInvoice != null;
   const [state, formAction, pending] = useActionState(
-    receiveBpclStockAction,
+    isEdit ? updateBpclStockAction : receiveBpclStockAction,
     initialState
   );
   const today = getIstTodayString();
-  const [invoice, setInvoice] = useState("");
-  const [transactionDate, setTransactionDate] = useState(today);
+  const [invoice, setInvoice] = useState(editInvoice?.originalInvoice ?? "");
+  const [transactionDate, setTransactionDate] = useState(
+    editInvoice?.transactionDate ?? today
+  );
   const [additionalDiscount, setAdditionalDiscount] = useState("");
   const [lines, setLines] = useState<Record<string, LineState>>(() =>
-    Object.fromEntries(products.map((p) => [p.id, emptyLine()]))
+    editInvoice
+      ? linesFromInvoice(products, editInvoice.lines)
+      : Object.fromEntries(products.map((p) => [p.id, emptyLine()]))
   );
 
   const headerReady =
     invoice.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(transactionDate);
 
   const filledCount = useMemo(() => {
-    return products.filter((p) => {
-      const qty = Number(lines[p.id]?.quantity);
-      return Number.isInteger(qty) && qty >= 1;
-    }).length;
+    return products.filter((p) => goodCasesForLine(lines[p.id] ?? emptyLine()) != null)
+      .length;
   }, [lines, products]);
 
   const perPacketInvoiceDiscount = useMemo(() => {
     let totalPackets = 0;
     for (const product of products) {
-      const qty = Number(lines[product.id]?.quantity);
+      const goodCases = goodCasesForLine(lines[product.id] ?? emptyLine());
       const packetsPerBox = getPacketsPerBox(product);
-      if (!Number.isInteger(qty) || qty < 1 || packetsPerBox == null) continue;
-      totalPackets += qty * packetsPerBox;
+      if (goodCases == null || packetsPerBox == null) continue;
+      totalPackets += goodCases * packetsPerBox;
     }
     return invoiceDiscountPerPacket(parseMoney(additionalDiscount), totalPackets);
   }, [additionalDiscount, lines, products]);
@@ -148,6 +211,25 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
       const qty = Number(line.quantity);
       if (!Number.isInteger(qty) || qty < 1) continue;
 
+      const returned = parseReturnedCases(line.returned);
+      if (
+        line.returned.trim() !== "" &&
+        (!Number.isInteger(Number(line.returned)) || Number(line.returned) < 0)
+      ) {
+        toast.error(`${product.name}: returned must be a whole number.`);
+        return;
+      }
+      if (returned > qty) {
+        toast.error(`${product.name}: returned cases cannot exceed quantity.`);
+        return;
+      }
+      if (qty - returned < 1) {
+        toast.error(
+          `${product.name}: at least one good case is required after returned.`
+        );
+        return;
+      }
+
       if (!hasBoxPackaging(product) || getPacketsPerBox(product) == null) {
         toast.error(
           `${product.name} is missing box packaging. Update the product first.`
@@ -158,6 +240,7 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
       payload.push({
         productId: product.id,
         quantity: qty,
+        returned,
         taxableValue: parseMoney(line.taxableValue),
         cgstAmount: parseMoney(line.cgstAmount),
         sgstAmount: parseMoney(line.sgstAmount),
@@ -174,6 +257,9 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
     formData.set("transactionDate", transactionDate);
     formData.set("additionalDiscount", String(parseMoney(additionalDiscount)));
     formData.set("lines", JSON.stringify(payload));
+    if (isEdit) {
+      formData.set("originalInvoice", editInvoice.originalInvoice);
+    }
     formAction(formData);
   }
 
@@ -205,28 +291,31 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
       </Card>
 
       <Card className="border shadow-sm">
-        <CardContent className="space-y-3 p-4">
+        <CardContent className="space-y-3 p-2 sm:p-3">
           {products.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No active oil products. Add products under Oil Products first.
             </p>
           ) : (
-            <div className="isolate rounded-lg border">
+            <div className="isolate overflow-hidden rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted hover:bg-muted">
-                    <TableHead className="sticky left-0 z-[1] w-40 min-w-40 max-w-40 bg-muted">
+                    <TableHead className="sticky left-0 z-[1] h-8 w-32 min-w-32 max-w-32 px-1.5 bg-muted">
                       Oil Type
                     </TableHead>
-                    <TableHead className="sticky left-40 z-[1] w-32 min-w-32 max-w-32 border-r bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
+                    <TableHead className="sticky left-32 z-[1] h-8 w-14 min-w-14 max-w-14 border-r px-1.5 bg-muted shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]">
                       Size
                     </TableHead>
-                    <TableHead className="min-w-[5.5rem]">Qty (cases)</TableHead>
-                    <TableHead className="min-w-[6.5rem]">Taxable</TableHead>
-                    <TableHead className="min-w-[5.5rem]">CGST</TableHead>
-                    <TableHead className="min-w-[5.5rem]">SGST</TableHead>
-                    <TableHead className="min-w-[6rem]">Discount</TableHead>
-                    <TableHead className="min-w-[7rem]">Landing / pkt</TableHead>
+                    <TableHead className="h-8 min-w-[5.5rem] px-1.5">Qty (cases)</TableHead>
+                    <TableHead className="h-8 min-w-[6.5rem] px-1.5">
+                      Returned Qty (cases)
+                    </TableHead>
+                    <TableHead className="h-8 min-w-[6.5rem] px-1.5">Taxable</TableHead>
+                    <TableHead className="h-8 min-w-[5.5rem] px-1.5">CGST</TableHead>
+                    <TableHead className="h-8 min-w-[5.5rem] px-1.5">SGST</TableHead>
+                    <TableHead className="h-8 min-w-[6rem] px-1.5">Discount</TableHead>
+                    <TableHead className="h-8 min-w-[7rem] px-1.5">Landing / pkt</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -244,18 +333,19 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
 
                     return (
                       <TableRow key={product.id} className="group">
-                        <TableCell className="sticky left-0 z-[1] w-40 min-w-40 max-w-40 whitespace-normal bg-card font-medium align-top group-hover:bg-muted/50">
+                        <TableCell className="sticky left-0 z-[1] w-32 min-w-32 max-w-32 whitespace-normal bg-card px-1.5 py-1.5 font-medium align-middle group-hover:bg-muted/50">
                           {product.name}
                         </TableCell>
-                        <TableCell className="sticky left-40 z-[1] w-32 min-w-32 max-w-32 whitespace-normal border-r bg-card align-top text-sm text-muted-foreground shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] group-hover:bg-muted/50">
-                          {formatPackSizes(product)}
+                        <TableCell className="sticky left-32 z-[1] w-14 min-w-14 max-w-14 whitespace-normal border-r bg-card px-1.5 py-1.5 align-middle text-sm text-muted-foreground shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)] group-hover:bg-muted/50">
+                          {formatPacketSizeLabel(product) ?? "—"}
                         </TableCell>
-                        <TableCell className="align-top">
+                        <TableCell className="px-1.5 py-1.5 align-middle">
                           <Input
                             type="number"
                             min="1"
                             step="1"
                             inputMode="numeric"
+                            className="h-8"
                             disabled={disabled}
                             value={line.quantity}
                             onChange={(e) =>
@@ -266,12 +356,30 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
                             placeholder="0"
                           />
                         </TableCell>
-                        <TableCell className="align-top">
+                        <TableCell className="px-1.5 py-1.5 align-middle">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            inputMode="numeric"
+                            className="h-8"
+                            disabled={disabled}
+                            value={line.returned}
+                            onChange={(e) =>
+                              updateLine(product.id, {
+                                returned: e.target.value,
+                              })
+                            }
+                            placeholder="0"
+                          />
+                        </TableCell>
+                        <TableCell className="px-1.5 py-1.5 align-middle">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             inputMode="decimal"
+                            className="h-8"
                             disabled={disabled}
                             value={line.taxableValue}
                             onChange={(e) =>
@@ -282,12 +390,13 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
                             placeholder="0.00"
                           />
                         </TableCell>
-                        <TableCell className="align-top">
+                        <TableCell className="px-1.5 py-1.5 align-middle">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             inputMode="decimal"
+                            className="h-8"
                             disabled={disabled}
                             value={line.cgstAmount}
                             onChange={(e) =>
@@ -298,12 +407,13 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
                             placeholder="0.00"
                           />
                         </TableCell>
-                        <TableCell className="align-top">
+                        <TableCell className="px-1.5 py-1.5 align-middle">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             inputMode="decimal"
+                            className="h-8"
                             disabled={disabled}
                             value={line.sgstAmount}
                             onChange={(e) =>
@@ -314,12 +424,13 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
                             placeholder="0.00"
                           />
                         </TableCell>
-                        <TableCell className="align-top">
+                        <TableCell className="px-1.5 py-1.5 align-middle">
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             inputMode="decimal"
+                            className="h-8"
                             disabled={disabled}
                             value={line.discountAmount}
                             onChange={(e) =>
@@ -330,7 +441,7 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
                             placeholder="0.00"
                           />
                         </TableCell>
-                        <TableCell className="align-top text-sm text-muted-foreground">
+                        <TableCell className="px-1.5 py-1.5 align-middle text-sm text-muted-foreground">
                           {landing != null
                             ? `₹${formatLandingPrice(landing)}`
                             : "—"}
@@ -344,20 +455,24 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
           )}
 
           <div className="flex flex-col items-end gap-3">
-            <div className="w-full max-w-xs space-y-2">
-              <Label htmlFor="additionalDiscount">Additional discount (if any)</Label>
-              <Input
-                id="additionalDiscount"
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                disabled={!headerReady || pending || filledCount === 0}
-                value={additionalDiscount}
-                onChange={(e) => setAdditionalDiscount(e.target.value)}
-                placeholder="0.00"
-              />
-            </div>
+            {!isEdit ? (
+              <div className="w-full max-w-xs space-y-2">
+                <Label htmlFor="additionalDiscount">
+                  Additional discount (if any)
+                </Label>
+                <Input
+                  id="additionalDiscount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  disabled={!headerReady || pending || filledCount === 0}
+                  value={additionalDiscount}
+                  onChange={(e) => setAdditionalDiscount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
@@ -371,7 +486,13 @@ export function BpclReceiveForm({ products }: { products: OilProduct[] }) {
                 type="submit"
                 disabled={!headerReady || pending || filledCount === 0}
               >
-                {pending ? "Saving…" : "Save receipt"}
+                {pending
+                  ? isEdit
+                    ? "Updating…"
+                    : "Saving…"
+                  : isEdit
+                    ? "Update invoice"
+                    : "Save receipt"}
               </Button>
             </div>
           </div>

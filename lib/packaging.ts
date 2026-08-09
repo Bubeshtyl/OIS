@@ -73,6 +73,13 @@ export function parsePackageCountFromNote(note?: string | null): number | null {
   return Number.isInteger(count) && count > 0 ? count : null;
 }
 
+export function parseReturnedFromNote(note?: string | null): number | null {
+  const match = note?.match(/^(?:Returned|Damaged\/returned):\s*(\d+)/im);
+  if (!match) return null;
+  const count = Number(match[1]);
+  return Number.isInteger(count) && count > 0 ? count : null;
+}
+
 export function parseUserNoteFromReference(note?: string | null): string {
   if (!note) return "";
   const lines = note.split("\n");
@@ -83,7 +90,12 @@ export function parseUserNoteFromReference(note?: string | null): string {
     .slice(1)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => !/^Supplier:\s*/i.test(line) && !/^Invoice:\s*/i.test(line))
+    .filter(
+      (line) =>
+        !/^Supplier:\s*/i.test(line) &&
+        !/^Invoice:\s*/i.test(line) &&
+        !/^(?:Returned|Damaged\/returned):\s*/i.test(line)
+    )
     .join(" · ");
 }
 
@@ -98,6 +110,21 @@ export function parseInvoiceFromReference(note?: string | null): string {
   const match = note.match(/^Invoice:\s*(.+)$/im);
   if (match) return match[1].trim();
   return parseUserNoteFromReference(note);
+}
+
+/** Original invoice when this receive is a replacement for returned cases. */
+export function parseReplacementOriginalInvoice(
+  note?: string | null
+): string {
+  if (!note) return "";
+  const match = note.match(
+    /^Replacement for return on invoice\s+(.+)$/im
+  );
+  return match?.[1]?.trim() ?? "";
+}
+
+export function isReplacementReceiveNote(note?: string | null): boolean {
+  return parseReplacementOriginalInvoice(note).length > 0;
 }
 
 export function buildReceiveReferenceNote({

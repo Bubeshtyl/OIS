@@ -49,8 +49,6 @@ export function ReportsView({
   stockSummary,
   variance,
   ledger,
-  reversedIds,
-  isAdmin,
   unit: initialUnit = "packets",
 }: {
   report: ReportType;
@@ -98,12 +96,9 @@ export function ReportsView({
     };
   } | null;
   ledger: LedgerRow[];
-  reversedIds: string[];
-  isAdmin: boolean;
   unit?: StockDisplayUnit;
 }) {
   const { unit: displayUnit, setDisplayUnit } = useStockDisplayUnit(initialUnit);
-  const reversedSet = new Set(reversedIds);
   const title = REPORT_LABELS[report];
 
   const consumptionRows = ledger.filter((r) =>
@@ -130,32 +125,11 @@ export function ReportsView({
           />
         ) : null;
       case "stock-movement":
-        return (
-          <LedgerTable
-            rows={ledger}
-            reversedIds={reversedSet}
-            isAdmin={isAdmin}
-            unit={displayUnit}
-          />
-        );
+        return <LedgerTable rows={ledger} unit={displayUnit} />;
       case "consumption":
-        return (
-          <LedgerTable
-            rows={consumptionRows}
-            reversedIds={reversedSet}
-            isAdmin={false}
-            unit={displayUnit}
-          />
-        );
+        return <LedgerTable rows={consumptionRows} unit={displayUnit} />;
       case "issued-managers":
-        return (
-          <LedgerTable
-            rows={issuedRows}
-            reversedIds={reversedSet}
-            isAdmin={false}
-            unit={displayUnit}
-          />
-        );
+        return <LedgerTable rows={issuedRows} unit={displayUnit} />;
       default:
         return null;
     }

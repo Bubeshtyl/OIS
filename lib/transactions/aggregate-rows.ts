@@ -68,11 +68,18 @@ export function aggregateTransactionRowsByDateAndProduct(
       const count = parsePackageCountFromNote(row.referenceNote);
       return sum + (count ?? 0);
     }, 0);
+    const totalReturned = group.reduce(
+      (sum, row) => sum + (row.returnedCases ?? 0),
+      0
+    );
     const latestCreatedAt = group.reduce(
       (latest, row) =>
         row.createdAt > latest ? row.createdAt : latest,
       group[0].createdAt
     );
+
+    const aggregatedNote =
+      totalPackages > 0 ? `Packages: ${totalPackages}` : first.referenceNote;
 
     return {
       ...first,
@@ -82,8 +89,8 @@ export function aggregateTransactionRowsByDateAndProduct(
           ? `agg-${first.createdAt.toISOString()}-${first.productId}-${first.type}`
           : `agg-${first.transactionDate}-${first.productId}-${first.type}`,
       quantity: String(totalLitres),
-      referenceNote:
-        totalPackages > 0 ? `Packages: ${totalPackages}` : first.referenceNote,
+      referenceNote: aggregatedNote,
+      returnedCases: totalReturned > 0 ? totalReturned : null,
       createdByName: formatPeopleLabel(group.map((row) => row.createdByName)),
       entryCount: group.length,
       isAggregated: true,

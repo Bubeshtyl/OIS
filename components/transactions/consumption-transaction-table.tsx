@@ -15,17 +15,11 @@ import {
 
 export function ConsumptionTransactionTable({
   rows,
-  isAdmin,
-  reversedIds,
   unit = "packets",
 }: {
   rows: DisplayTransactionRow[];
-  isAdmin: boolean;
-  reversedIds: string[];
   unit?: StockDisplayUnit;
 }) {
-  const reversedSet = new Set(reversedIds);
-
   if (rows.length === 0) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
@@ -83,11 +77,7 @@ export function ConsumptionTransactionTable({
               {row.isAggregated ? (
                 <span className="text-xs text-muted-foreground">—</span>
               ) : (
-                <TransactionActions
-                  row={row}
-                  isAdmin={isAdmin}
-                  reversedIds={reversedSet}
-                />
+                <TransactionActions row={row} />
               )}
             </TableCell>
           </TableRow>

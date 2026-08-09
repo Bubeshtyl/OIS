@@ -29,6 +29,8 @@ export type TransactionListRow = {
   sgstAmount: string | null;
   discountAmount: string | null;
   landingPrice: string | null;
+  /** Returned cases from returned_cases (null when none). */
+  returnedCases: number | null;
 };
 
 export type DisplayTransactionRow = TransactionListRow & {

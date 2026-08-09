@@ -1,37 +1,24 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Eye } from "lucide-react";
-import { toast } from "sonner";
-import { reverseTransactionAction } from "@/lib/actions/inventory";
+import { useState } from "react";
+import Link from "next/link";
+import { Eye, Pencil } from "lucide-react";
 import type { TransactionListRow } from "@/lib/transactions/types";
+import {
+  isReplacementReceiveNote,
+  parseInvoiceFromReference,
+} from "@/lib/packaging";
 import { TransactionDetailDialog } from "@/components/transactions/transaction-detail-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-export function TransactionActions({
-  row,
-  isAdmin,
-  reversedIds,
-}: {
-  row: TransactionListRow;
-  isAdmin: boolean;
-  reversedIds: Set<string>;
-}) {
+export function TransactionActions({ row }: { row: TransactionListRow }) {
   const [detailOpen, setDetailOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
-
-  const canReverse =
-    isAdmin &&
-    row.type !== "REVERSAL" &&
-    !reversedIds.has(row.id);
-
-  function handleReverse() {
-    startTransition(async () => {
-      const result = await reverseTransactionAction(row.id);
-      if (result.success) toast.success(result.message);
-      else toast.error(result.error);
-    });
-  }
+  const isReplacement = isReplacementReceiveNote(row.referenceNote);
+  const invoice =
+    row.dealerSource === "BPCL" && !isReplacement
+      ? parseInvoiceFromReference(row.referenceNote)
+      : null;
 
   return (
     <>
@@ -45,17 +32,15 @@ export function TransactionActions({
         >
           <Eye className="size-4" />
         </Button>
-        {canReverse && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={pending}
-            onClick={handleReverse}
+        {invoice ? (
+          <Link
+            href={`/receive/bpcl/edit?invoice=${encodeURIComponent(invoice)}`}
+            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
+            title="Edit invoice"
           >
-            Reverse
-          </Button>
-        )}
+            <Pencil className="size-4" />
+          </Link>
+        ) : null}
       </div>
       <TransactionDetailDialog
         row={row}

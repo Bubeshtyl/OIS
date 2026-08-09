@@ -1,5 +1,4 @@
 import { TransactionListShell } from "@/components/transactions/transaction-list-shell";
-import { hasPermission } from "@/lib/auth/rbac";
 import { requireTenantSession } from "@/lib/auth/permissions";
 import { loadTransactionPage } from "@/lib/transactions/load-page";
 
@@ -16,12 +15,7 @@ export default async function TransferPage({
 }) {
   const params = await searchParams;
   const session = await requireTenantSession();
-  const [canReverse, data] = await Promise.all([
-    hasPermission(session, "reversal:write"),
-    loadTransactionPage(session.tenantId, "issued", params),
-  ]);
+  const data = await loadTransactionPage(session.tenantId, "issued", params);
 
-  return (
-    <TransactionListShell pageKind="issued" isAdmin={canReverse} {...data} />
-  );
+  return <TransactionListShell pageKind="issued" {...data} />;
 }

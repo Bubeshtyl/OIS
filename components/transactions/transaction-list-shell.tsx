@@ -12,12 +12,14 @@ import type { TransactionPageKind } from "@/lib/transactions/page-config";
 import { PAGE_CONFIG } from "@/lib/transactions/page-config";
 import { aggregateTransactionRowsByDateAndProduct } from "@/lib/transactions/aggregate-rows";
 import { filterTransactionRows } from "@/lib/transactions/client-search";
+import { groupReceiveRowsByInvoice } from "@/lib/transactions/group-receive-by-invoice";
 import { buildFilterExtraParams } from "@/lib/transactions/url-params";
 import type { StockDisplayUnit } from "@/lib/format";
 import { useStockDisplayUnit } from "@/components/shared/use-stock-display-unit";
 import { ConsumptionTransactionTable } from "@/components/transactions/consumption-transaction-table";
 import { IssuedTransactionTable } from "@/components/transactions/issued-transaction-table";
 import { NewTransactionDialog } from "@/components/transactions/new-transaction-dialog";
+import { OpenReturnsPanel } from "@/components/transactions/open-returns-panel";
 import { ReceiveTransactionTable } from "@/components/transactions/receive-transaction-table";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionPagination } from "@/components/transactions/transaction-pagination";
@@ -25,6 +27,7 @@ import { TransactionSummaryBar } from "@/components/transactions/transaction-sum
 import { DateRangePicker } from "@/components/layout/date-range-picker";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { Card, CardContent } from "@/components/ui/card";
+import type { OpenReturnedCaseRow } from "@/lib/queries/returned-cases";
 
 export function TransactionListShell({
   pageKind,
@@ -37,9 +40,9 @@ export function TransactionListShell({
   defaultStart,
   defaultEnd,
   recordedBy,
-  isAdmin,
-  reversedIds,
   unit: initialUnit = "packets",
+  openReturns = [],
+  canWriteReturns = false,
 }: {
   pageKind: TransactionPageKind;
   products: OilProduct[];
@@ -51,25 +54,44 @@ export function TransactionListShell({
   defaultStart: string;
   defaultEnd: string;
   recordedBy?: string;
-  isAdmin: boolean;
-  reversedIds: string[];
   unit?: StockDisplayUnit;
+  openReturns?: OpenReturnedCaseRow[];
+  canWriteReturns?: boolean;
 }) {
   const config = PAGE_CONFIG[pageKind];
   const { unit: displayUnit, setDisplayUnit } = useStockDisplayUnit(initialUnit);
   const [searchDraft, setSearchDraft] = useState("");
   const [page, setPage] = useState(1);
 
+  const filteredRows = useMemo(
+    () => filterTransactionRows(rows, searchDraft),
+    [rows, searchDraft]
+  );
+
+  const receiveGroups = useMemo(
+    () =>
+      pageKind === "receive" ? groupReceiveRowsByInvoice(filteredRows) : [],
+    [pageKind, filteredRows]
+  );
+
   const displayRows = useMemo(() => {
-    const filtered = filterTransactionRows(rows, searchDraft);
+    if (pageKind === "receive") return [];
     const groupBy = pageKind === "consumption" ? "datetime" : "date";
-    return aggregateTransactionRowsByDateAndProduct(filtered, groupBy);
-  }, [rows, searchDraft, pageKind]);
+    return aggregateTransactionRowsByDateAndProduct(filteredRows, groupBy);
+  }, [filteredRows, pageKind]);
 
   const pageRows = useMemo(() => {
     const start = (page - 1) * TRANSACTION_LIST_PAGE_SIZE;
     return displayRows.slice(start, start + TRANSACTION_LIST_PAGE_SIZE);
   }, [displayRows, page]);
+
+  const pageReceiveGroups = useMemo(() => {
+    const start = (page - 1) * TRANSACTION_LIST_PAGE_SIZE;
+    return receiveGroups.slice(start, start + TRANSACTION_LIST_PAGE_SIZE);
+  }, [receiveGroups, page]);
+
+  const pageTotal =
+    pageKind === "receive" ? receiveGroups.length : displayRows.length;
 
   useEffect(() => {
     setPage(1);
@@ -109,6 +131,10 @@ export function TransactionListShell({
         </div>
       ) : null}
 
+      {pageKind === "receive" ? (
+        <OpenReturnsPanel rows={openReturns} canWrite={canWriteReturns} />
+      ) : null}
+
       <Card className="border shadow-sm">
         <CardContent className="space-y-4 p-4">
           <DateRangePicker
@@ -132,34 +158,22 @@ export function TransactionListShell({
           <div className="overflow-x-auto rounded-lg border [scrollbar-gutter:stable]">
             {pageKind === "receive" && (
               <ReceiveTransactionTable
-                rows={pageRows}
-                isAdmin={isAdmin}
-                reversedIds={reversedIds}
+                groups={pageReceiveGroups}
                 unit={displayUnit}
               />
             )}
             {pageKind === "issued" && (
-              <IssuedTransactionTable
-                rows={pageRows}
-                isAdmin={isAdmin}
-                reversedIds={reversedIds}
-                unit={displayUnit}
-              />
+              <IssuedTransactionTable rows={pageRows} unit={displayUnit} />
             )}
             {pageKind === "consumption" && (
-              <ConsumptionTransactionTable
-                rows={pageRows}
-                isAdmin={isAdmin}
-                reversedIds={reversedIds}
-                unit={displayUnit}
-              />
+              <ConsumptionTransactionTable rows={pageRows} unit={displayUnit} />
             )}
           </div>
 
           <TransactionPagination
             page={page}
             pageSize={TRANSACTION_LIST_PAGE_SIZE}
-            total={displayRows.length}
+            total={pageTotal}
             onPageChange={setPage}
           />
         </CardContent>

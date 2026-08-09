@@ -889,6 +889,253 @@ async function migrateToMultiTenant(db: Db) {
     DROP COLUMN IF EXISTS rate_per_unit
   `);
 
+  // v. Generic returned-cases tracking (any dealer via dealer_source)
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      CREATE TYPE return_case_status AS ENUM ('OPEN', 'REPLACED', 'CLOSED');
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END
+    $$;
+  `);
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      CREATE TYPE return_case_event_type AS ENUM (
+        'RECORDED',
+        'UPDATED',
+        'REPLACEMENT_LINKED',
+        'CLOSED'
+      );
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END
+    $$;
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS returned_cases (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      product_id uuid NOT NULL REFERENCES oil_products(id),
+      receive_transaction_id uuid NOT NULL UNIQUE
+        REFERENCES inventory_transactions(id) ON DELETE CASCADE,
+      dealer_source text NOT NULL,
+      invoice text NOT NULL,
+      cases_returned integer NOT NULL,
+      cases_replaced integer NOT NULL DEFAULT 0,
+      status return_case_status NOT NULL DEFAULT 'OPEN',
+      replacement_receive_transaction_id uuid
+        REFERENCES inventory_transactions(id) ON DELETE SET NULL,
+      replacement_invoice text,
+      replaced_at timestamptz,
+      notes text,
+      created_by uuid NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS returned_case_events (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      returned_case_id uuid NOT NULL
+        REFERENCES returned_cases(id) ON DELETE CASCADE,
+      event_type return_case_event_type NOT NULL,
+      detail text,
+      created_by uuid NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS returned_cases_tenant_invoice_idx
+      ON returned_cases (tenant_id, invoice)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS returned_cases_tenant_dealer_idx
+      ON returned_cases (tenant_id, dealer_source)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS returned_cases_tenant_status_idx
+      ON returned_cases (tenant_id, status)
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE returned_cases
+    ADD COLUMN IF NOT EXISTS cases_replaced integer NOT NULL DEFAULT 0
+  `);
+  // If a row was already marked REPLACED before cases_replaced existed, treat all as replaced.
+  await db.execute(sql`
+    UPDATE returned_cases
+    SET cases_replaced = cases_returned
+    WHERE status = 'REPLACED' AND cases_replaced = 0
+  `);
+
+  // Migrate legacy bpcl_returned_cases → returned_cases (if present)
+  if (await tableExists(db, "bpcl_returned_cases")) {
+    await db.execute(sql`
+      INSERT INTO returned_cases (
+        id,
+        tenant_id,
+        product_id,
+        receive_transaction_id,
+        dealer_source,
+        invoice,
+        cases_returned,
+        status,
+        replacement_receive_transaction_id,
+        replacement_invoice,
+        replaced_at,
+        notes,
+        created_by,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        tenant_id,
+        product_id,
+        receive_transaction_id,
+        'BPCL',
+        invoice,
+        cases_returned,
+        status::text::return_case_status,
+        replacement_receive_transaction_id,
+        replacement_invoice,
+        replaced_at,
+        notes,
+        created_by,
+        created_at,
+        updated_at
+      FROM bpcl_returned_cases
+      ON CONFLICT (receive_transaction_id) DO NOTHING
+    `);
+
+    if (await tableExists(db, "bpcl_returned_case_events")) {
+      await db.execute(sql`
+        INSERT INTO returned_case_events (
+          id,
+          tenant_id,
+          returned_case_id,
+          event_type,
+          detail,
+          created_by,
+          created_at
+        )
+        SELECT
+          e.id,
+          e.tenant_id,
+          e.returned_case_id,
+          e.event_type::text::return_case_event_type,
+          e.detail,
+          e.created_by,
+          e.created_at
+        FROM bpcl_returned_case_events e
+        WHERE EXISTS (
+          SELECT 1 FROM returned_cases r WHERE r.id = e.returned_case_id
+        )
+        ON CONFLICT (id) DO NOTHING
+      `);
+      await db.execute(sql`DROP TABLE IF EXISTS bpcl_returned_case_events`);
+    }
+
+    await db.execute(sql`DROP TABLE IF EXISTS bpcl_returned_cases`);
+    await db.execute(sql`DROP TYPE IF EXISTS bpcl_return_event_type`);
+    await db.execute(sql`DROP TYPE IF EXISTS bpcl_return_status`);
+  }
+
+  // Backfill returned cases previously stored in reference_note as "Returned: N"
+  const legacyReturned = await db.execute(sql`
+    SELECT
+      t.id,
+      t.tenant_id,
+      t.product_id,
+      t.dealer_source,
+      t.reference_note,
+      t.created_by,
+      t.created_at
+    FROM inventory_transactions t
+    WHERE t.type = 'RECEIVE'
+      AND t.reference_note ILIKE '%Returned:%'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM returned_cases r
+        WHERE r.receive_transaction_id = t.id
+      )
+  `);
+
+  for (const row of legacyReturned as unknown as Array<{
+    id: string;
+    tenant_id: string;
+    product_id: string;
+    dealer_source: string | null;
+    reference_note: string | null;
+    created_by: string;
+    created_at: Date;
+  }>) {
+    const note = row.reference_note ?? "";
+    const returnedMatch = note.match(/^Returned:\s*(\d+)/im);
+    const casesReturned = returnedMatch ? Number(returnedMatch[1]) : 0;
+    if (!Number.isInteger(casesReturned) || casesReturned < 1) continue;
+
+    const invoiceMatch = note.match(/^Invoice:\s*(.+)$/im);
+    const invoice = invoiceMatch?.[1]?.trim() || "UNKNOWN";
+    const dealerSource =
+      row.dealer_source?.trim() ||
+      note.match(/^Supplier:\s*(.+)$/im)?.[1]?.trim() ||
+      "UNKNOWN";
+
+    await db.execute(sql`
+      WITH inserted AS (
+        INSERT INTO returned_cases (
+          tenant_id,
+          product_id,
+          receive_transaction_id,
+          dealer_source,
+          invoice,
+          cases_returned,
+          status,
+          created_by,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${row.tenant_id},
+          ${row.product_id},
+          ${row.id},
+          ${dealerSource},
+          ${invoice},
+          ${casesReturned},
+          'OPEN',
+          ${row.created_by},
+          ${row.created_at},
+          now()
+        )
+        ON CONFLICT (receive_transaction_id) DO NOTHING
+        RETURNING id, tenant_id, created_by, created_at
+      )
+      INSERT INTO returned_case_events (
+        tenant_id,
+        returned_case_id,
+        event_type,
+        detail,
+        created_by,
+        created_at
+      )
+      SELECT
+        inserted.tenant_id,
+        inserted.id,
+        'RECORDED',
+        'Backfilled from receive note',
+        inserted.created_by,
+        inserted.created_at
+      FROM inserted
+    `);
+  }
+
   console.log("Multi-tenant migration applied.");
 }
 

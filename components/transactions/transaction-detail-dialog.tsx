@@ -44,6 +44,7 @@ export function TransactionDetailDialog({
 }) {
   const product = toProduct(row);
   const packageCount = parsePackageCountFromNote(row.referenceNote);
+  const returned = row.returnedCases;
   const userNote = parseUserNoteFromReference(row.referenceNote);
   const supplier = parseSupplierFromReference(row.referenceNote);
   const invoice = parseInvoiceFromReference(row.referenceNote);
@@ -69,6 +70,11 @@ export function TransactionDetailDialog({
     details.splice(3, 0, {
       label: "Invoice No.",
       value: invoice || "—",
+    });
+    const packagesIdx = details.findIndex((d) => d.label === "Packages");
+    details.splice(packagesIdx + 1, 0, {
+      label: "Returned Qty (cases)",
+      value: returned != null ? String(returned) : "—",
     });
 
     if (row.taxableValue != null) {

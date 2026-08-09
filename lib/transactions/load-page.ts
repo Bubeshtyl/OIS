@@ -5,7 +5,7 @@ import {
   normalizeDateRange,
 } from "@/lib/date-range";
 import { parseStockDisplayUnit } from "@/lib/format";
-import { getActiveProducts, getReversedTransactionIdsFor } from "@/lib/queries/inventory";
+import { getActiveProducts } from "@/lib/queries/inventory";
 import {
   getAllTransactionRows,
   getDistinctCreatorsForType,
@@ -57,14 +57,6 @@ export async function loadTransactionPage(
     }),
   ]);
 
-  const reversedIds =
-    list.rows.length > 0
-      ? await getReversedTransactionIdsFor(
-          tenantId,
-          list.rows.map((row) => row.id)
-        )
-      : [];
-
   return {
     products,
     creators,
@@ -75,7 +67,6 @@ export async function loadTransactionPage(
     defaultStart,
     defaultEnd,
     recordedBy,
-    reversedIds: Array.from(reversedIds),
     unit,
   };
 }

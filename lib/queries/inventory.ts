@@ -658,32 +658,3 @@ export async function getDailySummary(
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([date, values]) => ({ date, ...values }));
 }
-
-export async function getReversedTransactionIdsFor(
-  tenantId: string,
-  transactionIds: string[]
-) {
-  if (transactionIds.length === 0) {
-    return new Set<string>();
-  }
-
-  const db = getDb();
-  const rows = await db
-    .select({
-      reversesTransactionId: inventoryTransactions.reversesTransactionId,
-    })
-    .from(inventoryTransactions)
-    .where(
-      and(
-        eq(inventoryTransactions.tenantId, tenantId),
-        eq(inventoryTransactions.type, "REVERSAL"),
-        inArray(inventoryTransactions.reversesTransactionId, transactionIds)
-      )
-    );
-
-  return new Set(
-    rows
-      .map((r) => r.reversesTransactionId)
-      .filter((id): id is string => Boolean(id))
-  );
-}

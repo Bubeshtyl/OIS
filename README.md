@@ -114,7 +114,7 @@ Optional date range: `?start=YYYY-MM-DD&end=YYYY-MM-DD` (defaults to month-to-da
 
 | Role | Access |
 |------|--------|
-| **ADMIN** | Full access + product/user management + reversals |
+| **ADMIN** | Full access + product/user management |
 | **MANAGER** | Receive, transfer, sales, dashboard, reports |
 | **ACCOUNTS** | Read-only dashboard + reports |
 

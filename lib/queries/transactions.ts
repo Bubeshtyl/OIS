@@ -12,6 +12,7 @@ import { getDb } from "@/lib/db";
 import {
   inventoryTransactions,
   oilProducts,
+  returnedCases,
   users,
 } from "@/lib/db/schema";
 import { istDaySpan } from "@/lib/date-range";
@@ -103,13 +104,18 @@ function baseQuery() {
       sgstAmount: inventoryTransactions.sgstAmount,
       discountAmount: inventoryTransactions.discountAmount,
       landingPrice: inventoryTransactions.landingPrice,
+      returnedCases: returnedCases.casesReturned,
     })
     .from(inventoryTransactions)
     .innerJoin(
       oilProducts,
       eq(inventoryTransactions.productId, oilProducts.id)
     )
-    .innerJoin(users, eq(inventoryTransactions.createdBy, users.id));
+    .innerJoin(users, eq(inventoryTransactions.createdBy, users.id))
+    .leftJoin(
+      returnedCases,
+      eq(returnedCases.receiveTransactionId, inventoryTransactions.id)
+    );
 }
 
 export async function getDistinctCreatorsForType(
@@ -284,7 +290,10 @@ export async function getAllTransactionRows(filters: {
   );
 
   return {
-    rows: rows as TransactionListRow[],
+    rows: rows.map((row) => ({
+      ...row,
+      returnedCases: row.returnedCases ?? null,
+    })) as TransactionListRow[],
     summary,
   };
 }

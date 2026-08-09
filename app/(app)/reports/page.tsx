@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { ReportsView } from "@/components/reports/reports-view";
-import { canWriteInventory, hasPermission } from "@/lib/auth/rbac";
+import { canWriteInventory } from "@/lib/auth/rbac";
 import { requireTenantSession } from "@/lib/auth/permissions";
 import {
   defaultRangeEnd,
@@ -9,10 +9,7 @@ import {
   normalizeDateRange,
 } from "@/lib/date-range";
 import { parseStockDisplayUnit } from "@/lib/format";
-import {
-  getLedger,
-  getReversedTransactionIdsFor,
-} from "@/lib/queries/inventory";
+import { getLedger } from "@/lib/queries/inventory";
 import {
   getStockSummaryReport,
   getVarianceReport,
@@ -50,15 +47,7 @@ async function loadReportData(
       : Promise.resolve([]),
   ]);
 
-  const reversedIds =
-    needsLedger && ledger.length > 0
-      ? await getReversedTransactionIdsFor(
-          tenantId,
-          ledger.map((row) => row.id)
-        )
-      : [];
-
-  return { stockSummary, variance, ledger, reversedIds };
+  return { stockSummary, variance, ledger };
 }
 
 export default async function ReportsPage({
@@ -75,7 +64,6 @@ export default async function ReportsPage({
   const unit = parseStockDisplayUnit(params.unit);
   const session = await requireTenantSession();
   const canWrite = await canWriteInventory(session);
-  const canReverse = await hasPermission(session, "reversal:write");
   const today = getIstTodayString();
   const defaultStart = defaultRangeStart(today);
   const defaultEnd = defaultRangeEnd(today);
@@ -87,7 +75,7 @@ export default async function ReportsPage({
     ? params.report
     : defaultReportForRole(canWrite);
 
-  const { stockSummary, variance, ledger, reversedIds } = await loadReportData(
+  const { stockSummary, variance, ledger } = await loadReportData(
     session.tenantId,
     report,
     start,
@@ -106,8 +94,6 @@ export default async function ReportsPage({
         stockSummary={stockSummary}
         variance={variance}
         ledger={ledger}
-        reversedIds={Array.from(reversedIds)}
-        isAdmin={canReverse}
         unit={unit}
       />
     </Suspense>

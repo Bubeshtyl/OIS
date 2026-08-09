@@ -9,7 +9,6 @@ export type Permission =
   | "sales-data-analytics:read"
   | "products:manage"
   | "users:manage"
-  | "reversal:write"
   | "tickets:read"
   | "tickets:manage"
   | "teams:manage"
@@ -28,7 +27,6 @@ export const ADMIN_PERMISSIONS: Permission[] = [
   "sales-data-analytics:read",
   "products:manage",
   "users:manage",
-  "reversal:write",
   "tickets:read",
   "tickets:manage",
   "teams:manage",

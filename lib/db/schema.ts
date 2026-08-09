@@ -29,6 +29,20 @@ export const transactionTypeEnum = pgEnum("transaction_type", [
   "REVERSAL",
 ]);
 
+/** Lifecycle of cases returned on a receive invoice (awaiting replacement, etc.). */
+export const returnCaseStatusEnum = pgEnum("return_case_status", [
+  "OPEN",
+  "REPLACED",
+  "CLOSED",
+]);
+
+export const returnCaseEventTypeEnum = pgEnum("return_case_event_type", [
+  "RECORDED",
+  "UPDATED",
+  "REPLACEMENT_LINKED",
+  "CLOSED",
+]);
+
 export const locationEnum = pgEnum("location", [
   "SUPPLIER",
   "DEPOT",
@@ -197,6 +211,63 @@ export const stockBalance = pgTable(
     primaryKey({ columns: [table.tenantId, table.productId, table.location] }),
   ]
 );
+
+/** Cases returned on a receive invoice — tracked for any dealer (BPCL or other). */
+export const returnedCases = pgTable("returned_cases", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  productId: uuid("product_id")
+    .notNull()
+    .references(() => oilProducts.id),
+  receiveTransactionId: uuid("receive_transaction_id")
+    .notNull()
+    .references(() => inventoryTransactions.id, { onDelete: "cascade" })
+    .unique(),
+  /** Dealer identifier, e.g. "BPCL" or another supplier name. */
+  dealerSource: text("dealer_source").notNull(),
+  invoice: text("invoice").notNull(),
+  /** Original returned case count on the source invoice. */
+  casesReturned: integer("cases_returned").notNull(),
+  /** Cumulative cases already replaced (can be partial across multiple invoices). */
+  casesReplaced: integer("cases_replaced").default(0).notNull(),
+  status: returnCaseStatusEnum("status").default("OPEN").notNull(),
+  replacementReceiveTransactionId: uuid(
+    "replacement_receive_transaction_id"
+  ).references(() => inventoryTransactions.id, { onDelete: "set null" }),
+  replacementInvoice: text("replacement_invoice"),
+  replacedAt: timestamp("replaced_at", { withTimezone: true }),
+  notes: text("notes"),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+
+/** Event log for returned-case lifecycle (recorded, updated, replacement linked, closed). */
+export const returnedCaseEvents = pgTable("returned_case_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  returnedCaseId: uuid("returned_case_id")
+    .notNull()
+    .references(() => returnedCases.id, { onDelete: "cascade" }),
+  eventType: returnCaseEventTypeEnum("event_type").notNull(),
+  detail: text("detail"),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
 
 /** Pump daily sales import — upserted by (tenant_id, receipt_no). */
 export const dailySales = pgTable(
@@ -440,6 +511,35 @@ export const inventoryTransactionsRelations = relations(
       fields: [inventoryTransactions.reversesTransactionId],
       references: [inventoryTransactions.id],
     }),
+    returnedCase: one(returnedCases, {
+      fields: [inventoryTransactions.id],
+      references: [returnedCases.receiveTransactionId],
+    }),
+  })
+);
+
+export const returnedCasesRelations = relations(
+  returnedCases,
+  ({ one, many }) => ({
+    product: one(oilProducts, {
+      fields: [returnedCases.productId],
+      references: [oilProducts.id],
+    }),
+    receiveTransaction: one(inventoryTransactions, {
+      fields: [returnedCases.receiveTransactionId],
+      references: [inventoryTransactions.id],
+    }),
+    events: many(returnedCaseEvents),
+  })
+);
+
+export const returnedCaseEventsRelations = relations(
+  returnedCaseEvents,
+  ({ one }) => ({
+    returnedCase: one(returnedCases, {
+      fields: [returnedCaseEvents.returnedCaseId],
+      references: [returnedCases.id],
+    }),
   })
 );
 
@@ -483,6 +583,11 @@ export type User = typeof users.$inferSelect;
 export type OilProduct = typeof oilProducts.$inferSelect;
 export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
 export type StockBalance = typeof stockBalance.$inferSelect;
+export type ReturnedCase = typeof returnedCases.$inferSelect;
+export type ReturnedCaseEvent = typeof returnedCaseEvents.$inferSelect;
+export type ReturnCaseStatus = (typeof returnCaseStatusEnum.enumValues)[number];
+export type ReturnCaseEventType =
+  (typeof returnCaseEventTypeEnum.enumValues)[number];
 export type DailySale = typeof dailySales.$inferSelect;
 export type TransactionType = (typeof transactionTypeEnum.enumValues)[number];
 export type Location = (typeof locationEnum.enumValues)[number];
