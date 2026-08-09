@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { FootfallMetricsChart } from "@/components/sales-data-analytics/footfall-metrics-chart";
+import { FootfallMetricsTable } from "@/components/sales-data-analytics/footfall-metrics-table";
 import { FootfallProductTabs } from "@/components/sales-data-analytics/footfall-product-tabs";
 import { SalesAnalyticsFilters } from "@/components/sales-data-analytics/sales-analytics-filters";
 import { SalesBreakdownPieChart } from "@/components/sales-data-analytics/sales-breakdown-pie-chart";
@@ -203,8 +204,12 @@ export default async function SalesDataAnalyticsPage({
               <CardHeader>
                 <CardTitle>Footfall</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-6">
                 <FootfallMetricsChart data={footfallChartData} />
+                <FootfallMetricsTable
+                  data={footfallChartData}
+                  labelHeader="Hour"
+                />
               </CardContent>
             </Card>
           </>
@@ -221,8 +226,12 @@ export default async function SalesDataAnalyticsPage({
               <CardHeader>
                 <CardTitle>Footfall by price</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-6">
                 <FootfallMetricsChart data={footfallByPriceChartData} />
+                <FootfallMetricsTable
+                  data={footfallByPriceChartData}
+                  labelHeader="Price range"
+                />
               </CardContent>
             </Card>
           </>

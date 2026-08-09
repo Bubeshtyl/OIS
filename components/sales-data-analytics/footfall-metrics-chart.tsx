@@ -56,7 +56,12 @@ export function FootfallMetricsChart({
   }, []);
 
   return (
-    <div ref={containerRef} className="h-[300px] w-full min-w-0">
+    <div ref={containerRef} className="relative h-[300px] w-full min-w-0">
+      {midrange !== null ? (
+        <div className="pointer-events-none absolute top-0 right-0 z-10 text-xs font-medium text-muted-foreground">
+          Avg {formatCount(midrange)}
+        </div>
+      ) : null}
       {width > 0 ? (
         <BarChart
           width={width}
@@ -88,12 +93,6 @@ export function FootfallMetricsChart({
               y={midrange}
               stroke="oklch(0.55 0.12 25)"
               strokeWidth={2.5}
-              label={{
-                value: `Avg ${formatCount(midrange)}`,
-                position: "insideTopRight",
-                fill: "var(--muted-foreground)",
-                fontSize: 11,
-              }}
             />
           ) : null}
           <Bar

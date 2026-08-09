@@ -586,7 +586,7 @@ export type FootfallAmountRangePoint = {
 
 /**
  * Footfall counts bucketed by user-defined net_amount ranges
- * (min inclusive, max exclusive), within a calendar date span.
+ * (min and max inclusive), within a calendar date span.
  */
 export async function getFootfallByAmountRanges(
   tenantId: string,
@@ -608,7 +608,7 @@ export async function getFootfallByAmountRanges(
   const selectFields = Object.fromEntries(
     ranges.map((range, index) => [
       `r${index}`,
-      sql<string>`count(*) filter (where ${dailySales.netAmount} >= ${String(range.min)} and ${dailySales.netAmount} < ${String(range.max)})`,
+      sql<string>`count(*) filter (where ${dailySales.netAmount} >= ${String(range.min)} and ${dailySales.netAmount} <= ${String(range.max)})`,
     ])
   ) as Record<string, SQL<string>>;
 
