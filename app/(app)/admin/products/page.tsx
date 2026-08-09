@@ -17,7 +17,6 @@ export default async function AdminProductsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Oil Products"
-        subtitle="Manage oil types, pack sizes, and pricing"
         action={<AddProductButton />}
       />
       <Suspense fallback={<div className="p-4">Loading products...</div>}>

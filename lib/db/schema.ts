@@ -161,6 +161,12 @@ export const inventoryTransactions = pgTable("inventory_transactions", {
   toLocation: locationEnum("to_location").notNull(),
   transactionDate: date("transaction_date").notNull(),
   referenceNote: text("reference_note"),
+  dealerSource: text("dealer_source"),
+  taxableValue: numeric("taxable_value", { precision: 12, scale: 2 }),
+  cgstAmount: numeric("cgst_amount", { precision: 12, scale: 2 }),
+  sgstAmount: numeric("sgst_amount", { precision: 12, scale: 2 }),
+  discountAmount: numeric("discount_amount", { precision: 12, scale: 2 }),
+  landingPrice: numeric("landing_price", { precision: 12, scale: 4 }),
   reversesTransactionId: uuid("reverses_transaction_id"),
   createdBy: uuid("created_by")
     .notNull()

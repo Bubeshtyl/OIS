@@ -63,14 +63,56 @@ export function TransactionDetailDialog({
   ];
 
   if (row.type === "RECEIVE") {
-    details.splice(2, 0, { label: "Supplier", value: supplier || "—" });
+    const supplierLabel =
+      row.dealerSource === "BPCL" ? "BPCL" : supplier || "—";
+    details.splice(2, 0, { label: "Supplier", value: supplierLabel });
     details.splice(3, 0, {
       label: "Invoice No.",
       value: invoice || "—",
     });
+
+    if (row.taxableValue != null) {
+      details.push({
+        label: "Taxable value",
+        value: formatInr(Number(row.taxableValue)),
+      });
+    }
+    if (row.cgstAmount != null) {
+      details.push({
+        label: "CGST",
+        value: formatInr(Number(row.cgstAmount)),
+      });
+    }
+    if (row.sgstAmount != null) {
+      details.push({
+        label: "SGST",
+        value: formatInr(Number(row.sgstAmount)),
+      });
+    }
+    if (row.discountAmount != null) {
+      details.push({
+        label: "Discount",
+        value: formatInr(Number(row.discountAmount)),
+      });
+    }
+    if (row.landingPrice != null) {
+      details.push({
+        label: "Landing / packet",
+        value: formatInr(Number(row.landingPrice)),
+      });
+    }
+
+    const totalCost =
+      row.taxableValue != null
+        ? Number(row.taxableValue) -
+          Number(row.discountAmount ?? 0) +
+          Number(row.cgstAmount ?? 0) +
+          Number(row.sgstAmount ?? 0)
+        : litres * Number(row.costPrice);
+
     details.push({
       label: "Total Cost",
-      value: formatInr(litres * Number(row.costPrice)),
+      value: formatInr(totalCost),
     });
   }
 

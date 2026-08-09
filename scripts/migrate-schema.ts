@@ -857,6 +857,38 @@ async function migrateToMultiTenant(db: Db) {
     `);
   }
 
+  // t. BPCL receive money fields on inventory_transactions
+  await db.execute(sql`
+    ALTER TABLE inventory_transactions
+    ADD COLUMN IF NOT EXISTS dealer_source text
+  `);
+  await db.execute(sql`
+    ALTER TABLE inventory_transactions
+    ADD COLUMN IF NOT EXISTS taxable_value numeric(12, 2)
+  `);
+  await db.execute(sql`
+    ALTER TABLE inventory_transactions
+    ADD COLUMN IF NOT EXISTS cgst_amount numeric(12, 2)
+  `);
+  await db.execute(sql`
+    ALTER TABLE inventory_transactions
+    ADD COLUMN IF NOT EXISTS sgst_amount numeric(12, 2)
+  `);
+  await db.execute(sql`
+    ALTER TABLE inventory_transactions
+    ADD COLUMN IF NOT EXISTS discount_amount numeric(12, 2)
+  `);
+  await db.execute(sql`
+    ALTER TABLE inventory_transactions
+    ADD COLUMN IF NOT EXISTS landing_price numeric(12, 4)
+  `);
+
+  // u. drop unused rate_per_unit from BPCL receive lines
+  await db.execute(sql`
+    ALTER TABLE inventory_transactions
+    DROP COLUMN IF EXISTS rate_per_unit
+  `);
+
   console.log("Multi-tenant migration applied.");
 }
 

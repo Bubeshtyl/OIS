@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { OilProduct } from "@/lib/db/schema";
 import {
@@ -82,25 +83,42 @@ export function TransactionListShell({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <PageHeader title={config.title} subtitle={config.subtitle} />
-        <div className="flex flex-wrap items-center gap-2">
+        {pageKind !== "receive" ? (
+          <NewTransactionDialog
+            pageKind={pageKind}
+            products={products}
+            buttonLabel={config.newButtonLabel}
+          />
+        ) : null}
+      </div>
+
+      {pageKind === "receive" ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Link
+            href="/receive/bpcl"
+            className="rounded-lg border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40"
+          >
+            <p className="font-medium">BPCL</p>
+          </Link>
+          <Link
+            href="/receive/other"
+            className="rounded-lg border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40"
+          >
+            <p className="font-medium">Other dealers</p>
+          </Link>
+        </div>
+      ) : null}
+
+      <Card className="border shadow-sm">
+        <CardContent className="space-y-4 p-4">
           <DateRangePicker
             startDate={startDate}
             endDate={endDate}
             defaultStart={defaultStart}
             defaultEnd={defaultEnd}
             extraParams={extraParams}
-            className="h-9 gap-2 bg-card shadow-sm"
+            className="h-9 w-full justify-start gap-2 bg-background shadow-none sm:w-auto"
           />
-          <NewTransactionDialog
-            pageKind={pageKind}
-            products={products}
-            buttonLabel={config.newButtonLabel}
-          />
-        </div>
-      </div>
-
-      <Card className="border shadow-sm">
-        <CardContent className="space-y-4 p-4">
           <TransactionFilters
             pageKind={pageKind}
             creators={creators}
@@ -147,11 +165,13 @@ export function TransactionListShell({
         </CardContent>
       </Card>
 
-      <TransactionSummaryBar
-        pageKind={pageKind}
-        summary={summary}
-        unit={displayUnit}
-      />
+      {pageKind !== "receive" ? (
+        <TransactionSummaryBar
+          pageKind={pageKind}
+          summary={summary}
+          unit={displayUnit}
+        />
+      ) : null}
     </div>
   );
 }

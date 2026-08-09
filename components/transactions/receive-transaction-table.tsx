@@ -39,6 +39,20 @@ function toProduct(row: DisplayTransactionRow): OilProduct {
   };
 }
 
+function receiveLineCost(row: DisplayTransactionRow, litres: number, packets: number) {
+  if (row.taxableValue != null) {
+    const taxable = Number(row.taxableValue);
+    const discount = Number(row.discountAmount ?? 0);
+    const cgst = Number(row.cgstAmount ?? 0);
+    const sgst = Number(row.sgstAmount ?? 0);
+    return taxable - discount + cgst + sgst;
+  }
+  if (row.landingPrice != null && packets > 0) {
+    return Number(row.landingPrice) * packets;
+  }
+  return litres * Number(row.costPrice);
+}
+
 export function ReceiveTransactionTable({
   rows,
   isAdmin,
@@ -71,7 +85,7 @@ export function ReceiveTransactionTable({
           <TableHead>Pack Size</TableHead>
           <TableHead>Qty</TableHead>
           <TableHead className="min-w-[4.5rem]">Total</TableHead>
-          <TableHead>Cost / L</TableHead>
+          <TableHead>Landing / pkt</TableHead>
           <TableHead>Total Cost</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>
@@ -79,16 +93,24 @@ export function ReceiveTransactionTable({
       <TableBody>
         {rows.map((row) => {
           const litres = Number(row.quantity);
-          const costPerL = Number(row.costPrice);
-          const totalCost = litres * costPerL;
+          const packets = transactionRowPackets(row);
+          const totalCost = receiveLineCost(row, litres, packets);
           const packageCount = parsePackageCountFromNote(row.referenceNote);
           const supplier = row.isAggregated
             ? row.aggregatedSupplier ?? "—"
-            : parseSupplierFromReference(row.referenceNote);
+            : row.dealerSource === "BPCL"
+              ? "BPCL"
+              : parseSupplierFromReference(row.referenceNote);
           const invoice = row.isAggregated
             ? row.aggregatedInvoice ?? "—"
             : parseInvoiceFromReference(row.referenceNote);
           const packSize = describeBoxPackaging(toProduct(row)) ?? "—";
+          const landingLabel =
+            row.landingPrice != null
+              ? formatInr(Number(row.landingPrice))
+              : row.costPrice && Number(row.costPrice) > 0
+                ? formatInr(Number(row.costPrice))
+                : "—";
 
           return (
             <TableRow key={row.id}>
@@ -114,11 +136,11 @@ export function ReceiveTransactionTable({
               <TableCell>
                 {formatStockQuantity(
                   unit,
-                  transactionRowPackets(row),
+                  packets,
                   litres
                 )}
               </TableCell>
-              <TableCell>{formatInr(costPerL)}</TableCell>
+              <TableCell>{landingLabel}</TableCell>
               <TableCell>{formatInr(totalCost)}</TableCell>
               <TableCell>
                 {row.isAggregated ? (

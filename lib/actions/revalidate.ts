@@ -5,6 +5,8 @@ const INVENTORY_PATHS = [
   "/dashboard",
   "/stock-count",
   "/receive",
+  "/receive/bpcl",
+  "/receive/other",
   "/transfer",
   "/sales",
   "/reports",

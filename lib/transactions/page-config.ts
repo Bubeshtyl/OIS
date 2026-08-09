@@ -22,7 +22,7 @@ export const PAGE_CONFIG: Record<
 > = {
   receive: {
     title: "Stock Received",
-    subtitle: "Supplier → Depot",
+    subtitle: "",
     newButtonLabel: "+ New Received",
     searchPlaceholder: "Search supplier, invoice or oil type…",
     staffFilterLabel: "All Suppliers",
@@ -30,7 +30,7 @@ export const PAGE_CONFIG: Record<
   },
   issued: {
     title: "Stock Issued",
-    subtitle: "Depot → Oil Manager",
+    subtitle: "",
     newButtonLabel: "+ New Issue",
     searchPlaceholder: "Search oil type or notes…",
     staffFilterLabel: "All Managers",
@@ -38,7 +38,7 @@ export const PAGE_CONFIG: Record<
   },
   consumption: {
     title: "Daily Consumption",
-    subtitle: "Oil Manager → Sold / Returned / Damaged",
+    subtitle: "",
     newButtonLabel: "+ New Consumption",
     searchPlaceholder: "Search oil type or notes…",
     staffFilterLabel: "All Managers",

@@ -23,6 +23,12 @@ export type TransactionListRow = {
   createdByName: string;
   createdById: string;
   reversesTransactionId: string | null;
+  dealerSource: string | null;
+  taxableValue: string | null;
+  cgstAmount: string | null;
+  sgstAmount: string | null;
+  discountAmount: string | null;
+  landingPrice: string | null;
 };
 
 export type DisplayTransactionRow = TransactionListRow & {

@@ -137,7 +137,16 @@ async function applyBalanceDelta(
   }
 }
 
-export interface CreateTransactionInput {
+export interface ReceiveMoneyFields {
+  dealerSource?: string | null;
+  taxableValue?: number | null;
+  cgstAmount?: number | null;
+  sgstAmount?: number | null;
+  discountAmount?: number | null;
+  landingPrice?: number | null;
+}
+
+export interface CreateTransactionInput extends ReceiveMoneyFields {
   tenantId: string;
   productId: string;
   type: Exclude<TransactionType, "REVERSAL">;
@@ -145,6 +154,31 @@ export interface CreateTransactionInput {
   transactionDate: string;
   referenceNote?: string;
   createdBy: string;
+}
+
+function moneyOrNull(value: number | null | undefined): string | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return String(value);
+}
+
+function resolveLocations(type: Exclude<TransactionType, "REVERSAL">): {
+  fromLocation: Location;
+  toLocation: Location;
+} {
+  switch (type) {
+    case "RECEIVE":
+      return { fromLocation: "SUPPLIER", toLocation: "DEPOT" };
+    case "TRANSFER":
+      return { fromLocation: "DEPOT", toLocation: "MANAGER" };
+    case "SALE":
+      return { fromLocation: "MANAGER", toLocation: "SALE" };
+    case "RETURNED":
+      return { fromLocation: "MANAGER", toLocation: "DEPOT" };
+    case "DAMAGED":
+      return { fromLocation: "MANAGER", toLocation: "SALE" };
+    default:
+      throw new InventoryError("Invalid transaction type.");
+  }
 }
 
 export async function createInventoryTransaction(input: CreateTransactionInput) {
@@ -169,35 +203,7 @@ export async function createInventoryTransaction(input: CreateTransactionInput) 
     throw new InventoryError("Product is inactive or not found.");
   }
 
-  let fromLocation: Location;
-  let toLocation: Location;
-
-  switch (input.type) {
-    case "RECEIVE":
-      fromLocation = "SUPPLIER";
-      toLocation = "DEPOT";
-      break;
-    case "TRANSFER":
-      fromLocation = "DEPOT";
-      toLocation = "MANAGER";
-      break;
-    case "SALE":
-      fromLocation = "MANAGER";
-      toLocation = "SALE";
-      break;
-    case "RETURNED":
-      // Unsold stock returned from Oil Manager to Depot.
-      fromLocation = "MANAGER";
-      toLocation = "DEPOT";
-      break;
-    case "DAMAGED":
-      // Damaged stock is removed from Oil Manager (like SALE).
-      fromLocation = "MANAGER";
-      toLocation = "SALE";
-      break;
-    default:
-      throw new InventoryError("Invalid transaction type.");
-  }
+  const { fromLocation, toLocation } = resolveLocations(input.type);
 
   const delta = getBalanceDelta(
     input.type,
@@ -230,12 +236,112 @@ export async function createInventoryTransaction(input: CreateTransactionInput) 
         toLocation,
         transactionDate: input.transactionDate,
         referenceNote: input.referenceNote || null,
+        dealerSource: input.dealerSource ?? null,
+        taxableValue: moneyOrNull(input.taxableValue),
+        cgstAmount: moneyOrNull(input.cgstAmount),
+        sgstAmount: moneyOrNull(input.sgstAmount),
+        discountAmount: moneyOrNull(input.discountAmount),
+        landingPrice: moneyOrNull(input.landingPrice),
         createdBy: input.createdBy,
       })
       .returning();
 
     await applyBalanceDelta(tx, input.tenantId, input.productId, delta);
     return txn;
+  });
+}
+
+export type BpclReceiveLineInput = {
+  productId: string;
+  quantityLitres: number;
+  packageCount: number;
+  taxableValue: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  discountAmount: number;
+  landingPrice: number;
+};
+
+/** Create multiple BPCL RECEIVE rows and credit depot balances in one DB transaction. */
+export async function createBpclReceiveBatch(input: {
+  tenantId: string;
+  transactionDate: string;
+  invoice: string;
+  createdBy: string;
+  lines: BpclReceiveLineInput[];
+}) {
+  if (input.lines.length === 0) {
+    throw new InventoryError("Add at least one product with quantity.");
+  }
+
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    const created = [];
+
+    for (const line of input.lines) {
+      if (line.quantityLitres <= 0) {
+        throw new InventoryError("Quantity must be greater than zero.");
+      }
+
+      const [product] = await tx
+        .select()
+        .from(oilProducts)
+        .where(
+          and(
+            eq(oilProducts.id, line.productId),
+            eq(oilProducts.tenantId, input.tenantId)
+          )
+        )
+        .limit(1);
+
+      if (!product || !product.isActive) {
+        throw new InventoryError(
+          `Product is inactive or not found${product ? `: ${product.name}` : ""}.`
+        );
+      }
+
+      const fromLocation: Location = "SUPPLIER";
+      const toLocation: Location = "DEPOT";
+      const delta = getBalanceDelta(
+        "RECEIVE",
+        fromLocation,
+        toLocation,
+        line.quantityLitres
+      );
+
+      const referenceNote = [
+        `Packages: ${line.packageCount}`,
+        "Supplier: BPCL",
+        `Invoice: ${input.invoice}`,
+      ].join("\n");
+
+      const [txn] = await tx
+        .insert(inventoryTransactions)
+        .values({
+          tenantId: input.tenantId,
+          productId: line.productId,
+          type: "RECEIVE",
+          quantity: String(line.quantityLitres),
+          fromLocation,
+          toLocation,
+          transactionDate: input.transactionDate,
+          referenceNote,
+          dealerSource: "BPCL",
+          taxableValue: moneyOrNull(line.taxableValue),
+          cgstAmount: moneyOrNull(line.cgstAmount),
+          sgstAmount: moneyOrNull(line.sgstAmount),
+          discountAmount: moneyOrNull(line.discountAmount),
+          landingPrice: moneyOrNull(line.landingPrice),
+          createdBy: input.createdBy,
+        })
+        .returning();
+
+      await applyBalanceDelta(tx, input.tenantId, line.productId, delta);
+      created.push(txn);
+    }
+
+    return created;
   });
 }
 

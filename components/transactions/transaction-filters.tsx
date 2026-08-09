@@ -82,46 +82,50 @@ export function TransactionFilters({
         placeholder={config.searchPlaceholder}
       />
 
-      <div
-        className={
-          config.showStaffFilter
-            ? "grid min-w-0 gap-3 sm:grid-cols-2"
-            : "min-w-0"
-        }
-      >
-        {config.showStaffFilter && (
-          <Select
-            value={recordedBy ?? "all"}
-            onValueChange={(value) =>
-              pushParams({
-                recordedBy: value && value !== "all" ? value : undefined,
-              })
-            }
-            items={[
-              { value: "all", label: config.staffFilterLabel },
-              ...creators.map((c) => ({ value: c.id, label: c.name })),
-            ]}
-          >
-            <SelectTrigger className="h-10 w-full min-w-0 bg-card">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{config.staffFilterLabel}</SelectItem>
-              {creators.map((creator) => (
-                <SelectItem key={creator.id} value={creator.id}>
-                  {creator.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+      {config.showStaffFilter || pageKind !== "receive" ? (
+        <div
+          className={
+            config.showStaffFilter
+              ? "grid min-w-0 gap-3 sm:grid-cols-2"
+              : "min-w-0"
+          }
+        >
+          {config.showStaffFilter && (
+            <Select
+              value={recordedBy ?? "all"}
+              onValueChange={(value) =>
+                pushParams({
+                  recordedBy: value && value !== "all" ? value : undefined,
+                })
+              }
+              items={[
+                { value: "all", label: config.staffFilterLabel },
+                ...creators.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            >
+              <SelectTrigger className="h-10 w-full min-w-0 bg-card">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{config.staffFilterLabel}</SelectItem>
+                {creators.map((creator) => (
+                  <SelectItem key={creator.id} value={creator.id}>
+                    {creator.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
-        <StockUnitToggle
-          unit={unit}
-          onChange={onUnitChange}
-          className="h-10 w-full min-w-0 p-1"
-        />
-      </div>
+          {pageKind !== "receive" ? (
+            <StockUnitToggle
+              unit={unit}
+              onChange={onUnitChange}
+              className="h-10 w-full min-w-0 p-1"
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

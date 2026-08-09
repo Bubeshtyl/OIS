@@ -24,8 +24,6 @@ const productSchema = z
     id: z.string().uuid().optional(),
     name: z.string().min(1),
     unit: z.enum(["litre", "millilitre"]),
-    costPrice: z.coerce.number().nonnegative(),
-    sellingPrice: z.coerce.number().nonnegative(),
     lowStockThreshold: z.coerce.number().int().nonnegative().optional(),
     packetsPerBox: z.coerce.number().int().positive().optional(),
     volumePerPacket: z.coerce.number().positive().optional(),
@@ -55,8 +53,6 @@ export async function saveProductAction(
     id: formData.get("id") || undefined,
     name: formData.get("name"),
     unit: formData.get("unit"),
-    costPrice: formData.get("costPrice"),
-    sellingPrice: formData.get("sellingPrice"),
     lowStockThreshold: formData.get("lowStockThreshold") || undefined,
     packetsPerBox: formData.get("packetsPerBox") || undefined,
     volumePerPacket: formData.get("volumePerPacket") || undefined,
@@ -80,8 +76,8 @@ export async function saveProductAction(
   const values = {
     name: parsed.data.name,
     unit: parsed.data.unit,
-    costPrice: String(parsed.data.costPrice),
-    sellingPrice: String(parsed.data.sellingPrice),
+    costPrice: "0",
+    sellingPrice: "0",
     lowStockThreshold: parsed.data.lowStockThreshold
       ? String(parsed.data.lowStockThreshold)
       : null,

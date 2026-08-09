@@ -21,12 +21,6 @@ import type { ActionState } from "@/lib/actions/inventory";
 import { formatDefaultUnit, formatPackSizes } from "@/lib/products/display";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText,
-} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +51,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatInr, formatLitres } from "@/lib/format";
 import { VolumeUnitToggle } from "@/components/forms/volume-unit-toggle";
 import {
   convertDisplayQuantity,
@@ -96,13 +89,6 @@ function ProductFormSheet({
   const [packetsPerBox, setPacketsPerBox] = useState(
     product?.packetsPerBox ?? ""
   );
-  const [mrp, setMrp] = useState(product?.costPrice ?? "");
-  const [discount, setDiscount] = useState(() => {
-    if (!product?.costPrice || !product?.sellingPrice) return "";
-    const amount =
-      Number(product.costPrice) - Number(product.sellingPrice);
-    return amount > 0 ? String(amount) : "";
-  });
   const [lowStockAlertEnabled, setLowStockAlertEnabled] = useState(
     () => product?.lowStockThreshold != null && product.lowStockThreshold !== ""
   );
@@ -110,22 +96,8 @@ function ProductFormSheet({
     product?.lowStockThreshold ?? ""
   );
 
-  const sellingPrice = (() => {
-    const mrpNum = Number(mrp);
-    const discountNum = discount === "" ? 0 : Number(discount);
-    if (mrp === "" || Number.isNaN(mrpNum) || Number.isNaN(discountNum)) {
-      return "";
-    }
-    const result = mrpNum - discountNum;
-    return result >= 0 ? result.toFixed(2) : "";
-  })();
-
   const unit = productUnitFromVolumeUnit(packetVolumeUnit);
   const volumePerPacketLitres = toLitres(packetVolume, packetVolumeUnit);
-  const boxSizeLitres =
-    packetsPerBox && volumePerPacketLitres
-      ? Number(packetsPerBox) * Number(volumePerPacketLitres)
-      : null;
 
   function handlePacketUnitChange(nextUnit: VolumeUnit) {
     if (nextUnit === packetVolumeUnit) return;
@@ -137,14 +109,6 @@ function ProductFormSheet({
 
   function resetFormFromProduct() {
     setPacketsPerBox(product?.packetsPerBox ?? "");
-    setMrp(product?.costPrice ?? "");
-    if (product?.costPrice && product?.sellingPrice) {
-      const amount =
-        Number(product.costPrice) - Number(product.sellingPrice);
-      setDiscount(amount > 0 ? String(amount) : "");
-    } else {
-      setDiscount("");
-    }
     setLowStockAlertEnabled(
       product?.lowStockThreshold != null && product.lowStockThreshold !== ""
     );
@@ -209,7 +173,6 @@ function ProductFormSheet({
             name="volumePerPacket"
             value={volumePerPacketLitres}
           />
-          <input type="hidden" name="sellingPrice" value={sellingPrice} />
           <div className="space-y-2">
             <Label htmlFor="name">Oil name *</Label>
             <Input
@@ -221,12 +184,7 @@ function ProductFormSheet({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <div>
-                <Label htmlFor="packetVolume">Size</Label>
-                <p className="text-xs text-muted-foreground">
-                  Size of one pouch or sachet inside a box.
-                </p>
-              </div>
+              <Label htmlFor="packetVolume">Size</Label>
               <VolumeUnitToggle
                 volumeUnit={packetVolumeUnit}
                 onChange={handlePacketUnitChange}
@@ -241,11 +199,6 @@ function ProductFormSheet({
               onChange={(e) => setPacketVolume(e.target.value)}
               placeholder={packetVolumeUnit === "ml" ? "500" : "0.5"}
             />
-            {boxSizeLitres ? (
-              <p className="text-xs text-muted-foreground">
-                Box size: {formatLitres(boxSizeLitres)}
-              </p>
-            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="packetsPerBox">Packets per box</Label>
@@ -259,70 +212,6 @@ function ProductFormSheet({
               onChange={(e) => setPacketsPerBox(e.target.value)}
               placeholder="5"
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="costPrice">MRP *</Label>
-              <InputGroup>
-                <InputGroupAddon>
-                  <InputGroupText>₹</InputGroupText>
-                </InputGroupAddon>
-                <InputGroupInput
-                  id="costPrice"
-                  name="costPrice"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={mrp}
-                  onChange={(e) => setMrp(e.target.value)}
-                  required
-                />
-              </InputGroup>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="discount">Discount</Label>
-              <InputGroup>
-                <InputGroupAddon>
-                  <InputGroupText>₹</InputGroupText>
-                </InputGroupAddon>
-                <InputGroupInput
-                  id="discount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={discount}
-                  onChange={(e) => setDiscount(e.target.value)}
-                />
-              </InputGroup>
-            </div>
-            <div className="col-span-2 space-y-2">
-              <Label htmlFor="sellingPrice">Selling price</Label>
-              <InputGroup>
-                <InputGroupAddon>
-                  <InputGroupText>₹</InputGroupText>
-                </InputGroupAddon>
-                <InputGroupInput
-                  id="sellingPrice"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={sellingPrice}
-                  readOnly
-                  tabIndex={-1}
-                  className="cursor-default text-muted-foreground"
-                />
-              </InputGroup>
-              {mrp !== "" &&
-              discount !== "" &&
-              Number(discount) > Number(mrp) ? (
-                <p className="text-xs text-destructive">
-                  Discount cannot exceed MRP.
-                </p>
-              ) : null}
-            </div>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -359,9 +248,7 @@ function ProductFormSheet({
             <Button
               type="submit"
               disabled={
-                pending ||
-                !sellingPrice ||
-                (lowStockAlertEnabled && lowStockThreshold === "")
+                pending || (lowStockAlertEnabled && lowStockThreshold === "")
               }
               className="flex-1"
             >
@@ -547,7 +434,6 @@ export function ProductsAdmin({
                   <TableHead>Oil Type</TableHead>
                   <TableHead>Pack Sizes</TableHead>
                   <TableHead>Default Unit</TableHead>
-                  <TableHead>MRP / Selling</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -556,7 +442,7 @@ export function ProductsAdmin({
                 {filteredProducts.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={5}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No oil products match your filters.
@@ -571,10 +457,6 @@ export function ProductsAdmin({
                       <TableCell>{formatPackSizes(product)}</TableCell>
                       <TableCell>
                         {formatDefaultUnit(product.unit)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatInr(product.costPrice)} /{" "}
-                        {formatInr(product.sellingPrice)}
                       </TableCell>
                       <TableCell>
                         <Badge

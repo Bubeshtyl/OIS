@@ -97,6 +97,12 @@ function baseQuery() {
       createdByName: users.name,
       createdById: users.id,
       reversesTransactionId: inventoryTransactions.reversesTransactionId,
+      dealerSource: inventoryTransactions.dealerSource,
+      taxableValue: inventoryTransactions.taxableValue,
+      cgstAmount: inventoryTransactions.cgstAmount,
+      sgstAmount: inventoryTransactions.sgstAmount,
+      discountAmount: inventoryTransactions.discountAmount,
+      landingPrice: inventoryTransactions.landingPrice,
     })
     .from(inventoryTransactions)
     .innerJoin(
@@ -150,6 +156,11 @@ async function computeSummary(
       createdById: users.id,
       packetsPerBox: oilProducts.packetsPerBox,
       volumePerPacket: oilProducts.volumePerPacket,
+      taxableValue: inventoryTransactions.taxableValue,
+      cgstAmount: inventoryTransactions.cgstAmount,
+      sgstAmount: inventoryTransactions.sgstAmount,
+      discountAmount: inventoryTransactions.discountAmount,
+      landingPrice: inventoryTransactions.landingPrice,
     })
     .from(inventoryTransactions)
     .innerJoin(
@@ -178,8 +189,19 @@ async function computeSummary(
     for (const row of rows) {
       const litres = Number(row.quantity);
       totalLitres += litres;
-      totalPackets += rowPackets(litres, row.referenceNote, row);
-      totalCost += litres * Number(row.costPrice);
+      const packets = rowPackets(litres, row.referenceNote, row);
+      totalPackets += packets;
+      if (row.taxableValue != null) {
+        const taxable = Number(row.taxableValue);
+        const discount = Number(row.discountAmount ?? 0);
+        const cgst = Number(row.cgstAmount ?? 0);
+        const sgst = Number(row.sgstAmount ?? 0);
+        totalCost += taxable - discount + cgst + sgst;
+      } else if (row.landingPrice != null && packets > 0) {
+        totalCost += Number(row.landingPrice) * packets;
+      } else {
+        totalCost += litres * Number(row.costPrice);
+      }
     }
     return {
       totalLitres,

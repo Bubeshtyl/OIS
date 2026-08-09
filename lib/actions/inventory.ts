@@ -4,19 +4,28 @@ import { z } from "zod";
 import { revalidateInventoryPages } from "@/lib/actions/revalidate";
 import { hasPermission } from "@/lib/auth/rbac";
 import { requireTenantSession } from "@/lib/auth/permissions";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { oilProducts } from "@/lib/db/schema";
 import {
+  createBpclReceiveBatch,
   createInventoryTransaction,
   getProductBalance,
   InventoryError,
   reverseTransaction,
 } from "@/lib/inventory/service";
 import {
+  allocateInvoiceDiscount,
+  computeLandingPrice,
+  invoiceDiscountPerPacket,
+} from "@/lib/inventory/landing-price";
+import {
   buildReceiveReferenceNote,
   formatBoxCount,
   formatPacketCount,
+  getPacketsPerBox,
+  hasBoxPackaging,
+  litresFromBoxes,
   totalPacketsFromBoxes,
 } from "@/lib/packaging";
 
@@ -64,6 +73,172 @@ function boxToastMessage(boxCount: number, product: Awaited<ReturnType<typeof ge
     }
   }
   return formatBoxCount(boxCount);
+}
+
+const bpclHeaderSchema = z.object({
+  invoice: z.string().trim().min(1, "Invoice number is required."),
+  transactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date is required."),
+  additionalDiscount: z.coerce.number().nonnegative().default(0),
+});
+
+const bpclLineSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.coerce.number().int().positive(),
+  taxableValue: z.coerce.number().nonnegative(),
+  cgstAmount: z.coerce.number().nonnegative(),
+  sgstAmount: z.coerce.number().nonnegative(),
+  discountAmount: z.coerce.number().nonnegative().default(0),
+});
+
+export async function receiveBpclStockAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const session = await requireTenantSession();
+  if (!(await hasPermission(session, "receive:write"))) {
+    return { success: false, error: "You do not have permission." };
+  }
+
+  const header = bpclHeaderSchema.safeParse({
+    invoice: formData.get("invoice"),
+    transactionDate: formData.get("transactionDate"),
+    additionalDiscount: formData.get("additionalDiscount") || 0,
+  });
+  if (!header.success) {
+    return {
+      success: false,
+      error: header.error.issues[0]?.message ?? "Invoice number and date are required.",
+    };
+  }
+
+  let rawLines: unknown;
+  try {
+    rawLines = JSON.parse(String(formData.get("lines") || "[]"));
+  } catch {
+    return { success: false, error: "Invalid product lines." };
+  }
+
+  if (!Array.isArray(rawLines) || rawLines.length === 0) {
+    return { success: false, error: "Enter quantity for at least one product." };
+  }
+
+  const parsedLines = z.array(bpclLineSchema).safeParse(rawLines);
+  if (!parsedLines.success) {
+    return {
+      success: false,
+      error: parsedLines.error.issues[0]?.message ?? "Please check product line values.",
+    };
+  }
+
+  const db = getDb();
+  const productIds = parsedLines.data.map((line) => line.productId);
+  const products = await db
+    .select()
+    .from(oilProducts)
+    .where(
+      and(
+        eq(oilProducts.tenantId, session.tenantId),
+        inArray(oilProducts.id, productIds)
+      )
+    );
+
+  const productById = new Map(products.map((p) => [p.id, p] as const));
+
+  let totalPackets = 0;
+  const resolved = [];
+  for (const line of parsedLines.data) {
+    const product = productById.get(line.productId);
+    if (!product || !product.isActive) {
+      return { success: false, error: "One or more products are inactive or missing." };
+    }
+    if (!hasBoxPackaging(product)) {
+      return {
+        success: false,
+        error: `${product.name} is missing box packaging. Update the product first.`,
+      };
+    }
+    const packetsPerBox = getPacketsPerBox(product);
+    if (packetsPerBox == null) {
+      return {
+        success: false,
+        error: `${product.name} is missing packets per box.`,
+      };
+    }
+    const litres = litresFromBoxes(line.quantity, product);
+    if (litres == null) {
+      return {
+        success: false,
+        error: `Could not compute volume for ${product.name}.`,
+      };
+    }
+    const linePackets = line.quantity * packetsPerBox;
+    totalPackets += linePackets;
+    resolved.push({ line, product, packetsPerBox, litres, linePackets });
+  }
+
+  const perPacketInvoiceDiscount = invoiceDiscountPerPacket(
+    header.data.additionalDiscount,
+    totalPackets
+  );
+
+  const batchLines = [];
+  for (const { line, product, packetsPerBox, litres, linePackets } of resolved) {
+    const allocatedInvoiceDiscount = allocateInvoiceDiscount(
+      header.data.additionalDiscount,
+      linePackets,
+      totalPackets
+    );
+    const discountAmount = line.discountAmount + allocatedInvoiceDiscount;
+    const landingPrice = computeLandingPrice({
+      taxableValue: line.taxableValue,
+      discountAmount: line.discountAmount,
+      cgstAmount: line.cgstAmount,
+      sgstAmount: line.sgstAmount,
+      boxQuantity: line.quantity,
+      packetsPerBox,
+      invoiceDiscountPerPacket: perPacketInvoiceDiscount,
+    });
+    if (landingPrice == null) {
+      return {
+        success: false,
+        error: `Could not compute landing price for ${product.name}.`,
+      };
+    }
+
+    batchLines.push({
+      productId: line.productId,
+      quantityLitres: litres,
+      packageCount: line.quantity,
+      taxableValue: line.taxableValue,
+      cgstAmount: line.cgstAmount,
+      sgstAmount: line.sgstAmount,
+      discountAmount,
+      landingPrice,
+    });
+  }
+
+  try {
+    await createBpclReceiveBatch({
+      tenantId: session.tenantId,
+      transactionDate: header.data.transactionDate,
+      invoice: header.data.invoice,
+      createdBy: session.userId,
+      lines: batchLines,
+    });
+    revalidateInventoryPages();
+    return {
+      success: true,
+      message: `${batchLines.length} product${batchLines.length === 1 ? "" : "s"} received from BPCL`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof InventoryError
+          ? error.message
+          : "Failed to record BPCL receipt.",
+    };
+  }
 }
 
 export async function receiveStockAction(
