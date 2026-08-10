@@ -18,6 +18,7 @@ export function AppShell({
 }) {
   return (
     <SidebarProvider
+      defaultOpen={false}
       style={
         {
           "--sidebar-width": "15.5rem",

@@ -162,7 +162,25 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, open, setOpen, openMobile, setOpenMobile } =
+    useSidebar()
+
+  // Hover expands (mouse). Touch expands and stays open until outside tap.
+  React.useEffect(() => {
+    if (isMobile || collapsible !== "icon" || !open) return
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "mouse") return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (target.closest('[data-slot="sidebar-container"]')) return
+      if (target.closest('[data-sidebar="trigger"]')) return
+      setOpen(false)
+    }
+
+    document.addEventListener("pointerdown", onPointerDown, true)
+    return () => document.removeEventListener("pointerdown", onPointerDown, true)
+  }, [isMobile, collapsible, open, setOpen])
 
   if (collapsible === "none") {
     return (
@@ -238,6 +256,25 @@ function Sidebar({
           className
         )}
         {...props}
+        onPointerEnter={(event) => {
+          props.onPointerEnter?.(event)
+          if (event.defaultPrevented) return
+          if (collapsible !== "icon") return
+          if (event.pointerType === "mouse") setOpen(true)
+        }}
+        onPointerLeave={(event) => {
+          props.onPointerLeave?.(event)
+          if (event.defaultPrevented) return
+          if (collapsible !== "icon") return
+          if (event.pointerType === "mouse") setOpen(false)
+        }}
+        onPointerDown={(event) => {
+          props.onPointerDown?.(event)
+          if (event.defaultPrevented) return
+          if (collapsible !== "icon") return
+          if (event.pointerType === "mouse") return
+          setOpen(true)
+        }}
       >
         <div
           data-sidebar="sidebar"
