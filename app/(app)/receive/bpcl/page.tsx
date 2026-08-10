@@ -27,7 +27,7 @@ export default async function ReceiveBpclPage() {
             href="/admin/products"
             className={cn(buttonVariants({ variant: "default" }), "shrink-0")}
           >
-            Oil Products
+            + Add Products
           </Link>
           <Link
             href="/receive"

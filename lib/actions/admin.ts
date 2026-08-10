@@ -36,7 +36,7 @@ const productSchema = z
       return hasPackets === hasVolume;
     },
     {
-      message: "Set both packets per box and volume per packet, or leave both blank.",
+      message: "Set both pieces per case and volume per piece, or leave both blank.",
     }
   );
 

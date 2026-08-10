@@ -103,7 +103,7 @@ export function TransactionDetailDialog({
     }
     if (row.landingPrice != null) {
       details.push({
-        label: "Landing / packet",
+        label: "Landing / piece",
         value: formatInr(Number(row.landingPrice)),
       });
     }

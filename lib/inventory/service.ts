@@ -773,7 +773,7 @@ export async function markReturnedCaseReplaced(input: {
     const litres = litresFromBoxes(casesReplaced, product);
     if (litres == null) {
       throw new InventoryError(
-        `${product.name} is missing box packaging. Update the product first.`
+        `${product.name} is missing case packaging. Update the product first.`
       );
     }
 

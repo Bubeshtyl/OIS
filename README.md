@@ -83,9 +83,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Stock Count
 
-Open **View full stock count** from the dashboard Depot Stock Summary card, or go to `/stock-count` directly. Shows a live snapshot of depot and manager balances per oil type (no date range). Optional filters: `?search=`, `?product=`, `?location=depot|manager`, `?unit=litres` (default display is packets; use the Packets / Litres toggle in the filter bar).
+Open **View full stock count** from the dashboard Depot Stock Summary card, or go to `/stock-count` directly. Shows a live snapshot of depot and manager balances per oil type (no date range). Optional filters: `?search=`, `?product=`, `?location=depot|manager`, `?unit=litres` (default display is pieces; use the Pieces / Litres toggle in the filter bar).
 
-**Packets / Litres toggle** is also available on the dashboard, Stock Received, Stock Issued, Daily Consumption, and Reports pages. Switching is instant (client-side); `?unit=litres` in the URL is updated for sharing.
+**Pieces / Litres toggle** is also available on the dashboard, Stock Received, Stock Issued, Daily Consumption, and Reports pages. Switching is instant (client-side); `?unit=litres` in the URL is updated for sharing.
 
 ## Transaction list filters
 

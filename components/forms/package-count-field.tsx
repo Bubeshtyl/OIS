@@ -5,7 +5,7 @@ export function PackageCountField({
   id = "packageCount",
   name = "packageCount",
   label = "Packages",
-  description = "Number of boxes, pouches, or sachets",
+  description = "Number of cases, pouches, or sachets",
   value,
   onChange,
   max,

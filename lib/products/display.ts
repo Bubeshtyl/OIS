@@ -49,7 +49,7 @@ export function formatPackSizes(product: OilProduct): string {
   const boxLabel = describeBoxPackaging(product);
 
   if (packetLabel && product.packetsPerBox) {
-    return `${packetLabel} · ${product.packetsPerBox}/box`;
+    return `${packetLabel} · ${product.packetsPerBox}/case`;
   }
   if (packetLabel) {
     return packetLabel;

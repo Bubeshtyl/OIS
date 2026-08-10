@@ -20,7 +20,7 @@ import {
 export function TransactionHistory({
   rows,
   emptyMessage = "No transactions yet.",
-  packageColumnLabel = "Boxes",
+  packageColumnLabel = "Cases",
 }: {
   rows: Array<{
     productName: string;

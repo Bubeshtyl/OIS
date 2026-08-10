@@ -66,7 +66,7 @@ export function formatPackets(value: number | string): string {
         minimumFractionDigits: 1,
         maximumFractionDigits: 1,
       });
-  return `${formatted} packet${num === 1 ? "" : "s"}`;
+  return `${formatted} piece${num === 1 ? "" : "s"}`;
 }
 
 export function formatTransactionQuantity(

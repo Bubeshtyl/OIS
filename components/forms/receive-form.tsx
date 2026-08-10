@@ -135,8 +135,8 @@ export function ReceiveForm({
       {usesBoxPackaging ? (
         <>
           <PackageCountField
-            label="Boxes"
-            description="Number of boxes or cartons received"
+            label="Cases"
+            description="Number of cases or cartons received"
             value={boxCount}
             onChange={setBoxCount}
           />
@@ -186,8 +186,8 @@ export function ReceiveForm({
             />
           </div>
           <PackageCountField
-            label="Boxes"
-            description="Number of boxes or cartons received"
+            label="Cases"
+            description="Number of cases or cartons received"
             value={boxCount}
             onChange={setBoxCount}
           />

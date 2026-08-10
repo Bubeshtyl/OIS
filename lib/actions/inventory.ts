@@ -102,13 +102,13 @@ function resolveBpclBatchLines(
   productById: Map<string, OilProduct>,
   additionalDiscount: number
 ): { ok: true; batchLines: BpclReceiveLineInput[] } | { ok: false; error: string } {
-  let totalPackets = 0;
+  let totalInvoicePackets = 0;
   const resolved: Array<{
     line: BpclLineInput;
     product: OilProduct;
     packetsPerBox: number;
     litres: number;
-    linePackets: number;
+    invoiceLinePackets: number;
     goodCases: number;
   }> = [];
 
@@ -120,7 +120,7 @@ function resolveBpclBatchLines(
     if (!hasBoxPackaging(product)) {
       return {
         ok: false,
-        error: `${product.name} is missing box packaging. Update the product first.`,
+        error: `${product.name} is missing case packaging. Update the product first.`,
       };
     }
     if (line.returned > line.quantity) {
@@ -140,7 +140,7 @@ function resolveBpclBatchLines(
     if (packetsPerBox == null) {
       return {
         ok: false,
-        error: `${product.name} is missing packets per box.`,
+        error: `${product.name} is missing pieces per case.`,
       };
     }
     const litres = litresFromBoxes(goodCases, product);
@@ -150,21 +150,22 @@ function resolveBpclBatchLines(
         error: `Could not compute volume for ${product.name}.`,
       };
     }
-    const linePackets = goodCases * packetsPerBox;
-    totalPackets += linePackets;
+    // Landing / invoice discount use full billed qty (incl. returned).
+    const invoiceLinePackets = line.quantity * packetsPerBox;
+    totalInvoicePackets += invoiceLinePackets;
     resolved.push({
       line,
       product,
       packetsPerBox,
       litres,
-      linePackets,
+      invoiceLinePackets,
       goodCases,
     });
   }
 
   const perPacketInvoiceDiscount = invoiceDiscountPerPacket(
     additionalDiscount,
-    totalPackets
+    totalInvoicePackets
   );
 
   const batchLines: BpclReceiveLineInput[] = [];
@@ -173,13 +174,13 @@ function resolveBpclBatchLines(
     product,
     packetsPerBox,
     litres,
-    linePackets,
+    invoiceLinePackets,
     goodCases,
   } of resolved) {
     const allocatedInvoiceDiscount = allocateInvoiceDiscount(
       additionalDiscount,
-      linePackets,
-      totalPackets
+      invoiceLinePackets,
+      totalInvoicePackets
     );
     const discountAmount = line.discountAmount + allocatedInvoiceDiscount;
     const landingPrice = computeLandingPrice({
@@ -187,7 +188,7 @@ function resolveBpclBatchLines(
       discountAmount: line.discountAmount,
       cgstAmount: line.cgstAmount,
       sgstAmount: line.sgstAmount,
-      boxQuantity: goodCases,
+      boxQuantity: line.quantity,
       packetsPerBox,
       invoiceDiscountPerPacket: perPacketInvoiceDiscount,
     });

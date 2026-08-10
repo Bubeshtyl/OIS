@@ -330,7 +330,7 @@ export function ReceiveTransactionTable({
           <TableHead>Qty</TableHead>
           <TableHead>Returned Qty (cases)</TableHead>
           <TableHead className="min-w-[4.5rem]">Total</TableHead>
-          <TableHead>Landing / pkt</TableHead>
+          <TableHead>Landing / piece</TableHead>
           <TableHead>Total Cost</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>

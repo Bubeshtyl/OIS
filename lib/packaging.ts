@@ -196,11 +196,11 @@ export function litresToPackets(
 }
 
 export function formatPacketCount(count: number) {
-  return `${count} packet${count === 1 ? "" : "s"}`;
+  return `${count} piece${count === 1 ? "" : "s"}`;
 }
 
 export function formatBoxCount(count: number) {
-  return `${count} box${count === 1 ? "" : "es"}`;
+  return `${count} case${count === 1 ? "" : "s"}`;
 }
 
 export function totalPacketsFromBoxes(
@@ -225,8 +225,8 @@ export function describeBoxPackaging(product: OilProduct): string | null {
       perPacket < 1
         ? `${Math.round(perPacket * 1000)} ml`
         : `${perPacket} L`;
-    return `${packets} × ${packetLabel} per box (${perBox} L/box)`;
+    return `${packets} × ${packetLabel} per case (${perBox} L/case)`;
   }
 
-  return `${perBox} L per box`;
+  return `${perBox} L per case`;
 }

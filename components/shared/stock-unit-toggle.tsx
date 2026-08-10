@@ -4,7 +4,7 @@ import type { StockDisplayUnit } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const OPTIONS: Array<{ value: StockDisplayUnit; label: string }> = [
-  { value: "packets", label: "Packets" },
+  { value: "packets", label: "Pieces" },
   { value: "litres", label: "Litres" },
 ];
 

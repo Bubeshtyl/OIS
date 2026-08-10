@@ -201,7 +201,7 @@ function ProductFormSheet({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="packetsPerBox">Packets per box</Label>
+            <Label htmlFor="packetsPerBox">Pieces per case</Label>
             <Input
               id="packetsPerBox"
               name="packetsPerBox"
@@ -231,7 +231,7 @@ function ProductFormSheet({
                 min="1"
                 value={lowStockThreshold}
                 onChange={(e) => setLowStockThreshold(e.target.value)}
-                placeholder="Packets"
+                placeholder="Pieces"
                 required
               />
             ) : null}

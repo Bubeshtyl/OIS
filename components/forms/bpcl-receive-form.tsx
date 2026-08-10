@@ -85,15 +85,19 @@ function lineLandingPrice(
   line: LineState,
   perPacketInvoiceDiscount = 0
 ): number | null {
-  const goodCases = goodCasesForLine(line);
+  // Landing uses full invoice qty (incl. returned); stock still uses good cases.
+  if (goodCasesForLine(line) == null) return null;
+  const invoiceCases = Number(line.quantity);
   const packetsPerBox = getPacketsPerBox(product);
-  if (goodCases == null || packetsPerBox == null) return null;
+  if (!Number.isInteger(invoiceCases) || invoiceCases < 1 || packetsPerBox == null) {
+    return null;
+  }
   return computeLandingPrice({
     taxableValue: parseMoney(line.taxableValue),
     discountAmount: parseMoney(line.discountAmount),
     cgstAmount: parseMoney(line.cgstAmount),
     sgstAmount: parseMoney(line.sgstAmount),
-    boxQuantity: goodCases,
+    boxQuantity: invoiceCases,
     packetsPerBox,
     invoiceDiscountPerPacket: perPacketInvoiceDiscount,
   });
@@ -165,10 +169,12 @@ export function BpclReceiveForm({
   const perPacketInvoiceDiscount = useMemo(() => {
     let totalPackets = 0;
     for (const product of products) {
-      const goodCases = goodCasesForLine(lines[product.id] ?? emptyLine());
+      const line = lines[product.id] ?? emptyLine();
+      if (goodCasesForLine(line) == null) continue;
       const packetsPerBox = getPacketsPerBox(product);
-      if (goodCases == null || packetsPerBox == null) continue;
-      totalPackets += goodCases * packetsPerBox;
+      const invoiceCases = Number(line.quantity);
+      if (packetsPerBox == null || !Number.isInteger(invoiceCases)) continue;
+      totalPackets += invoiceCases * packetsPerBox;
     }
     return invoiceDiscountPerPacket(parseMoney(additionalDiscount), totalPackets);
   }, [additionalDiscount, lines, products]);
@@ -232,7 +238,7 @@ export function BpclReceiveForm({
 
       if (!hasBoxPackaging(product) || getPacketsPerBox(product) == null) {
         toast.error(
-          `${product.name} is missing box packaging. Update the product first.`
+          `${product.name} is missing case packaging. Update the product first.`
         );
         return;
       }
@@ -315,7 +321,7 @@ export function BpclReceiveForm({
                     <TableHead className="h-8 min-w-[5.5rem] px-1.5">CGST</TableHead>
                     <TableHead className="h-8 min-w-[5.5rem] px-1.5">SGST</TableHead>
                     <TableHead className="h-8 min-w-[6rem] px-1.5">Discount</TableHead>
-                    <TableHead className="h-8 min-w-[7rem] px-1.5">Landing / pkt</TableHead>
+                    <TableHead className="h-8 min-w-[7rem] px-1.5">Landing / piece</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

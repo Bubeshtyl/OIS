@@ -219,7 +219,7 @@ export function SaleForm({
       {usesPacketPackaging ? (
         <>
           <PackageCountField
-            label="Packets"
+            label="Pieces"
             description={
               isReturned
                 ? "Number of pouches or sachets returned to Depot"
@@ -234,7 +234,7 @@ export function SaleForm({
               {perPacket < 1
                 ? `${Math.round(perPacket * 1000)} ml`
                 : `${perPacket} L`}{" "}
-              per packet
+              per piece
             </p>
           ) : null}
           {quantityInLitres ? (
@@ -276,7 +276,7 @@ export function SaleForm({
             />
           </div>
           <PackageCountField
-            label="Packets"
+            label="Pieces"
             description="Number of pouches or sachets sold"
           />
         </>

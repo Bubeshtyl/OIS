@@ -151,8 +151,8 @@ export function TransferForm({
       {usesBoxPackaging ? (
         <>
           <PackageCountField
-            label="Boxes"
-            description="Number of boxes issued to manager"
+            label="Cases"
+            description="Number of cases issued to manager"
             value={boxCount}
             onChange={setBoxCount}
           />
@@ -197,8 +197,8 @@ export function TransferForm({
             />
           </div>
           <PackageCountField
-            label="Boxes"
-            description="Number of boxes issued to manager"
+            label="Cases"
+            description="Number of cases issued to manager"
           />
         </>
       )}

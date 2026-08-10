@@ -1,4 +1,7 @@
-/** Per-packet landing price from a BPCL receive line. */
+/**
+ * Per-packet landing price from a BPCL receive line.
+ * `boxQuantity` should be the full billed case qty (including returned cases).
+ */
 export function computeLandingPrice({
   taxableValue,
   discountAmount,
@@ -12,6 +15,7 @@ export function computeLandingPrice({
   discountAmount: number;
   cgstAmount: number;
   sgstAmount: number;
+  /** Full invoice cases, including returned. */
   boxQuantity: number;
   packetsPerBox: number;
   /** Invoice-level discount already divided across all packets. */
