@@ -51,3 +51,9 @@ export function revalidateAccessPages() {
   // Nav and route guards depend on role permissions for the whole app.
   revalidatePath("/", "layout");
 }
+
+export function revalidateMsHsdPages() {
+  revalidatePath("/invoice-purchase/ms-hsd-receipts");
+  revalidatePath("/invoice-purchase/ms-hsd-receipts/new");
+  revalidatePath("/invoice-purchase/ms-hsd-receipts", "layout");
+}

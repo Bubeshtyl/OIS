@@ -1136,6 +1136,48 @@ async function migrateToMultiTenant(db: Db) {
     `);
   }
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS ms_hsd_invoices (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      invoice_no text NOT NULL,
+      invoice_date date NOT NULL,
+      vat_stax_cess_total numeric(14, 2) NOT NULL,
+      rounding_off numeric(14, 2) NOT NULL DEFAULT 0,
+      total_amount numeric(14, 2) NOT NULL,
+      created_by uuid NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT ms_hsd_invoices_tenant_invoice_unique UNIQUE (tenant_id, invoice_no)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS ms_hsd_invoice_lines (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      invoice_id uuid NOT NULL REFERENCES ms_hsd_invoices(id) ON DELETE CASCADE,
+      line_order integer NOT NULL DEFAULT 0,
+      product text NOT NULL,
+      quantity_kl numeric(12, 3) NOT NULL,
+      rate_per_kl numeric(14, 2) NOT NULL,
+      total_value numeric(14, 2) NOT NULL,
+      dly_taxable_charge numeric(14, 2) NOT NULL DEFAULT 0,
+      vat_lst_rate numeric(8, 2) NOT NULL,
+      vat_lst_amount numeric(14, 2) NOT NULL,
+      additional_vat numeric(14, 2) NOT NULL DEFAULT 0
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS ms_hsd_invoices_tenant_date_idx
+      ON ms_hsd_invoices (tenant_id, invoice_date)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS ms_hsd_invoice_lines_invoice_idx
+      ON ms_hsd_invoice_lines (invoice_id)
+  `);
+
   console.log("Multi-tenant migration applied.");
 }
 

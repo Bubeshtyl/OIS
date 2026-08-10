@@ -322,6 +322,71 @@ export const dailySalesUploads = pgTable("daily_sales_uploads", {
     .notNull(),
 });
 
+/** BPCL MS / HSD fuel purchase invoices (manual entry). */
+export const msHsdInvoices = pgTable(
+  "ms_hsd_invoices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    invoiceNo: text("invoice_no").notNull(),
+    invoiceDate: date("invoice_date").notNull(),
+    vatStaxCessTotal: numeric("vat_stax_cess_total", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    roundingOff: numeric("rounding_off", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    unique("ms_hsd_invoices_tenant_invoice_unique").on(
+      table.tenantId,
+      table.invoiceNo
+    ),
+  ]
+);
+
+export const msHsdInvoiceLines = pgTable("ms_hsd_invoice_lines", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  invoiceId: uuid("invoice_id")
+    .notNull()
+    .references(() => msHsdInvoices.id, { onDelete: "cascade" }),
+  lineOrder: integer("line_order").notNull().default(0),
+  product: text("product").notNull(),
+  quantityKl: numeric("quantity_kl", { precision: 12, scale: 3 }).notNull(),
+  ratePerKl: numeric("rate_per_kl", { precision: 14, scale: 2 }).notNull(),
+  totalValue: numeric("total_value", { precision: 14, scale: 2 }).notNull(),
+  dlyTaxableCharge: numeric("dly_taxable_charge", {
+    precision: 14,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
+  vatLstRate: numeric("vat_lst_rate", { precision: 8, scale: 2 }).notNull(),
+  vatLstAmount: numeric("vat_lst_amount", {
+    precision: 14,
+    scale: 2,
+  }).notNull(),
+  additionalVat: numeric("additional_vat", {
+    precision: 14,
+    scale: 2,
+  })
+    .notNull()
+    .default("0"),
+});
+
 export const teams = pgTable(
   "teams",
   {
@@ -550,6 +615,28 @@ export const stockBalanceRelations = relations(stockBalance, ({ one }) => ({
   }),
 }));
 
+export const msHsdInvoicesRelations = relations(msHsdInvoices, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [msHsdInvoices.tenantId],
+    references: [tenants.id],
+  }),
+  creator: one(users, {
+    fields: [msHsdInvoices.createdBy],
+    references: [users.id],
+  }),
+  lines: many(msHsdInvoiceLines),
+}));
+
+export const msHsdInvoiceLinesRelations = relations(
+  msHsdInvoiceLines,
+  ({ one }) => ({
+    invoice: one(msHsdInvoices, {
+      fields: [msHsdInvoiceLines.invoiceId],
+      references: [msHsdInvoices.id],
+    }),
+  })
+);
+
 export const teamsRelations = relations(teams, ({ one, many }) => ({
   tenant: one(tenants, {
     fields: [teams.tenantId],
@@ -589,6 +676,8 @@ export type ReturnCaseStatus = (typeof returnCaseStatusEnum.enumValues)[number];
 export type ReturnCaseEventType =
   (typeof returnCaseEventTypeEnum.enumValues)[number];
 export type DailySale = typeof dailySales.$inferSelect;
+export type MsHsdInvoice = typeof msHsdInvoices.$inferSelect;
+export type MsHsdInvoiceLine = typeof msHsdInvoiceLines.$inferSelect;
 export type TransactionType = (typeof transactionTypeEnum.enumValues)[number];
 export type Location = (typeof locationEnum.enumValues)[number];
 export type StockLocation = (typeof stockLocationEnum.enumValues)[number];
