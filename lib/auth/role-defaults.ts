@@ -8,6 +8,9 @@ export type Permission =
   | "daily-sales:read"
   | "sales-data-analytics:read"
   | "products:manage"
+  | "taxation:read"
+  | "staff:read"
+  | "customers:read"
   | "users:manage"
   | "tickets:read"
   | "tickets:manage"
@@ -26,6 +29,9 @@ export const ADMIN_PERMISSIONS: Permission[] = [
   "daily-sales:read",
   "sales-data-analytics:read",
   "products:manage",
+  "taxation:read",
+  "staff:read",
+  "customers:read",
   "users:manage",
   "tickets:read",
   "tickets:manage",

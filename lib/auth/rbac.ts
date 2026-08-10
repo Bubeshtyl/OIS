@@ -24,6 +24,12 @@ export type NavIcon =
   | "daily-sales"
   | "sales-data-analytics"
   | "products"
+  | "purchase-invoice"
+  | "lfr-invoice"
+  | "tds"
+  | "gst"
+  | "staff"
+  | "customers"
   | "users"
   | "tickets"
   | "teams"
@@ -33,13 +39,24 @@ export type NavIcon =
   | "station"
   | "platform";
 
-export type NavGroup = "analytics" | "oil" | "tickets" | "configuration";
+export type NavGroup =
+  | "analytics"
+  | "oil"
+  | "taxation"
+  | "staff"
+  | "customers"
+  | "tickets"
+  | "configuration";
 
 export type NavCatalogItem = {
   href: string;
   label: string;
   icon: NavIcon;
   group?: NavGroup;
+  /** Nest this item under the parent that has matching `subgroupKey`. */
+  subgroup?: string;
+  /** Children with `subgroup` equal to this key render under this item. */
+  subgroupKey?: string;
   permission: Permission;
   adminOnly?: boolean;
 };
@@ -116,6 +133,50 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     permission: "sales-data-analytics:read",
   },
   {
+    href: "/taxation/purchase-invoice",
+    label: "Purchase Invoice",
+    icon: "purchase-invoice",
+    group: "taxation",
+    permission: "taxation:read",
+  },
+  {
+    href: "/taxation/lfr-invoice",
+    label: "LFR Invoice",
+    icon: "lfr-invoice",
+    group: "taxation",
+    permission: "taxation:read",
+  },
+  {
+    href: "/taxation/tds",
+    label: "TDS",
+    icon: "tds",
+    group: "taxation",
+    subgroupKey: "tds",
+    permission: "taxation:read",
+  },
+  {
+    href: "/taxation/tds/gst",
+    label: "GST",
+    icon: "gst",
+    group: "taxation",
+    subgroup: "tds",
+    permission: "taxation:read",
+  },
+  {
+    href: "/staff",
+    label: "Staff",
+    icon: "staff",
+    group: "staff",
+    permission: "staff:read",
+  },
+  {
+    href: "/customers",
+    label: "Customers",
+    icon: "customers",
+    group: "customers",
+    permission: "customers:read",
+  },
+  {
     href: "/tickets",
     label: "Tickets",
     icon: "tickets",
@@ -179,6 +240,8 @@ export type NavItem = {
   label: string;
   icon: NavIcon;
   group?: NavGroup;
+  subgroup?: string;
+  subgroupKey?: string;
 };
 
 const EXTRA_ROUTE_PERMISSIONS: Record<string, Permission | Permission[]> = {
@@ -307,7 +370,14 @@ export async function getNavItems(session: SessionData): Promise<NavItem[]> {
     .filter(
       (item) => item.href === "/" || permissions.includes(item.permission)
     )
-    .map(({ href, label, icon, group }) => ({ href, label, icon, group }));
+    .map(({ href, label, icon, group, subgroup, subgroupKey }) => ({
+      href,
+      label,
+      icon,
+      group,
+      subgroup,
+      subgroupKey,
+    }));
 }
 
 /** Permissions to persist when a grantable catalog route is enabled. */

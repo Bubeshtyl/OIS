@@ -10,12 +10,15 @@ import {
   ChevronRight,
   Container,
   Droplet,
+  FileText,
   Home,
   KeyRound,
   LayoutDashboard,
   ListChecks,
   LogOut,
   MapPin,
+  Percent,
+  Receipt,
   Settings,
   SquareArrowDown,
   SquareArrowUp,
@@ -23,6 +26,8 @@ import {
   Ticket,
   Upload,
   User,
+  UserRound,
+  Users,
   Users2,
   type LucideIcon,
 } from "lucide-react";
@@ -62,6 +67,12 @@ const iconMap: Record<NavIcon, LucideIcon> = {
   "daily-sales": Table2,
   "sales-data-analytics": ChartColumn,
   products: Container,
+  "purchase-invoice": Receipt,
+  "lfr-invoice": FileText,
+  tds: Percent,
+  gst: Percent,
+  staff: Users,
+  customers: UserRound,
   users: User,
   tickets: Ticket,
   teams: Users2,
@@ -72,12 +83,12 @@ const iconMap: Record<NavIcon, LucideIcon> = {
   platform: Building2,
 };
 
-const groupMeta: Record<
-  NavGroup,
-  { label: string; icon: NavIcon }
-> = {
+const groupMeta: Record<NavGroup, { label: string; icon: NavIcon }> = {
   analytics: { label: "Analytics", icon: "dashboard" },
   oil: { label: "Oil Management", icon: "sales" },
+  taxation: { label: "Taxation", icon: "purchase-invoice" },
+  staff: { label: "Staff Management", icon: "staff" },
+  customers: { label: "Customer Management", icon: "customers" },
   tickets: { label: "Ticket Management", icon: "tickets" },
   configuration: { label: "Configuration", icon: "settings" },
 };
@@ -96,6 +107,97 @@ function SidebarDivider() {
         className="h-px w-full bg-sidebar-border/70"
       />
     </div>
+  );
+}
+
+function NavSubLink({
+  item,
+  pathname,
+  onNavigate,
+  className,
+}: {
+  item: NavItem;
+  pathname: string;
+  onNavigate: () => void;
+  className?: string;
+}) {
+  const SubIcon = iconMap[item.icon];
+  const active = isItemActive(pathname, item.href);
+
+  return (
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton
+        isActive={active}
+        className={className}
+        render={<Link href={item.href} onClick={onNavigate} />}
+      >
+        <SubIcon className="size-4" />
+        <span>{item.label}</span>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
+  );
+}
+
+function NestedCollapsibleSubgroup({
+  parent,
+  nestedItems,
+  pathname,
+  onNavigate,
+}: {
+  parent: NavItem;
+  nestedItems: NavItem[];
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const SubIcon = iconMap[parent.icon];
+  const parentActive = pathname === parent.href;
+  const childActive = nestedItems.some((child) =>
+    isItemActive(pathname, child.href)
+  );
+  const isActive = parentActive || childActive;
+  const [open, setOpen] = useState(isActive);
+
+  useEffect(() => {
+    if (isActive) setOpen(true);
+  }, [isActive]);
+
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="group/nested-collapsible"
+    >
+      <SidebarMenuSubItem>
+        <div className="flex min-w-0 items-center gap-0.5">
+          <SidebarMenuSubButton
+            isActive={parentActive}
+            className="min-w-0 flex-1"
+            render={<Link href={parent.href} onClick={onNavigate} />}
+          >
+            <SubIcon className="size-4" />
+            <span>{parent.label}</span>
+          </SidebarMenuSubButton>
+          <CollapsibleTrigger
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground outline-hidden ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2"
+            aria-label={`Toggle ${parent.label}`}
+          >
+            <ChevronRight className="size-4 transition-transform duration-200 group-data-open/nested-collapsible:rotate-90" />
+          </CollapsibleTrigger>
+        </div>
+      </SidebarMenuSubItem>
+      <CollapsibleContent>
+        <ul className="mx-0 flex min-w-0 flex-col gap-1 border-l border-sidebar-border px-0 py-0.5 pl-2.5">
+          {nestedItems.map((child) => (
+            <NavSubLink
+              key={child.href}
+              item={child}
+              pathname={pathname}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -120,6 +222,16 @@ function CollapsibleNavGroup({
     if (isActive) setOpen(true);
   }, [isActive]);
 
+  const topLevelItems = items.filter((item) => !item.subgroup);
+  const childrenBySubgroup = items.reduce<Record<string, NavItem[]>>(
+    (acc, item) => {
+      if (!item.subgroup) return acc;
+      (acc[item.subgroup] ??= []).push(item);
+      return acc;
+    },
+    {}
+  );
+
   return (
     <Collapsible
       open={open}
@@ -128,7 +240,9 @@ function CollapsibleNavGroup({
     >
       <SidebarMenuItem>
         <CollapsibleTrigger
-          render={<SidebarMenuButton tooltip={label} className="h-10 rounded-xl" />}
+          render={
+            <SidebarMenuButton tooltip={label} className="h-10 rounded-xl" />
+          }
         >
           <Icon className="size-[1.125rem]" />
           <span>{label}</span>
@@ -136,20 +250,30 @@ function CollapsibleNavGroup({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <SidebarMenuSub>
-            {items.map((item) => {
-              const SubIcon = iconMap[item.icon];
-              const active = isItemActive(pathname, item.href);
+            {topLevelItems.map((item) => {
+              const nested = item.subgroupKey
+                ? (childrenBySubgroup[item.subgroupKey] ?? [])
+                : [];
+
+              if (nested.length > 0) {
+                return (
+                  <NestedCollapsibleSubgroup
+                    key={item.href}
+                    parent={item}
+                    nestedItems={nested}
+                    pathname={pathname}
+                    onNavigate={onNavigate}
+                  />
+                );
+              }
 
               return (
-                <SidebarMenuSubItem key={item.href}>
-                  <SidebarMenuSubButton
-                    isActive={active}
-                    render={<Link href={item.href} onClick={onNavigate} />}
-                  >
-                    <SubIcon className="size-4" />
-                    <span>{item.label}</span>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
+                <NavSubLink
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  onNavigate={onNavigate}
+                />
               );
             })}
           </SidebarMenuSub>
@@ -165,6 +289,9 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
   const topItems = items.filter((item) => !item.group);
   const analyticsItems = items.filter((item) => item.group === "analytics");
   const oilItems = items.filter((item) => item.group === "oil");
+  const taxationItems = items.filter((item) => item.group === "taxation");
+  const staffItems = items.filter((item) => item.group === "staff");
+  const customerItems = items.filter((item) => item.group === "customers");
   const ticketItems = items.filter((item) => item.group === "tickets");
   const configItems = items.filter((item) => item.group === "configuration");
   const { isMobile, setOpenMobile } = useSidebar();
@@ -179,6 +306,9 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
     [
       { group: "analytics" as const, items: analyticsItems },
       { group: "oil" as const, items: oilItems },
+      { group: "taxation" as const, items: taxationItems },
+      { group: "staff" as const, items: staffItems },
+      { group: "customers" as const, items: customerItems },
       { group: "tickets" as const, items: ticketItems },
       { group: "configuration" as const, items: configItems },
     ] as const
@@ -187,11 +317,7 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-0 px-4 pt-5 group-data-[collapsible=icon]:px-3 group-data-[collapsible=icon]:pt-4">
-        <Link
-          href="/"
-          onClick={closeMobileSidebar}
-          className="outline-none"
-        >
+        <Link href="/" onClick={closeMobileSidebar} className="outline-none">
           <AppLogo variant="sidebar" />
         </Link>
       </SidebarHeader>
