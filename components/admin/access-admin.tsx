@@ -26,7 +26,8 @@ const initialState: ActionState = { success: false };
 
 const groupLabels: Record<NavGroup, string> = {
   analytics: "Analytics",
-  oil: "Oil Management",
+  oil: "Oil / Lubes",
+  "invoice-purchase": "Invoice Purchase",
   taxation: "Taxation",
   staff: "Staff Management",
   customers: "Customer Management",

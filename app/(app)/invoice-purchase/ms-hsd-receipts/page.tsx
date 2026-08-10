@@ -5,11 +5,11 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function LfrInvoicePage() {
+export default async function MsHsdReceiptsPage() {
   const session = await requireTenantSession();
-  if (!(await hasPermission(session, "taxation:read"))) {
+  if (!(await hasPermission(session, "receive:write"))) {
     redirect("/");
   }
 
-  return <ComingSoonPage title="LFR Invoice" />;
+  return <ComingSoonPage title="MS / HSD Receipts" />;
 }

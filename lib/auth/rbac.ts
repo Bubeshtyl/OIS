@@ -25,6 +25,7 @@ export type NavIcon =
   | "sales-data-analytics"
   | "products"
   | "purchase-invoice"
+  | "ms-hsd-receipts"
   | "lfr-invoice"
   | "tds"
   | "gst"
@@ -42,6 +43,7 @@ export type NavIcon =
 export type NavGroup =
   | "analytics"
   | "oil"
+  | "invoice-purchase"
   | "taxation"
   | "staff"
   | "customers"
@@ -77,18 +79,11 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
   },
   {
     href: "/admin/products",
-    label: "Add Oils/Lubes",
+    label: "Add Oil / Lubes",
     icon: "products",
     group: "oil",
     permission: "products:manage",
     adminOnly: true,
-  },
-  {
-    href: "/receive",
-    label: "Add Receipts",
-    icon: "receive",
-    group: "oil",
-    permission: "receive:write",
   },
   {
     href: "/transfer",
@@ -112,6 +107,27 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     permission: "reports:read",
   },
   {
+    href: "/invoice-purchase/ms-hsd-receipts",
+    label: "MS / HSD Receipts",
+    icon: "ms-hsd-receipts",
+    group: "invoice-purchase",
+    permission: "receive:write",
+  },
+  {
+    href: "/receive",
+    label: "Oil / Lube Receipts",
+    icon: "receive",
+    group: "invoice-purchase",
+    permission: "receive:write",
+  },
+  {
+    href: "/invoice-purchase/lfr-receipts",
+    label: "LFR Receipts",
+    icon: "lfr-invoice",
+    group: "invoice-purchase",
+    permission: "taxation:read",
+  },
+  {
     href: "/file-upload",
     label: "File Upload",
     icon: "file-upload",
@@ -131,20 +147,6 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     icon: "sales-data-analytics",
     group: "analytics",
     permission: "sales-data-analytics:read",
-  },
-  {
-    href: "/taxation/purchase-invoice",
-    label: "Purchase Invoice",
-    icon: "purchase-invoice",
-    group: "taxation",
-    permission: "taxation:read",
-  },
-  {
-    href: "/taxation/lfr-invoice",
-    label: "LFR Invoice",
-    icon: "lfr-invoice",
-    group: "taxation",
-    permission: "taxation:read",
   },
   {
     href: "/taxation/tds",

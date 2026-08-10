@@ -68,6 +68,7 @@ const iconMap: Record<NavIcon, LucideIcon> = {
   "sales-data-analytics": ChartColumn,
   products: Container,
   "purchase-invoice": Receipt,
+  "ms-hsd-receipts": Droplet,
   "lfr-invoice": FileText,
   tds: Percent,
   gst: Percent,
@@ -85,8 +86,9 @@ const iconMap: Record<NavIcon, LucideIcon> = {
 
 const groupMeta: Record<NavGroup, { label: string; icon: NavIcon }> = {
   analytics: { label: "Analytics", icon: "dashboard" },
-  oil: { label: "Oil Management", icon: "sales" },
-  taxation: { label: "Taxation", icon: "purchase-invoice" },
+  oil: { label: "Oil / Lubes", icon: "sales" },
+  "invoice-purchase": { label: "Invoice Purchase", icon: "purchase-invoice" },
+  taxation: { label: "Taxation", icon: "tds" },
   staff: { label: "Staff Management", icon: "staff" },
   customers: { label: "Customer Management", icon: "customers" },
   tickets: { label: "Ticket Management", icon: "tickets" },
@@ -289,6 +291,9 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
   const topItems = items.filter((item) => !item.group);
   const analyticsItems = items.filter((item) => item.group === "analytics");
   const oilItems = items.filter((item) => item.group === "oil");
+  const invoicePurchaseItems = items.filter(
+    (item) => item.group === "invoice-purchase"
+  );
   const taxationItems = items.filter((item) => item.group === "taxation");
   const staffItems = items.filter((item) => item.group === "staff");
   const customerItems = items.filter((item) => item.group === "customers");
@@ -304,8 +309,9 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
 
   const groupedSections = (
     [
-      { group: "analytics" as const, items: analyticsItems },
+      { group: "invoice-purchase" as const, items: invoicePurchaseItems },
       { group: "oil" as const, items: oilItems },
+      { group: "analytics" as const, items: analyticsItems },
       { group: "taxation" as const, items: taxationItems },
       { group: "staff" as const, items: staffItems },
       { group: "customers" as const, items: customerItems },
