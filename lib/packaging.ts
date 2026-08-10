@@ -73,6 +73,20 @@ export function parsePackageCountFromNote(note?: string | null): number | null {
   return Number.isInteger(count) && count > 0 ? count : null;
 }
 
+/** Update or prepend the Packages: line; leaves the rest of the note unchanged. */
+export function setPackageCountInNote(
+  note: string | null | undefined,
+  packageCount: number
+): string {
+  const count = Math.max(0, Math.floor(packageCount));
+  const line = `Packages: ${count}`;
+  if (!note?.trim()) return line;
+  if (/^Packages:\s*\d+/im.test(note)) {
+    return note.replace(/^Packages:\s*\d+/im, line);
+  }
+  return `${line}\n${note}`;
+}
+
 export function parseReturnedFromNote(note?: string | null): number | null {
   const match = note?.match(/^(?:Returned|Damaged\/returned):\s*(\d+)/im);
   if (!match) return null;

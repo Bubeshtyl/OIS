@@ -13,9 +13,10 @@ import {
   type TransactionType,
 } from "@/lib/db/schema";
 import {
-  buildReceiveReferenceNote,
   litresFromBoxes,
   parseInvoiceFromReference,
+  parsePackageCountFromNote,
+  setPackageCountInNote,
 } from "@/lib/packaging";
 
 type DbTx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
@@ -313,7 +314,8 @@ async function syncReturnedCases(
     createdBy: string;
   }
 ) {
-  const casesReturned = Math.max(0, Math.floor(input.casesReturned));
+  // Form sends currently-open returned qty; persist total = open + already replaced.
+  const openReturned = Math.max(0, Math.floor(input.casesReturned));
   const dealerSource = input.dealerSource.trim();
   const [existing] = await tx
     .select()
@@ -321,9 +323,12 @@ async function syncReturnedCases(
     .where(eq(returnedCases.receiveTransactionId, input.receiveTransactionId))
     .limit(1);
 
+  const alreadyReplaced = existing?.casesReplaced ?? 0;
+  const casesReturned = openReturned + alreadyReplaced;
+
   if (casesReturned < 1) {
     if (existing) {
-      if ((existing.casesReplaced ?? 0) > 0) {
+      if (alreadyReplaced > 0) {
         throw new InventoryError(
           "Cannot clear returned cases after a replacement has been recorded."
         );
@@ -359,9 +364,9 @@ async function syncReturnedCases(
     return;
   }
 
-  if (casesReturned < existing.casesReplaced) {
+  if (casesReturned < alreadyReplaced) {
     throw new InventoryError(
-      `Cannot set returned cases below ${existing.casesReplaced} already replaced.`
+      `Cannot set returned cases below ${alreadyReplaced} already replaced.`
     );
   }
 
@@ -374,7 +379,11 @@ async function syncReturnedCases(
   if (!changed) return;
 
   const status =
-    existing.casesReplaced >= casesReturned ? "REPLACED" : existing.status;
+    alreadyReplaced >= casesReturned
+      ? "REPLACED"
+      : alreadyReplaced > 0
+        ? "OPEN"
+        : existing.status;
 
   await tx
     .update(returnedCases)
@@ -677,20 +686,18 @@ export async function updateBpclReceiveBatch(input: {
   });
 }
 
-/** Record a replacement receive for an open returned-case row and link them. */
+/**
+ * Mark open returned cases as replaced by adding them onto the original
+ * receive invoice (qty only). Landing/tax/discount fields are left unchanged.
+ */
 export async function markReturnedCaseReplaced(input: {
   tenantId: string;
   returnedCaseId: string;
-  replacementInvoice: string;
   transactionDate: string;
   casesReplaced: number;
   createdBy: string;
   notes?: string;
 }) {
-  const replacementInvoice = input.replacementInvoice.trim();
-  if (!replacementInvoice) {
-    throw new InventoryError("Replacement invoice number is required.");
-  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.transactionDate)) {
     throw new InventoryError("Date is required.");
   }
@@ -730,29 +737,20 @@ export async function markReturnedCaseReplaced(input: {
       );
     }
 
-    if (openReturn.dealerSource === "BPCL") {
-      const existingReceives = await tx
-        .select({
-          id: inventoryTransactions.id,
-          referenceNote: inventoryTransactions.referenceNote,
-        })
-        .from(inventoryTransactions)
-        .where(
-          and(
-            eq(inventoryTransactions.tenantId, input.tenantId),
-            eq(inventoryTransactions.type, "RECEIVE"),
-            eq(inventoryTransactions.dealerSource, "BPCL")
-          )
-        );
-      const invoiceTaken = existingReceives.some(
-        (row) =>
-          parseInvoiceFromReference(row.referenceNote) === replacementInvoice
-      );
-      if (invoiceTaken) {
-        throw new InventoryError(
-          `Invoice ${replacementInvoice} already exists. Use a different replacement invoice number.`
-        );
-      }
+    const [receiveTxn] = await tx
+      .select()
+      .from(inventoryTransactions)
+      .where(
+        and(
+          eq(inventoryTransactions.id, openReturn.receiveTransactionId),
+          eq(inventoryTransactions.tenantId, input.tenantId),
+          eq(inventoryTransactions.type, "RECEIVE")
+        )
+      )
+      .limit(1);
+
+    if (!receiveTxn) {
+      throw new InventoryError("Original receive invoice line not found.");
     }
 
     const [product] = await tx
@@ -777,33 +775,21 @@ export async function markReturnedCaseReplaced(input: {
       );
     }
 
-    const referenceNote = [
-      buildReceiveReferenceNote({
-        packageCount: casesReplaced,
-        supplier: openReturn.dealerSource,
-        invoice: replacementInvoice,
-      }),
-      `Replacement for return on invoice ${openReturn.invoice}`,
-      input.notes?.trim() || null,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const currentPackages =
+      parsePackageCountFromNote(receiveTxn.referenceNote) ?? 0;
+    const nextPackages = currentPackages + casesReplaced;
+    const nextQuantity = Number(receiveTxn.quantity) + litres;
 
-    const [replacementTxn] = await tx
-      .insert(inventoryTransactions)
-      .values({
-        tenantId: input.tenantId,
-        productId: openReturn.productId,
-        type: "RECEIVE",
-        quantity: String(litres),
-        fromLocation: "SUPPLIER",
-        toLocation: "DEPOT",
-        transactionDate: input.transactionDate,
-        referenceNote,
-        dealerSource: openReturn.dealerSource,
-        createdBy: input.createdBy,
+    await tx
+      .update(inventoryTransactions)
+      .set({
+        quantity: String(nextQuantity),
+        referenceNote: setPackageCountInNote(
+          receiveTxn.referenceNote,
+          nextPackages
+        ),
       })
-      .returning();
+      .where(eq(inventoryTransactions.id, receiveTxn.id));
 
     await applyBalanceDelta(tx, input.tenantId, openReturn.productId, {
       DEPOT: litres,
@@ -818,8 +804,8 @@ export async function markReturnedCaseReplaced(input: {
       .set({
         casesReplaced: totalReplaced,
         status: fullyReplaced ? "REPLACED" : "OPEN",
-        replacementReceiveTransactionId: replacementTxn.id,
-        replacementInvoice,
+        replacementReceiveTransactionId: receiveTxn.id,
+        replacementInvoice: openReturn.invoice,
         replacedAt: fullyReplaced ? new Date() : openReturn.replacedAt,
         notes: input.notes?.trim() || openReturn.notes,
         updatedAt: new Date(),
@@ -831,8 +817,8 @@ export async function markReturnedCaseReplaced(input: {
       returnedCaseId: openReturn.id,
       eventType: "REPLACEMENT_LINKED",
       detail: fullyReplaced
-        ? `Fully replaced ${casesReplaced} case${casesReplaced === 1 ? "" : "s"} on invoice ${replacementInvoice} (${totalReplaced}/${openReturn.casesReturned})`
-        : `Partial replacement of ${casesReplaced} case${casesReplaced === 1 ? "" : "s"} on invoice ${replacementInvoice}; ${remaining} of ${openReturn.casesReturned} still open`,
+        ? `Fully replaced ${casesReplaced} case${casesReplaced === 1 ? "" : "s"} on invoice ${openReturn.invoice} (${totalReplaced}/${openReturn.casesReturned})`
+        : `Partial replacement of ${casesReplaced} case${casesReplaced === 1 ? "" : "s"} on invoice ${openReturn.invoice}; ${remaining} of ${openReturn.casesReturned} still open`,
       createdBy: input.createdBy,
     });
 
@@ -841,13 +827,14 @@ export async function markReturnedCaseReplaced(input: {
         tenantId: input.tenantId,
         returnedCaseId: openReturn.id,
         eventType: "CLOSED",
-        detail: `Return closed after replacement invoice ${replacementInvoice}`,
+        detail: `Return closed after replacement on invoice ${openReturn.invoice}`,
         createdBy: input.createdBy,
       });
     }
 
     return {
-      replacementTransactionId: replacementTxn.id,
+      receiveTransactionId: receiveTxn.id,
+      invoice: openReturn.invoice,
       fullyReplaced,
       remainingCases: remaining,
       totalReturned: openReturn.casesReturned,

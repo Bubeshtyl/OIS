@@ -39,16 +39,13 @@ export function MarkReturnedReplacedDialog({
     initialState
   );
   const today = getIstTodayString();
-  const [replacementInvoice, setReplacementInvoice] = useState("");
   const [transactionDate, setTransactionDate] = useState(today);
   const [casesReplaced, setCasesReplaced] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
     if (!open || !row) return;
-    setReplacementInvoice("");
     setTransactionDate(today);
-    // Default to remaining open qty so partial “one now” is easy to edit down.
     setCasesReplaced(String(row.casesPending));
     setNotes("");
   }, [open, row, today]);
@@ -70,7 +67,6 @@ export function MarkReturnedReplacedDialog({
   function handleSubmit(formData: FormData) {
     if (!row) return;
     formData.set("returnedCaseId", row.id);
-    formData.set("replacementInvoice", replacementInvoice.trim());
     formData.set("transactionDate", transactionDate);
     formData.set("casesReplaced", casesReplaced);
     if (notes.trim()) formData.set("notes", notes.trim());
@@ -79,38 +75,42 @@ export function MarkReturnedReplacedDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(85vh,28rem)] gap-3 overflow-y-auto p-3 sm:max-w-sm">
+      <DialogContent className="max-h-[min(85vh,28rem)] gap-3 overflow-y-auto p-3 sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Mark replaced</DialogTitle>
         </DialogHeader>
 
-        <div className="rounded-md border bg-muted/40 px-2.5 py-1.5 text-xs leading-snug">
-          <p className="font-medium text-sm">{row.productName}</p>
-          <p className="text-muted-foreground">
-            {row.dealerSource} · Invoice {row.invoice} · {packSize}
-          </p>
-          <p className="text-muted-foreground">
-            {row.casesPending} of {row.casesReturned} case
-            {row.casesReturned === 1 ? "" : "s"} still open
-            {row.casesReplaced > 0
-              ? ` (${row.casesReplaced} already replaced)`
-              : ""}
-          </p>
-        </div>
-
         <form action={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="replacementInvoice">Replacement invoice *</Label>
-            <Input
-              id="replacementInvoice"
-              value={replacementInvoice}
-              onChange={(e) => setReplacementInvoice(e.target.value)}
-              placeholder="e.g. BPCL-INV-2102"
-              required
-              disabled={pending}
-              className="h-8"
-            />
+          <div className="grid grid-cols-3 gap-2">
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor="replacementInvoice">Invoice</Label>
+              <Input
+                id="replacementInvoice"
+                value={row.invoice}
+                readOnly
+                className="h-8 bg-muted/40"
+              />
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor="replacementOil">Oil Type</Label>
+              <Input
+                id="replacementOil"
+                value={row.productName}
+                readOnly
+                className="h-8 bg-muted/40"
+              />
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <Label htmlFor="replacementSize">Size</Label>
+              <Input
+                id="replacementSize"
+                value={packSize}
+                readOnly
+                className="h-8 bg-muted/40"
+              />
+            </div>
           </div>
+
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
               <Label htmlFor="replacementDate">Date *</Label>
@@ -123,7 +123,7 @@ export function MarkReturnedReplacedDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="casesReplaced">Cases now *</Label>
+              <Label htmlFor="casesReplaced">Cases *</Label>
               <Input
                 id="casesReplaced"
                 type="number"
@@ -141,7 +141,11 @@ export function MarkReturnedReplacedDialog({
           </div>
           <p className="-mt-1 text-xs text-muted-foreground">
             Max {row.casesPending} open case
-            {row.casesPending === 1 ? "" : "s"}.
+            {row.casesPending === 1 ? "" : "s"}
+            {row.casesReplaced > 0
+              ? ` (${row.casesReplaced} already replaced)`
+              : ""}
+            .
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="replacementNotes">Note (optional)</Label>
@@ -168,12 +172,10 @@ export function MarkReturnedReplacedDialog({
               type="submit"
               size="sm"
               disabled={
-                pending ||
-                !replacementInvoice.trim() ||
-                !/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)
+                pending || !/^\d{4}-\d{2}-\d{2}$/.test(transactionDate)
               }
             >
-              {pending ? "Saving…" : "Record replacement"}
+              {pending ? "Saving…" : "Add to invoice"}
             </Button>
           </DialogFooter>
         </form>

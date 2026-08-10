@@ -567,7 +567,6 @@ export async function recordSaleAction(
 
 const markReplacedSchema = z.object({
   returnedCaseId: z.string().uuid(),
-  replacementInvoice: z.string().trim().min(1, "Replacement invoice is required."),
   transactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date is required."),
   casesReplaced: z.coerce.number().int().positive(),
   notes: z.string().trim().optional(),
@@ -584,7 +583,6 @@ export async function markReturnedCaseReplacedAction(
 
   const parsed = markReplacedSchema.safeParse({
     returnedCaseId: formData.get("returnedCaseId"),
-    replacementInvoice: formData.get("replacementInvoice"),
     transactionDate: formData.get("transactionDate"),
     casesReplaced: formData.get("casesReplaced"),
     notes: formData.get("notes") || undefined,
@@ -600,7 +598,6 @@ export async function markReturnedCaseReplacedAction(
     const result = await markReturnedCaseReplaced({
       tenantId: session.tenantId,
       returnedCaseId: parsed.data.returnedCaseId,
-      replacementInvoice: parsed.data.replacementInvoice,
       transactionDate: parsed.data.transactionDate,
       casesReplaced: parsed.data.casesReplaced,
       createdBy: session.userId,
@@ -610,8 +607,8 @@ export async function markReturnedCaseReplacedAction(
     return {
       success: true,
       message: result.fullyReplaced
-        ? `All ${result.totalReturned} returned case${result.totalReturned === 1 ? "" : "s"} replaced on invoice ${parsed.data.replacementInvoice}`
-        : `Replacement recorded (${result.totalReplaced}/${result.totalReturned}); ${result.remainingCases} case${result.remainingCases === 1 ? "" : "s"} still open for later`,
+        ? `All ${result.totalReturned} returned case${result.totalReturned === 1 ? "" : "s"} added back to invoice ${result.invoice}`
+        : `Added ${parsed.data.casesReplaced} case${parsed.data.casesReplaced === 1 ? "" : "s"} to invoice ${result.invoice} (${result.totalReplaced}/${result.totalReturned}); ${result.remainingCases} still open`,
     };
   } catch (error) {
     return {

@@ -41,7 +41,8 @@ export async function listBpclReceiveRows(tenantId: string) {
       sgstAmount: inventoryTransactions.sgstAmount,
       discountAmount: inventoryTransactions.discountAmount,
       landingPrice: inventoryTransactions.landingPrice,
-      returnedCases: returnedCases.casesReturned,
+      casesReturned: returnedCases.casesReturned,
+      casesReplaced: returnedCases.casesReplaced,
     })
     .from(inventoryTransactions)
     .innerJoin(
@@ -68,6 +69,9 @@ function toInvoiceLine(
   const invoice = parseInvoiceFromReference(row.referenceNote);
   if (!invoice) return null;
   const packageCount = parsePackageCountFromNote(row.referenceNote) ?? 0;
+  const casesReturned = row.casesReturned ?? 0;
+  const casesReplaced = row.casesReplaced ?? 0;
+  const openReturned = Math.max(0, casesReturned - casesReplaced);
   return {
     id: row.id,
     productId: row.productId,
@@ -75,7 +79,8 @@ function toInvoiceLine(
     transactionDate: row.transactionDate,
     quantityLitres: Number(row.quantity),
     packageCount,
-    returnedCases: row.returnedCases ?? 0,
+    // Open returned only — edit form uses packageCount + returnedCases = invoice qty.
+    returnedCases: openReturned,
     taxableValue: Number(row.taxableValue ?? 0),
     cgstAmount: Number(row.cgstAmount ?? 0),
     sgstAmount: Number(row.sgstAmount ?? 0),

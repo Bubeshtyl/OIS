@@ -104,7 +104,8 @@ function baseQuery() {
       sgstAmount: inventoryTransactions.sgstAmount,
       discountAmount: inventoryTransactions.discountAmount,
       landingPrice: inventoryTransactions.landingPrice,
-      returnedCases: returnedCases.casesReturned,
+      casesReturned: returnedCases.casesReturned,
+      casesReplaced: returnedCases.casesReplaced,
     })
     .from(inventoryTransactions)
     .innerJoin(
@@ -290,10 +291,17 @@ export async function getAllTransactionRows(filters: {
   );
 
   return {
-    rows: rows.map((row) => ({
-      ...row,
-      returnedCases: row.returnedCases ?? null,
-    })) as TransactionListRow[],
+    rows: rows.map((row) => {
+      const casesReturned = row.casesReturned ?? 0;
+      const casesReplaced = row.casesReplaced ?? 0;
+      const openReturned = Math.max(0, casesReturned - casesReplaced);
+      const { casesReturned: _cr, casesReplaced: _cx, ...rest } = row;
+      return {
+        ...rest,
+        // Show still-open returned cases (replaced qty is already in receive packages).
+        returnedCases: openReturned > 0 ? openReturned : null,
+      };
+    }) as TransactionListRow[],
     summary,
   };
 }
