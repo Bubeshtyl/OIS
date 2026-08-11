@@ -1178,6 +1178,33 @@ async function migrateToMultiTenant(db: Db) {
       ON ms_hsd_invoice_lines (invoice_id)
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS lfr_invoices (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      invoice_no text NOT NULL,
+      invoice_date date NOT NULL,
+      description text NOT NULL,
+      item_code_text text NOT NULL,
+      hsn_sac text NOT NULL,
+      taxable_amount numeric(14, 2) NOT NULL,
+      cgst_rate numeric(8, 2) NOT NULL,
+      cgst_amount numeric(14, 2) NOT NULL,
+      sgst_rate numeric(8, 2) NOT NULL,
+      sgst_amount numeric(14, 2) NOT NULL,
+      total_amount numeric(14, 2) NOT NULL,
+      created_by uuid NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT lfr_invoices_tenant_invoice_unique UNIQUE (tenant_id, invoice_no)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS lfr_invoices_tenant_date_idx
+      ON lfr_invoices (tenant_id, invoice_date)
+  `);
+
   console.log("Multi-tenant migration applied.");
 }
 

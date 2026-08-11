@@ -387,6 +387,46 @@ export const msHsdInvoiceLines = pgTable("ms_hsd_invoice_lines", {
     .default("0"),
 });
 
+/** BPCL LFR (License Fee Recovery) tax invoices (manual entry). */
+export const lfrInvoices = pgTable(
+  "lfr_invoices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    invoiceNo: text("invoice_no").notNull(),
+    invoiceDate: date("invoice_date").notNull(),
+    description: text("description").notNull(),
+    itemCodeText: text("item_code_text").notNull(),
+    hsnSac: text("hsn_sac").notNull(),
+    taxableAmount: numeric("taxable_amount", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    cgstRate: numeric("cgst_rate", { precision: 8, scale: 2 }).notNull(),
+    cgstAmount: numeric("cgst_amount", { precision: 14, scale: 2 }).notNull(),
+    sgstRate: numeric("sgst_rate", { precision: 8, scale: 2 }).notNull(),
+    sgstAmount: numeric("sgst_amount", { precision: 14, scale: 2 }).notNull(),
+    totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    unique("lfr_invoices_tenant_invoice_unique").on(
+      table.tenantId,
+      table.invoiceNo
+    ),
+  ]
+);
+
 export const teams = pgTable(
   "teams",
   {
@@ -637,6 +677,17 @@ export const msHsdInvoiceLinesRelations = relations(
   })
 );
 
+export const lfrInvoicesRelations = relations(lfrInvoices, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [lfrInvoices.tenantId],
+    references: [tenants.id],
+  }),
+  creator: one(users, {
+    fields: [lfrInvoices.createdBy],
+    references: [users.id],
+  }),
+}));
+
 export const teamsRelations = relations(teams, ({ one, many }) => ({
   tenant: one(tenants, {
     fields: [teams.tenantId],
@@ -678,6 +729,7 @@ export type ReturnCaseEventType =
 export type DailySale = typeof dailySales.$inferSelect;
 export type MsHsdInvoice = typeof msHsdInvoices.$inferSelect;
 export type MsHsdInvoiceLine = typeof msHsdInvoiceLines.$inferSelect;
+export type LfrInvoice = typeof lfrInvoices.$inferSelect;
 export type TransactionType = (typeof transactionTypeEnum.enumValues)[number];
 export type Location = (typeof locationEnum.enumValues)[number];
 export type StockLocation = (typeof stockLocationEnum.enumValues)[number];

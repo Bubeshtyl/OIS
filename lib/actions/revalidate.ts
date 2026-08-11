@@ -57,3 +57,9 @@ export function revalidateMsHsdPages() {
   revalidatePath("/invoice-purchase/ms-hsd-receipts/new");
   revalidatePath("/invoice-purchase/ms-hsd-receipts", "layout");
 }
+
+export function revalidateLfrPages() {
+  revalidatePath("/invoice-purchase/lfr-receipts");
+  revalidatePath("/invoice-purchase/lfr-receipts/new");
+  revalidatePath("/invoice-purchase/lfr-receipts", "layout");
+}
