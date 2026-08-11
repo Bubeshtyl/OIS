@@ -16,10 +16,12 @@ import {
   updateBpclReceiveBatch,
   type BpclReceiveLineInput,
 } from "@/lib/inventory/service";
+import { validateBpclInvoiceTotals } from "@/lib/inventory/bpcl-totals";
 import {
   allocateInvoiceDiscount,
   computeLandingPrice,
   invoiceDiscountPerPacket,
+  invoiceRoundingPerPacket,
 } from "@/lib/inventory/landing-price";
 import { bpclInvoiceExists } from "@/lib/queries/bpcl-invoice";
 import {
@@ -83,6 +85,10 @@ const bpclHeaderSchema = z.object({
   invoice: z.string().trim().min(1, "Invoice number is required."),
   transactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date is required."),
   additionalDiscount: z.coerce.number().nonnegative().default(0),
+  totalCgst: z.coerce.number().nonnegative().default(0),
+  totalSgst: z.coerce.number().nonnegative().default(0),
+  roundingOff: z.coerce.number().default(0),
+  totalAmount: z.coerce.number().positive("Total amount is required."),
 });
 
 const bpclLineSchema = z.object({
@@ -96,12 +102,27 @@ const bpclLineSchema = z.object({
 });
 
 type BpclLineInput = z.infer<typeof bpclLineSchema>;
+type BpclHeaderInput = z.infer<typeof bpclHeaderSchema>;
 
 function resolveBpclBatchLines(
   lines: BpclLineInput[],
   productById: Map<string, OilProduct>,
-  additionalDiscount: number
+  header: Pick<
+    BpclHeaderInput,
+    | "additionalDiscount"
+    | "totalCgst"
+    | "totalSgst"
+    | "roundingOff"
+    | "totalAmount"
+  >
 ): { ok: true; batchLines: BpclReceiveLineInput[] } | { ok: false; error: string } {
+  const {
+    additionalDiscount,
+    totalCgst,
+    totalSgst,
+    roundingOff,
+    totalAmount,
+  } = header;
   let totalInvoicePackets = 0;
   const resolved: Array<{
     line: BpclLineInput;
@@ -163,8 +184,29 @@ function resolveBpclBatchLines(
     });
   }
 
+  const totalsCheck = validateBpclInvoiceTotals({
+    lines: resolved.map(({ line }) => ({
+      taxableValue: line.taxableValue,
+      discountAmount: line.discountAmount,
+      cgstAmount: line.cgstAmount,
+      sgstAmount: line.sgstAmount,
+    })),
+    additionalDiscount,
+    totalCgst,
+    totalSgst,
+    roundingOff,
+    totalAmount,
+  });
+  if (!totalsCheck.ok) {
+    return { ok: false, error: totalsCheck.error };
+  }
+
   const perPacketInvoiceDiscount = invoiceDiscountPerPacket(
     additionalDiscount,
+    totalInvoicePackets
+  );
+  const perPacketRounding = invoiceRoundingPerPacket(
+    roundingOff,
     totalInvoicePackets
   );
 
@@ -191,6 +233,7 @@ function resolveBpclBatchLines(
       boxQuantity: line.quantity,
       packetsPerBox,
       invoiceDiscountPerPacket: perPacketInvoiceDiscount,
+      invoiceRoundingPerPacket: perPacketRounding,
     });
     if (landingPrice == null) {
       return {
@@ -220,6 +263,10 @@ async function parseBpclFormPayload(formData: FormData, tenantId: string) {
     invoice: formData.get("invoice"),
     transactionDate: formData.get("transactionDate"),
     additionalDiscount: formData.get("additionalDiscount") || 0,
+    totalCgst: formData.get("totalCgst") || 0,
+    totalSgst: formData.get("totalSgst") || 0,
+    roundingOff: formData.get("roundingOff") || 0,
+    totalAmount: formData.get("totalAmount"),
   });
   if (!header.success) {
     return {
@@ -264,7 +311,7 @@ async function parseBpclFormPayload(formData: FormData, tenantId: string) {
   const resolved = resolveBpclBatchLines(
     parsedLines.data,
     productById,
-    header.data.additionalDiscount
+    header.data
   );
   if (!resolved.ok) {
     return { ok: false as const, error: resolved.error };

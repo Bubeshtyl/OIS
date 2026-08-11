@@ -14,7 +14,15 @@ import {
   computeLandingPrice,
   formatLandingPrice,
   invoiceDiscountPerPacket,
+  invoiceRoundingPerPacket,
 } from "@/lib/inventory/landing-price";
+import {
+  computeExpectedTotalAmount,
+  sumLineCgst,
+  sumLineSgst,
+} from "@/lib/inventory/bpcl-totals";
+import { amountsWithinTolerance } from "@/lib/ms-hsd/totals";
+import { formatInr } from "@/lib/format";
 import { formatPacketSizeLabel } from "@/lib/products/display";
 import { getPacketsPerBox, hasBoxPackaging } from "@/lib/packaging";
 import { getIstTodayString } from "@/lib/timezone";
@@ -83,7 +91,8 @@ function moneyInput(value: number): string {
 function lineLandingPrice(
   product: OilProduct,
   line: LineState,
-  perPacketInvoiceDiscount = 0
+  perPacketInvoiceDiscount = 0,
+  perPacketRounding = 0
 ): number | null {
   // Landing uses full invoice qty (incl. returned); stock still uses good cases.
   if (goodCasesForLine(line) == null) return null;
@@ -100,6 +109,7 @@ function lineLandingPrice(
     boxQuantity: invoiceCases,
     packetsPerBox,
     invoiceDiscountPerPacket: perPacketInvoiceDiscount,
+    invoiceRoundingPerPacket: perPacketRounding,
   });
 }
 
@@ -152,6 +162,10 @@ export function BpclReceiveForm({
     editInvoice?.transactionDate ?? today
   );
   const [additionalDiscount, setAdditionalDiscount] = useState("");
+  const [totalCgst, setTotalCgst] = useState("");
+  const [totalSgst, setTotalSgst] = useState("");
+  const [roundingOff, setRoundingOff] = useState("");
+  const [totalAmount, setTotalAmount] = useState("");
   const [lines, setLines] = useState<Record<string, LineState>>(() =>
     editInvoice
       ? linesFromInvoice(products, editInvoice.lines)
@@ -161,23 +175,69 @@ export function BpclReceiveForm({
   const headerReady =
     invoice.trim().length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(transactionDate);
 
-  const filledCount = useMemo(() => {
-    return products.filter((p) => goodCasesForLine(lines[p.id] ?? emptyLine()) != null)
-      .length;
-  }, [lines, products]);
-
-  const perPacketInvoiceDiscount = useMemo(() => {
+  const filledLineAmounts = useMemo(() => {
+    const amounts = [];
     let totalPackets = 0;
     for (const product of products) {
       const line = lines[product.id] ?? emptyLine();
       if (goodCasesForLine(line) == null) continue;
       const packetsPerBox = getPacketsPerBox(product);
       const invoiceCases = Number(line.quantity);
-      if (packetsPerBox == null || !Number.isInteger(invoiceCases)) continue;
-      totalPackets += invoiceCases * packetsPerBox;
+      if (packetsPerBox != null && Number.isInteger(invoiceCases)) {
+        totalPackets += invoiceCases * packetsPerBox;
+      }
+      amounts.push({
+        taxableValue: parseMoney(line.taxableValue),
+        discountAmount: parseMoney(line.discountAmount),
+        cgstAmount: parseMoney(line.cgstAmount),
+        sgstAmount: parseMoney(line.sgstAmount),
+      });
     }
-    return invoiceDiscountPerPacket(parseMoney(additionalDiscount), totalPackets);
-  }, [additionalDiscount, lines, products]);
+    return { amounts, totalPackets };
+  }, [lines, products]);
+
+  const filledCount = filledLineAmounts.amounts.length;
+
+  const computed = useMemo(() => {
+    const cgstSum = sumLineCgst(filledLineAmounts.amounts);
+    const sgstSum = sumLineSgst(filledLineAmounts.amounts);
+    const expectedTotal = computeExpectedTotalAmount(
+      filledLineAmounts.amounts,
+      parseMoney(additionalDiscount),
+      parseMoney(roundingOff)
+    );
+    return { cgstSum, sgstSum, expectedTotal };
+  }, [filledLineAmounts.amounts, additionalDiscount, roundingOff]);
+
+  const perPacketInvoiceDiscount = useMemo(
+    () =>
+      invoiceDiscountPerPacket(
+        parseMoney(additionalDiscount),
+        filledLineAmounts.totalPackets
+      ),
+    [additionalDiscount, filledLineAmounts.totalPackets]
+  );
+
+  const perPacketRounding = useMemo(
+    () =>
+      invoiceRoundingPerPacket(
+        parseMoney(roundingOff),
+        filledLineAmounts.totalPackets
+      ),
+    [roundingOff, filledLineAmounts.totalPackets]
+  );
+
+  useEffect(() => {
+    if (filledCount === 0) {
+      setTotalCgst("");
+      setTotalSgst("");
+      setTotalAmount("");
+      return;
+    }
+    setTotalCgst(computed.cgstSum.toFixed(2));
+    setTotalSgst(computed.sgstSum.toFixed(2));
+    setTotalAmount(computed.expectedTotal.toFixed(2));
+  }, [computed.cgstSum, computed.sgstSum, computed.expectedTotal, filledCount]);
 
   useEffect(() => {
     setLines((prev) => {
@@ -262,12 +322,27 @@ export function BpclReceiveForm({
     formData.set("invoice", invoice.trim());
     formData.set("transactionDate", transactionDate);
     formData.set("additionalDiscount", String(parseMoney(additionalDiscount)));
+    formData.set("totalCgst", String(parseMoney(totalCgst)));
+    formData.set("totalSgst", String(parseMoney(totalSgst)));
+    formData.set("roundingOff", String(parseMoney(roundingOff)));
+    formData.set("totalAmount", String(parseMoney(totalAmount)));
     formData.set("lines", JSON.stringify(payload));
     if (isEdit) {
       formData.set("originalInvoice", editInvoice.originalInvoice);
     }
     formAction(formData);
   }
+
+  const footerDisabled = !headerReady || pending || filledCount === 0;
+  const cgstMatches =
+    filledCount > 0 &&
+    amountsWithinTolerance(computed.cgstSum, parseMoney(totalCgst));
+  const sgstMatches =
+    filledCount > 0 &&
+    amountsWithinTolerance(computed.sgstSum, parseMoney(totalSgst));
+  const totalMatches =
+    filledCount > 0 &&
+    amountsWithinTolerance(computed.expectedTotal, parseMoney(totalAmount));
 
   return (
     <form action={handleSubmit} className="space-y-6">
@@ -330,7 +405,8 @@ export function BpclReceiveForm({
                     const landing = lineLandingPrice(
                       product,
                       line,
-                      perPacketInvoiceDiscount
+                      perPacketInvoiceDiscount,
+                      perPacketRounding
                     );
                     const canEnter =
                       hasBoxPackaging(product) &&
@@ -460,25 +536,100 @@ export function BpclReceiveForm({
             </div>
           )}
 
-          <div className="flex flex-col items-end gap-3">
-            {!isEdit ? (
-              <div className="w-full max-w-xs space-y-2">
-                <Label htmlFor="additionalDiscount">
-                  Additional discount (if any)
-                </Label>
+          <div className="flex flex-col gap-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {!isEdit ? (
+                <div className="space-y-2">
+                  <Label htmlFor="additionalDiscount">
+                    Additional discount (if any)
+                  </Label>
+                  <Input
+                    id="additionalDiscount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    disabled={footerDisabled}
+                    value={additionalDiscount}
+                    onChange={(e) => setAdditionalDiscount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="totalCgst">Total CGST</Label>
                 <Input
-                  id="additionalDiscount"
+                  id="totalCgst"
                   type="number"
                   min="0"
                   step="0.01"
                   inputMode="decimal"
-                  disabled={!headerReady || pending || filledCount === 0}
-                  value={additionalDiscount}
-                  onChange={(e) => setAdditionalDiscount(e.target.value)}
+                  disabled={footerDisabled}
+                  value={totalCgst}
+                  onChange={(e) => setTotalCgst(e.target.value)}
+                  placeholder="0.00"
+                  title="Sum of line CGST (editable)"
+                />
+                {filledCount > 0 && !cgstMatches ? (
+                  <p className="text-xs text-destructive">
+                    Lines sum to {formatInr(computed.cgstSum)}
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="totalSgst">Total SGST</Label>
+                <Input
+                  id="totalSgst"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  disabled={footerDisabled}
+                  value={totalSgst}
+                  onChange={(e) => setTotalSgst(e.target.value)}
+                  placeholder="0.00"
+                  title="Sum of line SGST (editable)"
+                />
+                {filledCount > 0 && !sgstMatches ? (
+                  <p className="text-xs text-destructive">
+                    Lines sum to {formatInr(computed.sgstSum)}
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="roundingOff">Rounding off</Label>
+                <Input
+                  id="roundingOff"
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  disabled={footerDisabled}
+                  value={roundingOff}
+                  onChange={(e) => setRoundingOff(e.target.value)}
                   placeholder="0.00"
                 />
               </div>
-            ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="totalAmount">Total amount *</Label>
+                <Input
+                  id="totalAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  disabled={footerDisabled}
+                  value={totalAmount}
+                  onChange={(e) => setTotalAmount(e.target.value)}
+                  placeholder="0.00"
+                  title="Taxable − discounts + CGST + SGST + rounding (editable)"
+                />
+                {filledCount > 0 && !totalMatches ? (
+                  <p className="text-xs text-destructive">
+                    Expected {formatInr(computed.expectedTotal)}
+                  </p>
+                ) : null}
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 type="button"

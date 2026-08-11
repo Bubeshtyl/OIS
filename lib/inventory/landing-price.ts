@@ -10,6 +10,7 @@ export function computeLandingPrice({
   boxQuantity,
   packetsPerBox,
   invoiceDiscountPerPacket = 0,
+  invoiceRoundingPerPacket = 0,
 }: {
   taxableValue: number;
   discountAmount: number;
@@ -20,6 +21,8 @@ export function computeLandingPrice({
   packetsPerBox: number;
   /** Invoice-level discount already divided across all packets. */
   invoiceDiscountPerPacket?: number;
+  /** Invoice-level rounding already divided across all packets (may be negative). */
+  invoiceRoundingPerPacket?: number;
 }): number | null {
   if (
     !Number.isFinite(boxQuantity) ||
@@ -43,8 +46,11 @@ export function computeLandingPrice({
     Number.isFinite(invoiceDiscountPerPacket) && invoiceDiscountPerPacket > 0
       ? invoiceDiscountPerPacket
       : 0;
+  const perPacketRounding = Number.isFinite(invoiceRoundingPerPacket)
+    ? invoiceRoundingPerPacket
+    : 0;
 
-  return net / totalPackets - perPacketInvoice;
+  return net / totalPackets - perPacketInvoice + perPacketRounding;
 }
 
 /** Spread a whole-invoice discount evenly across every packet. */
@@ -61,6 +67,22 @@ export function invoiceDiscountPerPacket(
     return 0;
   }
   return invoiceDiscount / totalPackets;
+}
+
+/** Spread invoice rounding evenly across every packet (signed). */
+export function invoiceRoundingPerPacket(
+  roundingOff: number,
+  totalPackets: number
+): number {
+  if (
+    !Number.isFinite(roundingOff) ||
+    roundingOff === 0 ||
+    !Number.isFinite(totalPackets) ||
+    totalPackets <= 0
+  ) {
+    return 0;
+  }
+  return roundingOff / totalPackets;
 }
 
 /** Packet-share of an invoice discount for one line (for stored discount totals). */
