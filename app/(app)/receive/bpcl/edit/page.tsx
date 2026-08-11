@@ -17,14 +17,19 @@ export const dynamic = "force-dynamic";
 export default async function EditBpclInvoicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ invoice?: string }>;
+  searchParams: Promise<{ invoice?: string; view?: string }>;
 }) {
   const session = await requireTenantSession();
-  if (!(await hasPermission(session, "receive:write"))) {
+  const params = await searchParams;
+  const readOnly = params.view === "1" || params.view === "true";
+  const canWrite = await hasPermission(session, "receive:write");
+  const canTax = await hasPermission(session, "taxation:read");
+  if (readOnly) {
+    if (!canWrite && !canTax) redirect("/");
+  } else if (!canWrite) {
     redirect("/");
   }
 
-  const params = await searchParams;
   const invoice = params.invoice?.trim();
   if (!invoice) {
     notFound();
@@ -66,7 +71,7 @@ export default async function EditBpclInvoicePage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
-          title="Edit BPCL Invoice"
+          title={readOnly ? "View BPCL Invoice" : "Edit BPCL Invoice"}
           subtitle={`Invoice ${invoice}`}
         />
         <Link
@@ -84,6 +89,7 @@ export default async function EditBpclInvoicePage({
           transactionDate,
           lines,
         }}
+        readOnly={readOnly}
       />
     </div>
   );

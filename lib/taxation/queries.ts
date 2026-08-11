@@ -77,8 +77,8 @@ function compareRowsByDateDesc(
   return a.invoiceNo.localeCompare(b.invoiceNo);
 }
 
-function oilEditHref(invoiceNo: string): string {
-  return `/receive/bpcl/edit?invoice=${encodeURIComponent(invoiceNo)}`;
+function oilViewHref(invoiceNo: string): string {
+  return `/receive/bpcl/edit?invoice=${encodeURIComponent(invoiceNo)}&view=1`;
 }
 
 async function loadMsHsdTdsRows(
@@ -123,7 +123,7 @@ async function loadMsHsdTdsRows(
       baseAmount,
       rate: TDS_RATE_MS_HSD,
       tdsAmount: computeMsHsdTds(baseAmount),
-      href: `/invoice-purchase/ms-hsd-receipts/${row.id}`,
+      href: `/invoice-purchase/ms-hsd-receipts/${row.id}?view=1`,
     };
   });
 }
@@ -269,7 +269,7 @@ export async function getTdsReport(
     baseAmount: roundMoney(row.taxableAmount),
     rate: TDS_RATE_LFR,
     tdsAmount: computeLfrTds(row.taxableAmount),
-    href: `/invoice-purchase/lfr-receipts/${row.id}`,
+    href: `/invoice-purchase/lfr-receipts/${row.id}?view=1`,
   }));
 
   const oilRows: TdsRow[] = oilAggs.map((agg) => {
@@ -281,7 +281,7 @@ export async function getTdsReport(
       baseAmount,
       rate: TDS_RATE_OIL,
       tdsAmount: computeOilTds(baseAmount),
-      href: oilEditHref(agg.invoiceNo),
+      href: oilViewHref(agg.invoiceNo),
     };
   });
 
@@ -330,7 +330,7 @@ export async function getGstReport(
     cgstAmount: roundMoney(row.cgstAmount),
     sgstAmount: roundMoney(row.sgstAmount),
     totalAmount: roundMoney(row.totalAmount),
-    href: `/invoice-purchase/lfr-receipts/${row.id}`,
+    href: `/invoice-purchase/lfr-receipts/${row.id}?view=1`,
   }));
 
   const oilRows: GstRow[] = oilAggs.map((agg) => {
@@ -348,7 +348,7 @@ export async function getGstReport(
       cgstAmount,
       sgstAmount,
       totalAmount,
-      href: oilEditHref(agg.invoiceNo),
+      href: oilViewHref(agg.invoiceNo),
     };
   });
 

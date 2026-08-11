@@ -23,6 +23,7 @@ export function DatePicker({
   id,
   name,
   required,
+  disabled,
   placeholder = "Pick date",
   className,
 }: {
@@ -32,6 +33,7 @@ export function DatePicker({
   id?: string;
   name?: string;
   required?: boolean;
+  disabled?: boolean;
   placeholder?: string;
   className?: string;
 }) {
@@ -40,10 +42,28 @@ export function DatePicker({
   const selected = hasValue ? calendarDateFromIstString(value!) : undefined;
 
   function handleSelect(date: Date | undefined) {
-    if (!date) return;
+    if (!date || disabled) return;
     onChange(istDateStringFromCalendarDate(date));
     setOpen(false);
   }
+
+  const trigger = (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={disabled}
+      className={cn(
+        "h-11 w-full justify-start gap-2 bg-card font-normal shadow-sm",
+        !hasValue && "text-muted-foreground",
+        className
+      )}
+    >
+      <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+      <span className="truncate">
+        {hasValue ? formatRangeLabel(value!, value!) : placeholder}
+      </span>
+    </Button>
+  );
 
   return (
     <>
@@ -53,53 +73,40 @@ export function DatePicker({
           name={name}
           value={value ?? ""}
           required={required}
+          disabled={disabled}
         />
       ) : null}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          id={id}
-          render={
-            <Button
-              type="button"
-              variant="outline"
-              className={cn(
-                "h-11 w-full justify-start gap-2 bg-card font-normal shadow-sm",
-                !hasValue && "text-muted-foreground",
-                className
-              )}
-            >
-              <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">
-                {hasValue ? formatRangeLabel(value!, value!) : placeholder}
-              </span>
-            </Button>
-          }
-        />
-        <PopoverContent align="start" className="w-auto p-0">
-          <Calendar
-            mode="single"
-            selected={selected}
-            onSelect={handleSelect}
-            defaultMonth={selected}
-          />
-          {today && value !== today && (
-            <div className="border-t p-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => {
-                  onChange(today);
-                  setOpen(false);
-                }}
-              >
-                Go to today
-              </Button>
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
+      {disabled ? (
+        <div id={id}>{trigger}</div>
+      ) : (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger id={id} render={trigger} />
+          <PopoverContent align="start" className="w-auto p-0">
+            <Calendar
+              mode="single"
+              selected={selected}
+              onSelect={handleSelect}
+              defaultMonth={selected}
+            />
+            {today && value !== today && (
+              <div className="border-t p-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    onChange(today);
+                    setOpen(false);
+                  }}
+                >
+                  Go to today
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+      )}
     </>
   );
 }

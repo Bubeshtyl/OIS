@@ -12,11 +12,19 @@ export const dynamic = "force-dynamic";
 
 export default async function EditMsHsdReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
   const session = await requireTenantSession();
-  if (!(await hasPermission(session, "receive:write"))) {
+  const query = await searchParams;
+  const readOnly = query.view === "1" || query.view === "true";
+  const canWrite = await hasPermission(session, "receive:write");
+  const canTax = await hasPermission(session, "taxation:read");
+  if (readOnly) {
+    if (!canWrite && !canTax) redirect("/");
+  } else if (!canWrite) {
     redirect("/");
   }
 
@@ -30,7 +38,7 @@ export default async function EditMsHsdReceiptPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
-          title="Edit MS / HSD Invoice"
+          title={readOnly ? "View MS / HSD Invoice" : "Edit MS / HSD Invoice"}
           subtitle={invoice.invoiceNo}
         />
         <Link
@@ -41,7 +49,7 @@ export default async function EditMsHsdReceiptPage({
         </Link>
       </div>
 
-      <MsHsdInvoiceForm editInvoice={invoice} />
+      <MsHsdInvoiceForm editInvoice={invoice} readOnly={readOnly} />
     </div>
   );
 }

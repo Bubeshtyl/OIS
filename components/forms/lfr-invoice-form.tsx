@@ -50,8 +50,10 @@ function parseMoney(value: string): number {
 
 export function LfrInvoiceForm({
   editInvoice,
+  readOnly = false,
 }: {
   editInvoice?: LfrInvoiceDetail;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const isEdit = editInvoice != null;
@@ -134,6 +136,7 @@ export function LfrInvoiceForm({
   }, [state, router]);
 
   function handleSubmit(formData: FormData) {
+    if (readOnly) return;
     if (!headerReady) {
       toast.error("Invoice number and date are required.");
       return;
@@ -160,7 +163,7 @@ export function LfrInvoiceForm({
     formAction(formData);
   }
 
-  const disabled = !headerReady || pending;
+  const disabled = readOnly || !headerReady || pending;
   const totalMatches =
     computed.taxable > 0 &&
     amountsWithinTolerance(
@@ -184,6 +187,8 @@ export function LfrInvoiceForm({
               onChange={(e) => setInvoiceNo(e.target.value)}
               placeholder="e.g. FIIN192710025354"
               required
+              disabled={readOnly}
+              readOnly={readOnly}
             />
           </div>
           <div className="space-y-2">
@@ -193,6 +198,7 @@ export function LfrInvoiceForm({
               value={invoiceDate}
               onChange={setInvoiceDate}
               required
+              disabled={readOnly}
               className="h-8 shadow-none"
             />
           </div>
@@ -372,7 +378,7 @@ export function LfrInvoiceForm({
                 onChange={(e) => setTotalAmount(e.target.value)}
                 placeholder="0.00"
               />
-              {computed.taxable > 0 && !totalMatches ? (
+              {computed.taxable > 0 && !totalMatches && !readOnly ? (
                 <p className="text-xs text-destructive">
                   Expected{" "}
                   {formatInr(
@@ -391,25 +397,27 @@ export function LfrInvoiceForm({
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push("/invoice-purchase/lfr-receipts")}
+              onClick={() => router.back()}
               disabled={pending}
             >
-              Cancel
+              {readOnly ? "Close" : "Cancel"}
             </Button>
-            <Button
-              type="submit"
-              disabled={
-                !headerReady || pending || parseMoney(taxableAmount) <= 0
-              }
-            >
-              {pending
-                ? isEdit
-                  ? "Updating…"
-                  : "Saving…"
-                : isEdit
-                  ? "Update invoice"
-                  : "Save invoice"}
-            </Button>
+            {readOnly ? null : (
+              <Button
+                type="submit"
+                disabled={
+                  !headerReady || pending || parseMoney(taxableAmount) <= 0
+                }
+              >
+                {pending
+                  ? isEdit
+                    ? "Updating…"
+                    : "Saving…"
+                  : isEdit
+                    ? "Update invoice"
+                    : "Save invoice"}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

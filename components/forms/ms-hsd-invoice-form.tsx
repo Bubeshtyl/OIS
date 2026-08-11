@@ -105,8 +105,10 @@ function isLineFilled(line: LineState): boolean {
 
 export function MsHsdInvoiceForm({
   editInvoice,
+  readOnly = false,
 }: {
   editInvoice?: MsHsdInvoiceDetail;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const isEdit = editInvoice != null;
@@ -218,6 +220,7 @@ export function MsHsdInvoiceForm({
   }
 
   function handleSubmit(formData: FormData) {
+    if (readOnly) return;
     if (!headerReady) {
       toast.error("Invoice number and date are required.");
       return;
@@ -274,6 +277,8 @@ export function MsHsdInvoiceForm({
               onChange={(e) => setInvoiceNo(e.target.value)}
               placeholder="e.g. 1022046032"
               required
+              disabled={readOnly}
+              readOnly={readOnly}
             />
           </div>
           <div className="space-y-2">
@@ -283,6 +288,7 @@ export function MsHsdInvoiceForm({
               value={invoiceDate}
               onChange={setInvoiceDate}
               required
+              disabled={readOnly}
               className="h-8 shadow-none"
             />
           </div>
@@ -307,7 +313,7 @@ export function MsHsdInvoiceForm({
               </TableHeader>
               <TableBody>
                 {lines.map((line) => {
-                  const disabled = !headerReady || pending;
+                  const disabled = readOnly || !headerReady || pending;
 
                   return (
                     <TableRow key={line.product}>
@@ -450,13 +456,13 @@ export function MsHsdInvoiceForm({
                 type="number"
                 step="0.01"
                 inputMode="decimal"
-                disabled={!headerReady || pending}
+                disabled={readOnly || !headerReady || pending}
                 value={vatStaxCessTotal}
                 onChange={(e) => setVatStaxCessTotal(e.target.value)}
                 placeholder="0.00"
                 title="Sum of VAT amt + Addl VAT across lines (editable)"
               />
-              {filledLines.length > 0 && !vatMatches ? (
+              {filledLines.length > 0 && !vatMatches && !readOnly ? (
                 <p className="text-xs text-destructive">
                   Lines sum to {formatInr(computed.taxSum)}
                 </p>
@@ -469,7 +475,7 @@ export function MsHsdInvoiceForm({
                 type="number"
                 step="0.01"
                 inputMode="decimal"
-                disabled={!headerReady || pending}
+                disabled={readOnly || !headerReady || pending}
                 value={roundingOff}
                 onChange={(e) => setRoundingOff(e.target.value)}
                 placeholder="0.00"
@@ -482,13 +488,13 @@ export function MsHsdInvoiceForm({
                 type="number"
                 step="0.01"
                 inputMode="decimal"
-                disabled={!headerReady || pending}
+                disabled={readOnly || !headerReady || pending}
                 value={totalAmount}
                 onChange={(e) => setTotalAmount(e.target.value)}
                 placeholder="0.00"
                 title="Line values + DLY + VAT + Addl VAT + rounding (editable)"
               />
-              {filledLines.length > 0 && !totalMatches ? (
+              {filledLines.length > 0 && !totalMatches && !readOnly ? (
                 <p className="text-xs text-destructive">
                   Expected {formatInr(computed.expectedTotal)}
                 </p>
@@ -500,25 +506,25 @@ export function MsHsdInvoiceForm({
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
-                router.push("/invoice-purchase/ms-hsd-receipts")
-              }
+              onClick={() => router.back()}
               disabled={pending}
             >
-              Cancel
+              {readOnly ? "Close" : "Cancel"}
             </Button>
-            <Button
-              type="submit"
-              disabled={!headerReady || pending || filledLines.length === 0}
-            >
-              {pending
-                ? isEdit
-                  ? "Updating…"
-                  : "Saving…"
-                : isEdit
-                  ? "Update invoice"
-                  : "Save invoice"}
-            </Button>
+            {readOnly ? null : (
+              <Button
+                type="submit"
+                disabled={!headerReady || pending || filledLines.length === 0}
+              >
+                {pending
+                  ? isEdit
+                    ? "Updating…"
+                    : "Saving…"
+                  : isEdit
+                    ? "Update invoice"
+                    : "Save invoice"}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

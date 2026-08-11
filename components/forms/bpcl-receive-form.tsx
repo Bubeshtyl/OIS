@@ -142,6 +142,7 @@ function linesFromInvoice(
 export function BpclReceiveForm({
   products,
   editInvoice,
+  readOnly = false,
 }: {
   products: OilProduct[];
   editInvoice?: {
@@ -149,6 +150,7 @@ export function BpclReceiveForm({
     transactionDate: string;
     lines: BpclInvoiceLine[];
   };
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const isEdit = editInvoice != null;
@@ -266,6 +268,7 @@ export function BpclReceiveForm({
   }
 
   function handleSubmit(formData: FormData) {
+    if (readOnly) return;
     if (!headerReady) {
       toast.error("Invoice number and date are required.");
       return;
@@ -333,7 +336,7 @@ export function BpclReceiveForm({
     formAction(formData);
   }
 
-  const footerDisabled = !headerReady || pending || filledCount === 0;
+  const footerDisabled = readOnly || !headerReady || pending || filledCount === 0;
   const cgstMatches =
     filledCount > 0 &&
     amountsWithinTolerance(computed.cgstSum, parseMoney(totalCgst));
@@ -356,6 +359,8 @@ export function BpclReceiveForm({
               onChange={(e) => setInvoice(e.target.value)}
               placeholder="e.g. BPCL-INV-2041"
               required
+              disabled={readOnly}
+              readOnly={readOnly}
             />
           </div>
           <div className="space-y-2">
@@ -365,6 +370,7 @@ export function BpclReceiveForm({
               value={transactionDate}
               onChange={setTransactionDate}
               required
+              disabled={readOnly}
               className="h-8 shadow-none"
             />
           </div>
@@ -411,7 +417,8 @@ export function BpclReceiveForm({
                     const canEnter =
                       hasBoxPackaging(product) &&
                       getPacketsPerBox(product) != null;
-                    const disabled = !headerReady || pending || !canEnter;
+                    const disabled =
+                      readOnly || !headerReady || pending || !canEnter;
 
                     return (
                       <TableRow key={product.id} className="group">
@@ -570,7 +577,7 @@ export function BpclReceiveForm({
                   placeholder="0.00"
                   title="Sum of line CGST (editable)"
                 />
-                {filledCount > 0 && !cgstMatches ? (
+                {filledCount > 0 && !cgstMatches && !readOnly ? (
                   <p className="text-xs text-destructive">
                     Lines sum to {formatInr(computed.cgstSum)}
                   </p>
@@ -590,7 +597,7 @@ export function BpclReceiveForm({
                   placeholder="0.00"
                   title="Sum of line SGST (editable)"
                 />
-                {filledCount > 0 && !sgstMatches ? (
+                {filledCount > 0 && !sgstMatches && !readOnly ? (
                   <p className="text-xs text-destructive">
                     Lines sum to {formatInr(computed.sgstSum)}
                   </p>
@@ -623,7 +630,7 @@ export function BpclReceiveForm({
                   placeholder="0.00"
                   title="Taxable − discounts + CGST + SGST + rounding (editable)"
                 />
-                {filledCount > 0 && !totalMatches ? (
+                {filledCount > 0 && !totalMatches && !readOnly ? (
                   <p className="text-xs text-destructive">
                     Expected {formatInr(computed.expectedTotal)}
                   </p>
@@ -634,23 +641,25 @@ export function BpclReceiveForm({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => router.push("/receive")}
+                onClick={() => router.back()}
                 disabled={pending}
               >
-                Cancel
+                {readOnly ? "Close" : "Cancel"}
               </Button>
-              <Button
-                type="submit"
-                disabled={!headerReady || pending || filledCount === 0}
-              >
-                {pending
-                  ? isEdit
-                    ? "Updating…"
-                    : "Saving…"
-                  : isEdit
-                    ? "Update invoice"
-                    : "Save receipt"}
-              </Button>
+              {readOnly ? null : (
+                <Button
+                  type="submit"
+                  disabled={!headerReady || pending || filledCount === 0}
+                >
+                  {pending
+                    ? isEdit
+                      ? "Updating…"
+                      : "Saving…"
+                    : isEdit
+                      ? "Update invoice"
+                      : "Save receipt"}
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>

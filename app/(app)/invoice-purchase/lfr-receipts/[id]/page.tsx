@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function EditLfrReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
   const session = await requireTenantSession();
   if (!(await hasPermission(session, "taxation:read"))) {
@@ -21,6 +23,8 @@ export default async function EditLfrReceiptPage({
   }
 
   const { id } = await params;
+  const query = await searchParams;
+  const readOnly = query.view === "1" || query.view === "true";
   const invoice = await getLfrInvoiceById(session.tenantId, id);
   if (!invoice) {
     notFound();
@@ -29,7 +33,10 @@ export default async function EditLfrReceiptPage({
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <PageHeader title="Edit LFR Invoice" subtitle={invoice.invoiceNo} />
+        <PageHeader
+          title={readOnly ? "View LFR Invoice" : "Edit LFR Invoice"}
+          subtitle={invoice.invoiceNo}
+        />
         <Link
           href="/invoice-purchase/lfr-receipts"
           className={cn(buttonVariants({ variant: "outline" }), "shrink-0")}
@@ -38,7 +45,7 @@ export default async function EditLfrReceiptPage({
         </Link>
       </div>
 
-      <LfrInvoiceForm editInvoice={invoice} />
+      <LfrInvoiceForm editInvoice={invoice} readOnly={readOnly} />
     </div>
   );
 }
