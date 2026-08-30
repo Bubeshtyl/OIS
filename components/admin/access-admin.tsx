@@ -25,6 +25,7 @@ import {
 const initialState: ActionState = { success: false };
 
 const groupLabels: Record<NavGroup, string> = {
+  "shift-closing": "Shift Closing",
   analytics: "Analytics",
   oil: "Oil / Lubes",
   "invoice-purchase": "Invoice Purchase",
@@ -109,7 +110,18 @@ function RoleAccessForm({
       ))}
 
       {(
-        ["top", "analytics", "oil", "tickets", "configuration"] as const
+        [
+          "top",
+          "shift-closing",
+          "invoice-purchase",
+          "oil",
+          "analytics",
+          "taxation",
+          "staff",
+          "customers",
+          "tickets",
+          "configuration",
+        ] as const
       ).map((key) => {
         const items = grouped[key];
         if (!items?.length) return null;

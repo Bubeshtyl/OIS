@@ -16,6 +16,9 @@ export { ADMIN_PERMISSIONS };
 export type NavIcon =
   | "home"
   | "dashboard"
+  | "shift-closing"
+  | "clock"
+  | "gauge"
   | "receive"
   | "transfer"
   | "sales"
@@ -41,6 +44,7 @@ export type NavIcon =
   | "platform";
 
 export type NavGroup =
+  | "shift-closing"
   | "analytics"
   | "oil"
   | "invoice-purchase"
@@ -69,6 +73,20 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     label: "Home",
     icon: "home",
     permission: "dashboard:read",
+  },
+  {
+    href: "/shift-closing/6am",
+    label: "6AM",
+    icon: "clock",
+    group: "shift-closing",
+    permission: "shift-closing:read",
+  },
+  {
+    href: "/shift-closing/interim",
+    label: "Interim",
+    icon: "gauge",
+    group: "shift-closing",
+    permission: "shift-closing:read",
   },
   {
     href: "/dashboard",
@@ -153,15 +171,13 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     label: "TDS",
     icon: "tds",
     group: "taxation",
-    subgroupKey: "tds",
     permission: "taxation:read",
   },
   {
-    href: "/taxation/tds/gst",
+    href: "/taxation/gst",
     label: "GST",
     icon: "gst",
     group: "taxation",
-    subgroup: "tds",
     permission: "taxation:read",
   },
   {

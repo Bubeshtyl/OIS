@@ -1205,10 +1205,66 @@ async function migrateToMultiTenant(db: Db) {
       ON lfr_invoices (tenant_id, invoice_date)
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS fuel_products (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name text NOT NULL,
+      code text,
+      color text,
+      is_active boolean NOT NULL DEFAULT true,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT fuel_products_tenant_name_unique UNIQUE (tenant_id, name)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS station_pumps (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      pump_number integer NOT NULL,
+      name text NOT NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT station_pumps_tenant_pump_number_unique UNIQUE (tenant_id, pump_number)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS station_nozzles (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      pump_id uuid NOT NULL REFERENCES station_pumps(id) ON DELETE CASCADE,
+      nozzle_number integer NOT NULL,
+      name text NOT NULL,
+      product_id uuid REFERENCES fuel_products(id) ON DELETE SET NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT station_nozzles_pump_nozzle_number_unique UNIQUE (pump_id, nozzle_number)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS station_pumps_tenant_idx
+      ON station_pumps (tenant_id, pump_number)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS station_nozzles_pump_idx
+      ON station_nozzles (pump_id, nozzle_number)
+  `);
+
   console.log("Multi-tenant migration applied.");
 }
 
-migrateSchema().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+migrateSchema()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

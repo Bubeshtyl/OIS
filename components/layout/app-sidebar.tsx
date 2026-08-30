@@ -8,9 +8,11 @@ import {
   Building2,
   ChartColumn,
   ChevronRight,
+  Clock,
   Container,
   Droplet,
   FileText,
+  Gauge,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -59,6 +61,9 @@ import {
 const iconMap: Record<NavIcon, LucideIcon> = {
   home: Home,
   dashboard: LayoutDashboard,
+  "shift-closing": Clock,
+  clock: Clock,
+  gauge: Gauge,
   receive: SquareArrowDown,
   transfer: SquareArrowUp,
   sales: Droplet,
@@ -85,6 +90,7 @@ const iconMap: Record<NavIcon, LucideIcon> = {
 };
 
 const groupMeta: Record<NavGroup, { label: string; icon: NavIcon }> = {
+  "shift-closing": { label: "Shift Closing", icon: "shift-closing" },
   analytics: { label: "Analytics", icon: "dashboard" },
   oil: { label: "Oil / Lubes", icon: "sales" },
   "invoice-purchase": { label: "Invoice Purchase", icon: "purchase-invoice" },
@@ -289,6 +295,9 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
   const pathname = usePathname();
   const items = navItems;
   const topItems = items.filter((item) => !item.group);
+  const shiftClosingItems = items.filter(
+    (item) => item.group === "shift-closing"
+  );
   const analyticsItems = items.filter((item) => item.group === "analytics");
   const oilItems = items.filter((item) => item.group === "oil");
   const invoicePurchaseItems = items.filter(
@@ -309,6 +318,7 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
 
   const groupedSections = (
     [
+      { group: "shift-closing" as const, items: shiftClosingItems },
       { group: "invoice-purchase" as const, items: invoicePurchaseItems },
       { group: "oil" as const, items: oilItems },
       { group: "analytics" as const, items: analyticsItems },

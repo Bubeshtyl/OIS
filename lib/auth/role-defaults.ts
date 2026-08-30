@@ -1,5 +1,6 @@
 export type Permission =
   | "dashboard:read"
+  | "shift-closing:read"
   | "receive:write"
   | "transfer:write"
   | "sales:write"
@@ -21,6 +22,7 @@ export type Permission =
 /** Full permission set for the system Admin role on every tenant. */
 export const ADMIN_PERMISSIONS: Permission[] = [
   "dashboard:read",
+  "shift-closing:read",
   "receive:write",
   "transfer:write",
   "sales:write",
@@ -47,6 +49,7 @@ export const LEGACY_ROLE_PERMISSIONS: Record<
 > = {
   MANAGER: [
     "dashboard:read",
+    "shift-closing:read",
     "receive:write",
     "transfer:write",
     "sales:write",
@@ -59,6 +62,7 @@ export const LEGACY_ROLE_PERMISSIONS: Record<
   ],
   ACCOUNTS: [
     "dashboard:read",
+    "shift-closing:read",
     "reports:read",
     "file-upload:read",
     "daily-sales:read",

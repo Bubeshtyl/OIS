@@ -552,6 +552,79 @@ export const telegramProcessedUpdates = pgTable("telegram_processed_updates", {
     .notNull(),
 });
 
+export const fuelProducts = pgTable(
+  "fuel_products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    code: text("code"),
+    color: text("color"),
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    unique("fuel_products_tenant_name_unique").on(table.tenantId, table.name),
+  ]
+);
+
+export const stationPumps = pgTable(
+  "station_pumps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    pumpNumber: integer("pump_number").notNull(),
+    name: text("name").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    unique("station_pumps_tenant_pump_number_unique").on(
+      table.tenantId,
+      table.pumpNumber
+    ),
+  ]
+);
+
+export const stationNozzles = pgTable(
+  "station_nozzles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    pumpId: uuid("pump_id")
+      .notNull()
+      .references(() => stationPumps.id, { onDelete: "cascade" }),
+    nozzleNumber: integer("nozzle_number").notNull(),
+    name: text("name").notNull(),
+    productId: uuid("product_id").references(() => fuelProducts.id, {
+      onDelete: "set null",
+    }),
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    unique("station_nozzles_pump_nozzle_number_unique").on(
+      table.pumpId,
+      table.nozzleNumber
+    ),
+  ]
+);
+
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   roles: many(roles),
   users: many(users),
@@ -715,10 +788,44 @@ export const telegramSessionsRelations = relations(
   })
 );
 
+export const fuelProductsRelations = relations(fuelProducts, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [fuelProducts.tenantId],
+    references: [tenants.id],
+  }),
+  nozzles: many(stationNozzles),
+}));
+
+export const stationPumpsRelations = relations(stationPumps, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [stationPumps.tenantId],
+    references: [tenants.id],
+  }),
+  nozzles: many(stationNozzles),
+}));
+
+export const stationNozzlesRelations = relations(stationNozzles, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [stationNozzles.tenantId],
+    references: [tenants.id],
+  }),
+  pump: one(stationPumps, {
+    fields: [stationNozzles.pumpId],
+    references: [stationPumps.id],
+  }),
+  product: one(fuelProducts, {
+    fields: [stationNozzles.productId],
+    references: [fuelProducts.id],
+  }),
+}));
+
 export type Tenant = typeof tenants.$inferSelect;
 export type Role = typeof roles.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type OilProduct = typeof oilProducts.$inferSelect;
+export type FuelProduct = typeof fuelProducts.$inferSelect;
+export type StationPump = typeof stationPumps.$inferSelect;
+export type StationNozzle = typeof stationNozzles.$inferSelect;
 export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
 export type StockBalance = typeof stockBalance.$inferSelect;
 export type ReturnedCase = typeof returnedCases.$inferSelect;
