@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { SixAmShiftClosingForm } from "@/components/shift-closing/six-am-closing";
-import { InterimCalculator } from "@/components/shift-closing/interim-calculator";
+import { ShiftClosingCalculator } from "@/components/shift-closing/interim-calculator";
 import { requireTenantSession } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/rbac";
 import { getStationLayout } from "@/lib/station-config/service";
@@ -25,7 +25,7 @@ export default async function SixAmShiftClosingPage() {
     <div className="space-y-6">
       <PageHeader title="6 AM Shift Closing" />
       <SixAmShiftClosingForm todayDate={todayFormatted} />
-      <InterimCalculator configuredPumps={layout.pumps} />
+      <ShiftClosingCalculator configuredPumps={layout.pumps} />
     </div>
   );
 }

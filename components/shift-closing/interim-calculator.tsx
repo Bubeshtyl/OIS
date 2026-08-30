@@ -220,7 +220,7 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
   return result;
 }
 
-export function InterimCalculator({
+export function ShiftClosingCalculator({
   configuredPumps,
 }: {
   configuredPumps?: PumpWithNozzles[];
@@ -590,29 +590,29 @@ export function InterimCalculator({
       </Card>
 
       {/* Amount Collected Card with Multiple Payment Methods & Denominations */}
-      <Card className="border shadow-xs">
-        <CardContent className="space-y-4 pt-4">
-          <div className="rounded-lg border bg-card p-3 shadow-2xs">
+      <Card className="border shadow-sm">
+        <CardContent className="space-y-6 pt-4">
+          <div className="rounded-xl border bg-card p-4 shadow-sm">
             <div className="overflow-x-auto">
-              <Table className="min-w-[780px]">
+              <Table className="min-w-[950px]">
                 <TableHeader>
                   <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="w-[120px] text-center font-semibold text-xs py-2 tracking-wider uppercase">
+                    <TableHead className="w-[180px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
                       NOZZLE
                     </TableHead>
-                    <TableHead className="min-w-[180px] text-center font-semibold text-xs py-2 tracking-wider uppercase">
+                    <TableHead className="min-w-[220px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
                       CASH (₹)
                     </TableHead>
-                    <TableHead className="min-w-[140px] text-center font-semibold text-xs py-2 tracking-wider uppercase">
+                    <TableHead className="min-w-[200px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
                       UPI / DIGITAL (₹)
                     </TableHead>
-                    <TableHead className="min-w-[140px] text-center font-semibold text-xs py-2 tracking-wider uppercase">
+                    <TableHead className="min-w-[200px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
                       CARD / POS (₹)
                     </TableHead>
-                    <TableHead className="min-w-[140px] text-center font-semibold text-xs py-2 tracking-wider uppercase">
+                    <TableHead className="min-w-[200px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
                       CREDIT (₹)
                     </TableHead>
-                    <TableHead className="w-[120px] text-center font-semibold text-xs py-2 tracking-wider uppercase">
+                    <TableHead className="min-w-[180px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
                       TOTAL (₹)
                     </TableHead>
                   </TableRow>
@@ -625,24 +625,24 @@ export function InterimCalculator({
                     return (
                       <TableRow key={nozzle.id} className="hover:bg-muted/20">
                         {/* Nozzle Label */}
-                        <TableCell className="font-semibold text-xs py-2.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <span className="size-2 rounded-full bg-primary/60" />
+                        <TableCell className="font-semibold text-base py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="size-2.5 rounded-full bg-primary/60" />
                             <span>{nozzle.name}</span>
                           </div>
                         </TableCell>
 
                         {/* Cash & Denomination Dialog Trigger */}
-                        <TableCell className="py-2.5 text-center">
+                        <TableCell className="py-3 text-center">
                           <Dialog>
                             <DialogTrigger
-                              className="group inline-flex h-9 w-full min-w-[170px] items-center justify-between rounded-md border border-input bg-background/80 px-2.5 py-1 text-xs font-semibold shadow-2xs transition-all hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              className="group inline-flex h-12 w-full min-w-[200px] items-center justify-between rounded-lg border border-input bg-background/80 px-4 py-2 text-sm font-semibold shadow-2xs transition-all hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             >
-                              <span className="flex items-center gap-1 text-muted-foreground group-hover:text-foreground">
-                                <Banknote className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span className="flex items-center gap-1.5 text-muted-foreground group-hover:text-foreground">
+                                <Banknote className="size-4 text-emerald-600 dark:text-emerald-400" />
                                 <span>Denominations</span>
                               </span>
-                              <span className="font-bold text-foreground tabular-nums">
+                              <span className="text-base font-bold text-foreground tabular-nums">
                                 ₹ {cashVal.toLocaleString("en-IN")}
                               </span>
                             </DialogTrigger>
@@ -731,9 +731,9 @@ export function InterimCalculator({
                         </TableCell>
 
                         {/* UPI / Digital */}
-                        <TableCell className="py-2.5">
+                        <TableCell className="py-3">
                           <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground pointer-events-none">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground pointer-events-none">
                               ₹
                             </span>
                             <Input
@@ -742,15 +742,15 @@ export function InterimCalculator({
                               min="0"
                               value={nozzle.payment.upi}
                               onChange={(e) => updatePaymentField(nozzle.id, "upi", e.target.value)}
-                              className="h-9 w-full text-center text-xs sm:text-sm font-medium px-2 pl-6 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="h-12 w-full text-center text-lg font-medium px-4 pl-8 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                           </div>
                         </TableCell>
 
                         {/* Card / POS */}
-                        <TableCell className="py-2.5">
+                        <TableCell className="py-3">
                           <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground pointer-events-none">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground pointer-events-none">
                               ₹
                             </span>
                             <Input
@@ -759,15 +759,15 @@ export function InterimCalculator({
                               min="0"
                               value={nozzle.payment.card}
                               onChange={(e) => updatePaymentField(nozzle.id, "card", e.target.value)}
-                              className="h-9 w-full text-center text-xs sm:text-sm font-medium px-2 pl-6 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="h-12 w-full text-center text-lg font-medium px-4 pl-8 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                           </div>
                         </TableCell>
 
                         {/* Credit */}
-                        <TableCell className="py-2.5">
+                        <TableCell className="py-3">
                           <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground pointer-events-none">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground pointer-events-none">
                               ₹
                             </span>
                             <Input
@@ -776,13 +776,13 @@ export function InterimCalculator({
                               min="0"
                               value={nozzle.payment.credit}
                               onChange={(e) => updatePaymentField(nozzle.id, "credit", e.target.value)}
-                              className="h-9 w-full text-center text-xs sm:text-sm font-medium px-2 pl-6 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              className="h-12 w-full text-center text-lg font-medium px-4 pl-8 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                           </div>
                         </TableCell>
 
                         {/* Total For Nozzle */}
-                        <TableCell className="py-2.5 text-center font-bold text-xs sm:text-sm text-foreground tabular-nums">
+                        <TableCell className="py-3 text-center font-bold text-lg text-foreground tabular-nums">
                           ₹ {nozzleTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                       </TableRow>

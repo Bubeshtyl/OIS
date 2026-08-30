@@ -151,7 +151,7 @@ export function SixAmShiftClosingForm({
             </div>
 
             <div className="pt-2">
-              <Button type="submit" size="lg" className="h-11 px-6 font-semibold">
+              <Button type="submit" size="lg" className="h-11 w-full sm:w-auto px-8 font-semibold">
                 <CheckCircle2 className="mr-2 size-4" />
                 Save Prices
               </Button>

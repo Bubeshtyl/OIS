@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/shared/page-blocks";
-import { InterimCalculator } from "@/components/shift-closing/interim-calculator";
+import { ShiftClosingCalculator } from "@/components/shift-closing/interim-calculator";
 import { requireTenantSession } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/rbac";
 import { getStationLayout } from "@/lib/station-config/service";
@@ -18,7 +18,7 @@ export default async function InterimShiftClosingPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Interim Shift Closing" />
-      <InterimCalculator configuredPumps={layout.pumps} />
+      <ShiftClosingCalculator configuredPumps={layout.pumps} />
     </div>
   );
 }
