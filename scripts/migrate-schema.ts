@@ -1257,6 +1257,120 @@ async function migrateToMultiTenant(db: Db) {
       ON station_nozzles (pump_id, nozzle_number)
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS daily_rsp_prices (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      price_date date NOT NULL,
+      hsd_price numeric(10, 2) NOT NULL,
+      ms_price numeric(10, 2) NOT NULL,
+      speed_price numeric(10, 2) NOT NULL,
+      recorded_by uuid REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT daily_rsp_prices_tenant_date_unique UNIQUE (tenant_id, price_date)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS daily_rsp_prices_tenant_date_idx
+      ON daily_rsp_prices (tenant_id, price_date)
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS machine_slip_entries (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      entry_date date NOT NULL,
+      machine_number text NOT NULL,
+      nozzle_number integer NOT NULL,
+      reading numeric(14, 3) NOT NULL,
+      recorded_by uuid REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT machine_slip_entries_tenant_date_machine_nozzle_unique UNIQUE (tenant_id, entry_date, machine_number, nozzle_number)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS machine_slip_entries_tenant_date_idx
+      ON machine_slip_entries (tenant_id, entry_date)
+  `);
+
+  await db.execute(sql`
+    DROP TABLE IF EXISTS interim_nozzle_readings CASCADE;
+    DROP TABLE IF EXISTS interim_shift_closings CASCADE;
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS interim_shift_closings (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      pump_id uuid REFERENCES station_pumps(id) ON DELETE SET NULL,
+      pump_number integer NOT NULL,
+      pump_name text NOT NULL,
+      shift_date timestamptz NOT NULL DEFAULT now(),
+      total_gross numeric(14, 3) NOT NULL DEFAULT 0,
+      total_test numeric(14, 3) NOT NULL DEFAULT 0,
+      total_net_litres numeric(14, 3) NOT NULL DEFAULT 0,
+      total_sales_amount numeric(14, 2) NOT NULL DEFAULT 0,
+      total_collected numeric(14, 2) NOT NULL DEFAULT 0,
+      difference numeric(14, 2) NOT NULL DEFAULT 0,
+      payment_collections jsonb,
+      created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS interim_shift_closings_tenant_date_idx
+      ON interim_shift_closings (tenant_id, shift_date, pump_number)
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS interim_nozzle_readings (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      shift_closing_id uuid NOT NULL REFERENCES interim_shift_closings(id) ON DELETE CASCADE,
+      nozzle_id uuid REFERENCES station_nozzles(id) ON DELETE SET NULL,
+      nozzle_name text NOT NULL,
+      opening_reading numeric(16, 3) NOT NULL,
+      closing_reading numeric(16, 3) NOT NULL,
+      test_volume numeric(12, 3) NOT NULL DEFAULT 0,
+      net_volume numeric(14, 3) NOT NULL,
+      rate_per_litre numeric(10, 2),
+      sales_amount numeric(14, 2)
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS interim_nozzle_readings_closing_idx
+      ON interim_nozzle_readings (shift_closing_id)
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS interim_payment_collections (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      shift_closing_id uuid NOT NULL REFERENCES interim_shift_closings(id) ON DELETE CASCADE,
+      cash_amount numeric(14, 2) NOT NULL DEFAULT 0,
+      cash_denominations jsonb,
+      pinelabs_card numeric(14, 2) NOT NULL DEFAULT 0,
+      pinelabs_upi numeric(14, 2) NOT NULL DEFAULT 0,
+      pinelabs_alp numeric(14, 2) NOT NULL DEFAULT 0,
+      pos numeric(14, 2) NOT NULL DEFAULT 0,
+      qr numeric(14, 2) NOT NULL DEFAULT 0,
+      ufill numeric(14, 2) NOT NULL DEFAULT 0,
+      bill numeric(14, 2) NOT NULL DEFAULT 0,
+      expenses numeric(14, 2) NOT NULL DEFAULT 0,
+      total_collected numeric(14, 2) NOT NULL DEFAULT 0,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS interim_payment_collections_closing_idx
+      ON interim_payment_collections (shift_closing_id)
+  `);
+
   console.log("Multi-tenant migration applied.");
 }
 

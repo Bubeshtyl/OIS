@@ -625,6 +625,175 @@ export const stationNozzles = pgTable(
   ]
 );
 
+export const dailyRspPrices = pgTable(
+  "daily_rsp_prices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    priceDate: date("price_date").notNull(),
+    hsdPrice: numeric("hsd_price", { precision: 10, scale: 2 }).notNull(),
+    msPrice: numeric("ms_price", { precision: 10, scale: 2 }).notNull(),
+    speedPrice: numeric("speed_price", { precision: 10, scale: 2 }).notNull(),
+    recordedBy: uuid("recorded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    unique("daily_rsp_prices_tenant_date_unique").on(
+      table.tenantId,
+      table.priceDate
+    ),
+  ]
+);
+
+export const machineSlipEntries = pgTable(
+  "machine_slip_entries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    entryDate: date("entry_date").notNull(),
+    machineNumber: text("machine_number").notNull(),
+    nozzleNumber: integer("nozzle_number").notNull(),
+    reading: numeric("reading", { precision: 14, scale: 3 }).notNull(),
+    recordedBy: uuid("recorded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    unique("machine_slip_entries_tenant_date_machine_nozzle_unique").on(
+      table.tenantId,
+      table.entryDate,
+      table.machineNumber,
+      table.nozzleNumber
+    ),
+  ]
+);
+
+export const interimShiftClosings = pgTable(
+  "interim_shift_closings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    pumpId: uuid("pump_id").references(() => stationPumps.id, {
+      onDelete: "set null",
+    }),
+    pumpNumber: integer("pump_number").notNull(),
+    pumpName: text("pump_name").notNull(),
+    shiftDate: timestamp("shift_date", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    totalGross: numeric("total_gross", { precision: 14, scale: 3 })
+      .default("0")
+      .notNull(),
+    totalTest: numeric("total_test", { precision: 14, scale: 3 })
+      .default("0")
+      .notNull(),
+    totalNetLitres: numeric("total_net_litres", { precision: 14, scale: 3 })
+      .default("0")
+      .notNull(),
+    totalSalesAmount: numeric("total_sales_amount", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    totalCollected: numeric("total_collected", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    difference: numeric("difference", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    paymentCollections: jsonb("payment_collections"),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  }
+);
+
+export const interimNozzleReadings = pgTable(
+  "interim_nozzle_readings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shiftClosingId: uuid("shift_closing_id")
+      .notNull()
+      .references(() => interimShiftClosings.id, { onDelete: "cascade" }),
+    nozzleId: uuid("nozzle_id").references(() => stationNozzles.id, {
+      onDelete: "set null",
+    }),
+    nozzleName: text("nozzle_name").notNull(),
+    openingReading: numeric("opening_reading", { precision: 16, scale: 3 }).notNull(),
+    closingReading: numeric("closing_reading", { precision: 16, scale: 3 }).notNull(),
+    testVolume: numeric("test_volume", { precision: 12, scale: 3 })
+      .default("0")
+      .notNull(),
+    netVolume: numeric("net_volume", { precision: 14, scale: 3 }).notNull(),
+    ratePerLitre: numeric("rate_per_litre", { precision: 10, scale: 2 }),
+    salesAmount: numeric("sales_amount", { precision: 14, scale: 2 }),
+  }
+);
+
+export const interimPaymentCollections = pgTable(
+  "interim_payment_collections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shiftClosingId: uuid("shift_closing_id")
+      .notNull()
+      .references(() => interimShiftClosings.id, { onDelete: "cascade" }),
+    cashAmount: numeric("cash_amount", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    cashDenominations: jsonb("cash_denominations"),
+    pinelabsCard: numeric("pinelabs_card", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    pinelabsUpi: numeric("pinelabs_upi", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    pinelabsAlp: numeric("pinelabs_alp", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    pos: numeric("pos", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    qr: numeric("qr", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    ufill: numeric("ufill", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    bill: numeric("bill", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    expenses: numeric("expenses", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    totalCollected: numeric("total_collected", { precision: 14, scale: 2 })
+      .default("0")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  }
+);
+
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   roles: many(roles),
   users: many(users),
@@ -819,6 +988,75 @@ export const stationNozzlesRelations = relations(stationNozzles, ({ one }) => ({
   }),
 }));
 
+export const dailyRspPricesRelations = relations(dailyRspPrices, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [dailyRspPrices.tenantId],
+    references: [tenants.id],
+  }),
+  recorder: one(users, {
+    fields: [dailyRspPrices.recordedBy],
+    references: [users.id],
+  }),
+}));
+
+export const machineSlipEntriesRelations = relations(
+  machineSlipEntries,
+  ({ one }) => ({
+    tenant: one(tenants, {
+      fields: [machineSlipEntries.tenantId],
+      references: [tenants.id],
+    }),
+    recorder: one(users, {
+      fields: [machineSlipEntries.recordedBy],
+      references: [users.id],
+    }),
+  })
+);
+
+export const interimShiftClosingsRelations = relations(
+  interimShiftClosings,
+  ({ one, many }) => ({
+    tenant: one(tenants, {
+      fields: [interimShiftClosings.tenantId],
+      references: [tenants.id],
+    }),
+    pump: one(stationPumps, {
+      fields: [interimShiftClosings.pumpId],
+      references: [stationPumps.id],
+    }),
+    creator: one(users, {
+      fields: [interimShiftClosings.createdBy],
+      references: [users.id],
+    }),
+    nozzles: many(interimNozzleReadings),
+    paymentCollection: one(interimPaymentCollections),
+  })
+);
+
+export const interimNozzleReadingsRelations = relations(
+  interimNozzleReadings,
+  ({ one }) => ({
+    shiftClosing: one(interimShiftClosings, {
+      fields: [interimNozzleReadings.shiftClosingId],
+      references: [interimShiftClosings.id],
+    }),
+    nozzle: one(stationNozzles, {
+      fields: [interimNozzleReadings.nozzleId],
+      references: [stationNozzles.id],
+    }),
+  })
+);
+
+export const interimPaymentCollectionsRelations = relations(
+  interimPaymentCollections,
+  ({ one }) => ({
+    shiftClosing: one(interimShiftClosings, {
+      fields: [interimPaymentCollections.shiftClosingId],
+      references: [interimShiftClosings.id],
+    }),
+  })
+);
+
 export type Tenant = typeof tenants.$inferSelect;
 export type Role = typeof roles.$inferSelect;
 export type User = typeof users.$inferSelect;
@@ -826,6 +1064,11 @@ export type OilProduct = typeof oilProducts.$inferSelect;
 export type FuelProduct = typeof fuelProducts.$inferSelect;
 export type StationPump = typeof stationPumps.$inferSelect;
 export type StationNozzle = typeof stationNozzles.$inferSelect;
+export type DailyRspPrice = typeof dailyRspPrices.$inferSelect;
+export type MachineSlipEntry = typeof machineSlipEntries.$inferSelect;
+export type InterimShiftClosing = typeof interimShiftClosings.$inferSelect;
+export type InterimNozzleReading = typeof interimNozzleReadings.$inferSelect;
+export type InterimPaymentCollection = typeof interimPaymentCollections.$inferSelect;
 export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
 export type StockBalance = typeof stockBalance.$inferSelect;
 export type ReturnedCase = typeof returnedCases.$inferSelect;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { CheckCircle2, ChevronDown, ChevronRight, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,69 +15,141 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
+import {
+  fetchSixAmDataForDateAction,
+  saveDailyRspAction,
+  saveMachineSlipEntriesAction,
+} from "@/lib/actions/shift-closing";
 
 interface SlipEntryGroup {
   id: string;
   title: string;
-  nozzles: Array<{ id: string; label: string }>;
+  machineNumber: string;
+  nozzles: Array<{ id: string; label: string; nozzleNumber: number }>;
 }
 
 const SLIP_GROUPS: SlipEntryGroup[] = [
   {
     id: "group-1",
     title: "202206000654",
+    machineNumber: "202206000654",
     nozzles: [
-      { id: "g1-n1", label: "Nozzle 1" },
-      { id: "g1-n2", label: "Nozzle 2" },
-      { id: "g1-n3", label: "Nozzle 3" },
-      { id: "g1-n4", label: "Nozzle 4" },
+      { id: "g1-n1", label: "Nozzle 1", nozzleNumber: 1 },
+      { id: "g1-n2", label: "Nozzle 2", nozzleNumber: 2 },
+      { id: "g1-n3", label: "Nozzle 3", nozzleNumber: 3 },
+      { id: "g1-n4", label: "Nozzle 4", nozzleNumber: 4 },
     ],
   },
   {
     id: "group-2",
     title: "M2446157",
+    machineNumber: "M2446157",
     nozzles: [
-      { id: "g2-n1", label: "Nozzle 1" },
-      { id: "g2-n2", label: "Nozzle 2" },
-      { id: "g2-n3", label: "Nozzle 3" },
-      { id: "g2-n4", label: "Nozzle 4" },
-      { id: "g2-n5", label: "Nozzle 5" },
-      { id: "g2-n6", label: "Nozzle 6" },
+      { id: "g2-n1", label: "Nozzle 1", nozzleNumber: 1 },
+      { id: "g2-n2", label: "Nozzle 2", nozzleNumber: 2 },
+      { id: "g2-n3", label: "Nozzle 3", nozzleNumber: 3 },
+      { id: "g2-n4", label: "Nozzle 4", nozzleNumber: 4 },
+      { id: "g2-n5", label: "Nozzle 5", nozzleNumber: 5 },
+      { id: "g2-n6", label: "Nozzle 6", nozzleNumber: 6 },
     ],
   },
   {
     id: "group-3",
     title: "202206000650",
+    machineNumber: "202206000650",
     nozzles: [
-      { id: "g3-n1", label: "Nozzle 1" },
-      { id: "g3-n2", label: "Nozzle 2" },
-      { id: "g3-n3", label: "Nozzle 3" },
-      { id: "g3-n4", label: "Nozzle 4" },
+      { id: "g3-n1", label: "Nozzle 1", nozzleNumber: 1 },
+      { id: "g3-n2", label: "Nozzle 2", nozzleNumber: 2 },
+      { id: "g3-n3", label: "Nozzle 3", nozzleNumber: 3 },
+      { id: "g3-n4", label: "Nozzle 4", nozzleNumber: 4 },
     ],
   },
 ];
 
+function buildSlipReadingsMap(
+  slips?: Array<{ machineNumber: string; nozzleNumber: number; reading: string }>
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  if (!slips) return map;
+
+  for (const group of SLIP_GROUPS) {
+    for (const nozzle of group.nozzles) {
+      const match = slips.find(
+        (s) =>
+          s.machineNumber === group.machineNumber &&
+          s.nozzleNumber === nozzle.nozzleNumber
+      );
+      if (match) {
+        map[nozzle.id] = match.reading;
+      }
+    }
+  }
+  return map;
+}
+
 export function SixAmShiftClosingForm({
   initialDate,
+  initialRsp,
+  initialSlips,
 }: {
   initialDate: string;
+  initialRsp?: { hsd: string; ms: string; speed: string } | null;
+  initialSlips?: Array<{
+    machineNumber: string;
+    nozzleNumber: number;
+    reading: string;
+  }>;
 }) {
   const [selectedDate, setSelectedDate] = useState<string>(initialDate);
   const [prices, setPrices] = useState({
-    ms: "",
-    hsd: "",
-    speed: "",
+    ms: initialRsp?.ms || "",
+    hsd: initialRsp?.hsd || "",
+    speed: initialRsp?.speed || "",
   });
-  const [savedPrices, setSavedPrices] = useState(false);
+  const [savedPrices, setSavedPrices] = useState(Boolean(initialRsp));
 
-  // Slip Entry state
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     "group-1": true,
     "group-2": false,
     "group-3": false,
   });
 
-  const [slipReadings, setSlipReadings] = useState<Record<string, string>>({});
+  const [slipReadings, setSlipReadings] = useState<Record<string, string>>(() =>
+    buildSlipReadingsMap(initialSlips)
+  );
+
+  const [isSavingRsp, startSavingRsp] = useTransition();
+  const [isSavingSlips, startSavingSlips] = useTransition();
+  const [isLoadingDate, startLoadingDate] = useTransition();
+
+  // When date changes, load data for selected date
+  function handleDateChange(newDate: string) {
+    setSelectedDate(newDate);
+    startLoadingDate(async () => {
+      const data = await fetchSixAmDataForDateAction(newDate);
+      if (data.rsp) {
+        setPrices({
+          hsd: data.rsp.hsdPrice,
+          ms: data.rsp.msPrice,
+          speed: data.rsp.speedPrice,
+        });
+        setSavedPrices(true);
+      } else {
+        setPrices({ hsd: "", ms: "", speed: "" });
+        setSavedPrices(false);
+      }
+
+      setSlipReadings(
+        buildSlipReadingsMap(
+          data.slips?.map((s) => ({
+            machineNumber: s.machineNumber,
+            nozzleNumber: s.nozzleNumber,
+            reading: s.reading,
+          }))
+        )
+      );
+    });
+  }
 
   function toggleGroup(id: string) {
     setOpenGroups((prev) => ({
@@ -99,8 +171,22 @@ export function SixAmShiftClosingForm({
       toast.error("Please enter daily prices for HSD, MS, and SPEED.");
       return;
     }
-    setSavedPrices(true);
-    toast.success("RSP fuel prices saved successfully!");
+
+    startSavingRsp(async () => {
+      const res = await saveDailyRspAction({
+        priceDate: selectedDate,
+        hsdPrice: prices.hsd,
+        msPrice: prices.ms,
+        speedPrice: prices.speed,
+      });
+
+      if (res.success) {
+        setSavedPrices(true);
+        toast.success(res.message || "RSP fuel prices saved successfully!");
+      } else {
+        toast.error(res.error || "Failed to save RSP prices.");
+      }
+    });
   }
 
   function handleRspReset() {
@@ -109,23 +195,49 @@ export function SixAmShiftClosingForm({
       hsd: "",
       speed: "",
     });
-    setSelectedDate(initialDate);
     setSavedPrices(false);
-    toast.info("Reset fuel prices and date.");
+    toast.info("Reset fuel price inputs.");
   }
 
   function handleSlipSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const enteredValues = Object.entries(slipReadings).filter(
-      ([, val]) => val && val.trim() !== ""
-    );
 
-    if (enteredValues.length === 0) {
+    const entriesToSave: Array<{
+      machineNumber: string;
+      nozzleNumber: number;
+      reading: string;
+    }> = [];
+
+    for (const group of SLIP_GROUPS) {
+      for (const nozzle of group.nozzles) {
+        const val = slipReadings[nozzle.id];
+        if (val && val.trim() !== "") {
+          entriesToSave.push({
+            machineNumber: group.machineNumber,
+            nozzleNumber: nozzle.nozzleNumber,
+            reading: val.trim(),
+          });
+        }
+      }
+    }
+
+    if (entriesToSave.length === 0) {
       toast.error("Please enter at least one slip reading before saving.");
       return;
     }
 
-    toast.success(`Slip entries saved successfully (${enteredValues.length} readings).`);
+    startSavingSlips(async () => {
+      const res = await saveMachineSlipEntriesAction({
+        entryDate: selectedDate,
+        entries: entriesToSave,
+      });
+
+      if (res.success) {
+        toast.success(res.message || "Slip entries saved successfully!");
+      } else {
+        toast.error(res.error || "Failed to save slip entries.");
+      }
+    });
   }
 
   function handleSlipReset() {
@@ -138,7 +250,14 @@ export function SixAmShiftClosingForm({
       {/* 1. RSP Card */}
       <Card className="border shadow-xs">
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-sm font-semibold">RSP</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold">RSP</CardTitle>
+            {savedPrices && (
+              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300">
+                Recorded for {selectedDate}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-4 pt-2">
           <form onSubmit={handleRspSubmit} className="space-y-4">
@@ -150,10 +269,7 @@ export function SixAmShiftClosingForm({
                 </Label>
                 <DatePicker
                   value={selectedDate}
-                  onChange={(d) => {
-                    setSelectedDate(d);
-                    setSavedPrices(false);
-                  }}
+                  onChange={handleDateChange}
                   today={initialDate}
                   className="h-10 text-xs font-medium"
                 />
@@ -254,8 +370,17 @@ export function SixAmShiftClosingForm({
             </div>
 
             <div className="pt-1 flex flex-wrap items-center gap-2.5">
-              <Button type="submit" size="sm" className="h-9 w-full sm:w-auto px-6 text-xs font-semibold">
-                <CheckCircle2 className="mr-1.5 size-3.5" />
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSavingRsp || isLoadingDate}
+                className="h-9 w-full sm:w-auto px-6 text-xs font-semibold"
+              >
+                {isSavingRsp ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1.5 size-3.5" />
+                )}
                 Save
               </Button>
 
@@ -263,6 +388,7 @@ export function SixAmShiftClosingForm({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={isSavingRsp || isLoadingDate}
                 onClick={handleRspReset}
                 className="h-9 w-full sm:w-auto px-5 text-xs font-semibold"
               >
@@ -348,9 +474,14 @@ export function SixAmShiftClosingForm({
               <Button
                 type="submit"
                 size="sm"
+                disabled={isSavingSlips || isLoadingDate}
                 className="h-9 w-full sm:w-auto px-6 text-xs font-semibold"
               >
-                <CheckCircle2 className="mr-1.5 size-3.5" />
+                {isSavingSlips ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1.5 size-3.5" />
+                )}
                 Save
               </Button>
 
@@ -358,6 +489,7 @@ export function SixAmShiftClosingForm({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={isSavingSlips || isLoadingDate}
                 onClick={handleSlipReset}
                 className="h-9 w-full sm:w-auto px-5 text-xs font-semibold"
               >
