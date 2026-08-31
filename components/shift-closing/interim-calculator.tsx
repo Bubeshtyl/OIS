@@ -6,6 +6,8 @@ import {
   Calculator,
   Coins,
   Lock,
+  PlusCircle,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -50,11 +53,16 @@ export interface CashDenominations {
   coins: string;
 }
 
-export interface NozzlePaymentBreakdown {
+export interface PumpPaymentBreakdown {
   cash: CashDenominations;
-  upi: string;
-  card: string;
-  credit: string;
+  pinelabsCard: string;
+  pinelabsUpi: string;
+  pinelabsAlp: string;
+  pos: string;
+  qr: string;
+  ufill: string;
+  bill: string;
+  expenses: string;
 }
 
 const DEFAULT_DENOMINATIONS: CashDenominations = {
@@ -65,6 +73,18 @@ const DEFAULT_DENOMINATIONS: CashDenominations = {
   d20: "",
   d10: "",
   coins: "",
+};
+
+const DEFAULT_PAYMENT: PumpPaymentBreakdown = {
+  cash: { ...DEFAULT_DENOMINATIONS },
+  pinelabsCard: "",
+  pinelabsUpi: "",
+  pinelabsAlp: "",
+  pos: "",
+  qr: "",
+  ufill: "",
+  bill: "",
+  expenses: "",
 };
 
 export function calculateDenominationCash(d: CashDenominations): number {
@@ -79,12 +99,28 @@ export function calculateDenominationCash(d: CashDenominations): number {
   );
 }
 
-export function calculateNozzleTotalPayment(p: NozzlePaymentBreakdown): number {
+export function calculatePumpTotalPayment(p: PumpPaymentBreakdown): number {
   const cash = calculateDenominationCash(p.cash);
-  const upi = Number(p.upi) || 0;
-  const card = Number(p.card) || 0;
-  const credit = Number(p.credit) || 0;
-  return cash + upi + card + credit;
+  const pinelabsCard = Number(p.pinelabsCard) || 0;
+  const pinelabsUpi = Number(p.pinelabsUpi) || 0;
+  const pinelabsAlp = Number(p.pinelabsAlp) || 0;
+  const pos = Number(p.pos) || 0;
+  const qr = Number(p.qr) || 0;
+  const ufill = Number(p.ufill) || 0;
+  const bill = Number(p.bill) || 0;
+  const expenses = Number(p.expenses) || 0;
+
+  return (
+    cash +
+    pinelabsCard +
+    pinelabsUpi +
+    pinelabsAlp +
+    pos +
+    qr +
+    ufill +
+    bill +
+    expenses
+  );
 }
 
 interface NozzleReading {
@@ -96,13 +132,13 @@ interface NozzleReading {
   open: string;
   close: string;
   test: string;
-  payment: NozzlePaymentBreakdown;
 }
 
 interface PumpData {
   pumpNumber: number;
   name: string;
   nozzles: NozzleReading[];
+  payment: PumpPaymentBreakdown;
 }
 
 interface CalculatedNozzle {
@@ -156,12 +192,6 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
                 open: "",
                 close: "",
                 test: "",
-                payment: {
-                  cash: { ...DEFAULT_DENOMINATIONS },
-                  upi: "",
-                  card: "",
-                  credit: "",
-                },
               }))
             : [
                 {
@@ -170,12 +200,6 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
                   open: "",
                   close: "",
                   test: "",
-                  payment: {
-                    cash: { ...DEFAULT_DENOMINATIONS },
-                    upi: "",
-                    card: "",
-                    credit: "",
-                  },
                 },
                 {
                   id: `${p.id}-n2`,
@@ -183,14 +207,9 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
                   open: "",
                   close: "",
                   test: "",
-                  payment: {
-                    cash: { ...DEFAULT_DENOMINATIONS },
-                    upi: "",
-                    card: "",
-                    credit: "",
-                  },
                 },
               ],
+        payment: { ...DEFAULT_PAYMENT, cash: { ...DEFAULT_DENOMINATIONS } },
       };
     }
     return result;
@@ -208,13 +227,8 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
         open: "",
         close: "",
         test: "",
-        payment: {
-          cash: { ...DEFAULT_DENOMINATIONS },
-          upi: "",
-          card: "",
-          credit: "",
-        },
       })),
+      payment: { ...DEFAULT_PAYMENT, cash: { ...DEFAULT_DENOMINATIONS } },
     };
   }
   return result;
@@ -237,6 +251,7 @@ export function ShiftClosingCalculator({
 
   const [selectedPump, setSelectedPump] = useState<number>(() => pumpOptions[0] ?? 1);
   const [pumpsData, setPumpsData] = useState<Record<number, PumpData>>(initialData);
+  const [showCollection, setShowCollection] = useState<boolean>(false);
   const [calculatedResults, setCalculatedResults] = useState<
     Record<number, PumpCalculationResult> | null
   >(null);
@@ -251,7 +266,6 @@ export function ShiftClosingCalculator({
         open: "",
         close: "",
         test: "",
-        payment: { cash: { ...DEFAULT_DENOMINATIONS }, upi: "", card: "", credit: "" },
       },
       {
         id: "n2",
@@ -259,9 +273,9 @@ export function ShiftClosingCalculator({
         open: "",
         close: "",
         test: "",
-        payment: { cash: { ...DEFAULT_DENOMINATIONS }, upi: "", card: "", credit: "" },
       },
     ],
+    payment: { ...DEFAULT_PAYMENT, cash: { ...DEFAULT_DENOMINATIONS } },
   };
 
   function updateNozzleField(
@@ -288,61 +302,41 @@ export function ShiftClosingCalculator({
   }
 
   function updatePaymentField(
-    nozzleId: string,
-    field: "upi" | "card" | "credit",
+    field: keyof Omit<PumpPaymentBreakdown, "cash">,
     value: string
   ) {
     setPumpsData((prev) => {
       const currentPump = prev[selectedPump] || currentPumpData;
-      const updatedNozzles = currentPump.nozzles.map((nozzle) => {
-        if (nozzle.id === nozzleId) {
-          return {
-            ...nozzle,
-            payment: {
-              ...nozzle.payment,
-              [field]: value,
-            },
-          };
-        }
-        return nozzle;
-      });
       return {
         ...prev,
         [selectedPump]: {
           ...currentPump,
-          nozzles: updatedNozzles,
+          payment: {
+            ...currentPump.payment,
+            [field]: value,
+          },
         },
       };
     });
   }
 
   function updateDenominationField(
-    nozzleId: string,
     key: keyof CashDenominations,
     value: string
   ) {
     setPumpsData((prev) => {
       const currentPump = prev[selectedPump] || currentPumpData;
-      const updatedNozzles = currentPump.nozzles.map((nozzle) => {
-        if (nozzle.id === nozzleId) {
-          return {
-            ...nozzle,
-            payment: {
-              ...nozzle.payment,
-              cash: {
-                ...nozzle.payment.cash,
-                [key]: value,
-              },
-            },
-          };
-        }
-        return nozzle;
-      });
       return {
         ...prev,
         [selectedPump]: {
           ...currentPump,
-          nozzles: updatedNozzles,
+          payment: {
+            ...currentPump.payment,
+            cash: {
+              ...currentPump.payment.cash,
+              [key]: value,
+            },
+          },
         },
       };
     });
@@ -440,30 +434,59 @@ export function ShiftClosingCalculator({
     }
   }
 
+  function handleReset() {
+    setPumpsData((prev) => {
+      const currentPump = prev[selectedPump] || currentPumpData;
+      const resetNozzles = currentPump.nozzles.map((nozzle) => ({
+        ...nozzle,
+        open: "",
+        close: "",
+        test: "",
+      }));
+      return {
+        ...prev,
+        [selectedPump]: {
+          ...currentPump,
+          nozzles: resetNozzles,
+        },
+      };
+    });
+
+    setCalculatedResults((prev) => {
+      if (!prev) return null;
+      const copy = { ...prev };
+      delete copy[selectedPump];
+      return Object.keys(copy).length > 0 ? copy : null;
+    });
+
+    toast.info(`Reset meter readings for ${currentPumpData.name}.`);
+  }
+
+  function handleResetCollections() {
+    setPumpsData((prev) => {
+      const currentPump = prev[selectedPump] || currentPumpData;
+      return {
+        ...prev,
+        [selectedPump]: {
+          ...currentPump,
+          payment: { ...DEFAULT_PAYMENT, cash: { ...DEFAULT_DENOMINATIONS } },
+        },
+      };
+    });
+    toast.info(`Reset collections for ${currentPumpData.name}.`);
+  }
+
   const currentCalculation = calculatedResults?.[selectedPump];
 
-  // Totals for current pump payments
-  const paymentTotals = useMemo(() => {
-    let cash = 0;
-    let upi = 0;
-    let card = 0;
-    let credit = 0;
-
-    for (const nz of currentPumpData.nozzles) {
-      cash += calculateDenominationCash(nz.payment.cash);
-      upi += Number(nz.payment.upi) || 0;
-      card += Number(nz.payment.card) || 0;
-      credit += Number(nz.payment.credit) || 0;
-    }
-
-    return {
-      cash,
-      upi,
-      card,
-      credit,
-      total: cash + upi + card + credit,
-    };
+  const hasAnyNozzleInput = useMemo(() => {
+    return currentPumpData.nozzles.some(
+      (n) => n.open.trim() !== "" || n.close.trim() !== "" || n.test.trim() !== ""
+    );
   }, [currentPumpData.nozzles]);
+
+  // Totals for current pump payments
+  const pumpCash = calculateDenominationCash(currentPumpData.payment.cash);
+  const pumpTotalPayment = calculatePumpTotalPayment(currentPumpData.payment);
 
   return (
     <div className="space-y-6">
@@ -494,15 +517,15 @@ export function ShiftClosingCalculator({
             </Select>
           </div>
 
-          <div className="rounded-xl border bg-card p-4 shadow-sm">
+          <div className="rounded-xl border bg-card p-2 sm:p-3 shadow-sm">
             <div className="overflow-x-auto">
-              <Table className="min-w-[820px]">
+              <Table className="min-w-[580px]">
                 <TableHeader>
                   <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="w-[180px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">NOZZLE</TableHead>
-                    <TableHead className="min-w-[220px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">OPEN</TableHead>
-                    <TableHead className="min-w-[220px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">CLOSE</TableHead>
-                    <TableHead className="min-w-[220px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">TEST</TableHead>
+                    <TableHead className="w-[90px] sm:w-[100px] px-1 text-center font-semibold text-xs py-2 tracking-wider uppercase text-muted-foreground">NOZZLE</TableHead>
+                    <TableHead className="min-w-[150px] text-center font-semibold text-xs py-2 tracking-wider uppercase text-muted-foreground">OPEN</TableHead>
+                    <TableHead className="min-w-[150px] text-center font-semibold text-xs py-2 tracking-wider uppercase text-muted-foreground">CLOSE</TableHead>
+                    <TableHead className="min-w-[150px] text-center font-semibold text-xs py-2 tracking-wider uppercase text-muted-foreground">TEST</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -513,13 +536,13 @@ export function ShiftClosingCalculator({
 
                     return (
                       <TableRow key={nozzle.id} className="hover:bg-muted/20">
-                        <TableCell className="font-semibold text-base py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <span className="size-2.5 rounded-full bg-primary/60" />
+                        <TableCell className="w-[90px] sm:w-[100px] px-1 py-1.5 font-medium text-xs sm:text-sm text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="size-1.5 rounded-full bg-primary/60" />
                             <span>{nozzle.name}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="py-3">
+                        <TableCell className="py-2">
                           <Input
                             type="number"
                             step="any"
@@ -527,10 +550,10 @@ export function ShiftClosingCalculator({
                             onChange={(e) =>
                               updateNozzleField(nozzle.id, "open", e.target.value)
                             }
-                            className="h-12 w-full min-w-[200px] text-center text-lg font-medium px-4 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="h-10 w-full min-w-[160px] text-center text-sm font-medium px-3 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </TableCell>
-                        <TableCell className="py-3">
+                        <TableCell className="py-2">
                           <Input
                             type="number"
                             step="any"
@@ -539,12 +562,12 @@ export function ShiftClosingCalculator({
                               updateNozzleField(nozzle.id, "close", e.target.value)
                             }
                             className={cn(
-                              "h-12 w-full min-w-[200px] text-center text-lg font-medium px-4 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                              "h-10 w-full min-w-[160px] text-center text-sm font-medium px-3 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
                               nozzleCalc?.error && "border-destructive focus-visible:ring-destructive"
                             )}
                           />
                         </TableCell>
-                        <TableCell className="py-3">
+                        <TableCell className="py-2">
                           <Input
                             type="number"
                             step="any"
@@ -552,7 +575,7 @@ export function ShiftClosingCalculator({
                             onChange={(e) =>
                               updateNozzleField(nozzle.id, "test", e.target.value)
                             }
-                            className="h-12 w-full min-w-[200px] text-center text-lg font-medium px-4 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="h-10 w-full min-w-[160px] text-center text-sm font-medium px-3 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </TableCell>
                       </TableRow>
@@ -564,334 +587,442 @@ export function ShiftClosingCalculator({
           </div>
 
           <div className="space-y-4 pt-2">
-            <Button
-              type="button"
-              size="lg"
-              onClick={handleCalculate}
-              className="h-12 w-full sm:w-auto px-8 text-base font-semibold shadow-md"
-            >
-              <Calculator className="mr-2 size-5" />
-              Calculate
-            </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+              <Button
+                type="button"
+                onClick={handleCalculate}
+                className="h-10 w-full text-sm font-semibold shadow-xs"
+              >
+                <Calculator className="mr-2 size-4" />
+                Calculate
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReset}
+                className="h-10 w-full text-sm font-semibold"
+              >
+                <RotateCcw className="mr-2 size-4" />
+                Reset
+              </Button>
+
+              <Button
+                type="button"
+                variant={showCollection ? "default" : "outline"}
+                disabled={!hasAnyNozzleInput}
+                onClick={() => setShowCollection((prev) => !prev)}
+                className={cn(
+                  "h-10 w-full text-sm font-semibold transition-all",
+                  showCollection && "bg-emerald-600 hover:bg-emerald-700 text-white"
+                )}
+              >
+                <PlusCircle className="mr-2 size-4" />
+                {showCollection ? "Hide Collections" : "Add Collections"}
+              </Button>
+            </div>
 
             {currentCalculation && (
-              <div className="flex w-fit items-center gap-3 rounded-xl border-2 border-red-500/40 bg-red-50/60 px-6 py-3.5 shadow-xs dark:border-red-900/60 dark:bg-red-950/30">
-                <span className="text-xl font-bold tracking-tight text-red-600 dark:text-red-400">
-                  Total Sales
-                </span>
-                <span className="text-xl font-bold text-red-500 dark:text-red-400">-</span>
-                <span className="text-2xl font-bold tracking-tight text-red-600 dark:text-red-400 tabular-nums">
-                  0
-                </span>
+              <div className="flex justify-center pt-1">
+                <div className="flex w-fit items-center gap-3 rounded-xl border-2 border-red-500/40 bg-red-50/60 px-6 py-3.5 shadow-xs dark:border-red-900/60 dark:bg-red-950/30">
+                  <span className="text-xl font-bold tracking-tight text-red-600 dark:text-red-400">
+                    Total Sales
+                  </span>
+                  <span className="text-xl font-bold text-red-500 dark:text-red-400">-</span>
+                  <span className="text-2xl font-bold tracking-tight text-red-600 dark:text-red-400 tabular-nums">
+                    0
+                  </span>
+                </div>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Amount Collected Card with Multiple Payment Methods & Denominations */}
-      <Card className="border shadow-sm">
-        <CardContent className="space-y-6 pt-4">
-          <div className="rounded-xl border bg-card p-4 shadow-sm">
-            <div className="overflow-x-auto">
-              <Table className="min-w-[950px]">
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="w-[180px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
-                      NOZZLE
-                    </TableHead>
-                    <TableHead className="min-w-[220px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
-                      CASH (₹)
-                    </TableHead>
-                    <TableHead className="min-w-[200px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
-                      UPI / DIGITAL (₹)
-                    </TableHead>
-                    <TableHead className="min-w-[200px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
-                      CARD / POS (₹)
-                    </TableHead>
-                    <TableHead className="min-w-[200px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
-                      CREDIT (₹)
-                    </TableHead>
-                    <TableHead className="min-w-[180px] text-center font-semibold text-base py-3.5 tracking-wider uppercase">
-                      TOTAL (₹)
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {currentPumpData.nozzles.map((nozzle) => {
-                    const cashVal = calculateDenominationCash(nozzle.payment.cash);
-                    const nozzleTotal = calculateNozzleTotalPayment(nozzle.payment);
-
-                    return (
-                      <TableRow key={nozzle.id} className="hover:bg-muted/20">
-                        {/* Nozzle Label */}
-                        <TableCell className="font-semibold text-base py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <span className="size-2.5 rounded-full bg-primary/60" />
-                            <span>{nozzle.name}</span>
-                          </div>
-                        </TableCell>
-
-                        {/* Cash & Denomination Dialog Trigger */}
-                        <TableCell className="py-3 text-center">
-                          <Dialog>
-                            <DialogTrigger
-                              className="group inline-flex h-12 w-full min-w-[200px] items-center justify-between rounded-lg border border-input bg-background/80 px-4 py-2 text-sm font-semibold shadow-2xs transition-all hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            >
-                              <span className="flex items-center gap-1.5 text-muted-foreground group-hover:text-foreground">
-                                <Banknote className="size-4 text-emerald-600 dark:text-emerald-400" />
-                                <span>Denominations</span>
-                              </span>
-                              <span className="text-base font-bold text-foreground tabular-nums">
-                                ₹ {cashVal.toLocaleString("en-IN")}
-                              </span>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-md">
-                              <DialogHeader>
-                                <DialogTitle className="text-sm font-semibold flex items-center gap-2">
-                                  <Banknote className="size-4 text-emerald-600" />
-                                  Cash Denominations — {currentPumpData.name} ({nozzle.name})
-                                </DialogTitle>
-                              </DialogHeader>
-
-                              <div className="space-y-2.5 py-2">
-                                <div className="grid grid-cols-1 gap-2">
-                                  {/* 500 */}
-                                  <DenominationRow
-                                    multiplier={500}
-                                    value={nozzle.payment.cash.d500}
-                                    onChange={(v) => updateDenominationField(nozzle.id, "d500", v)}
-                                  />
-                                  {/* 200 */}
-                                  <DenominationRow
-                                    multiplier={200}
-                                    value={nozzle.payment.cash.d200}
-                                    onChange={(v) => updateDenominationField(nozzle.id, "d200", v)}
-                                  />
-                                  {/* 100 */}
-                                  <DenominationRow
-                                    multiplier={100}
-                                    value={nozzle.payment.cash.d100}
-                                    onChange={(v) => updateDenominationField(nozzle.id, "d100", v)}
-                                  />
-                                  {/* 50 */}
-                                  <DenominationRow
-                                    multiplier={50}
-                                    value={nozzle.payment.cash.d50}
-                                    onChange={(v) => updateDenominationField(nozzle.id, "d50", v)}
-                                  />
-                                  {/* 20 */}
-                                  <DenominationRow
-                                    multiplier={20}
-                                    value={nozzle.payment.cash.d20}
-                                    onChange={(v) => updateDenominationField(nozzle.id, "d20", v)}
-                                  />
-                                  {/* 10 */}
-                                  <DenominationRow
-                                    multiplier={10}
-                                    value={nozzle.payment.cash.d10}
-                                    onChange={(v) => updateDenominationField(nozzle.id, "d10", v)}
-                                  />
-                                  {/* Coins */}
-                                  <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 p-2 text-xs">
-                                    <div className="flex items-center gap-2 min-w-[120px] font-semibold text-foreground">
-                                      <Coins className="size-3.5 text-amber-600" />
-                                      <span>Coins / Loose (₹)</span>
-                                    </div>
-                                    <div className="flex-1 max-w-[120px]">
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        step="any"
-                                        value={nozzle.payment.cash.coins}
-                                        onChange={(e) =>
-                                          updateDenominationField(nozzle.id, "coins", e.target.value)
-                                        }
-                                        className="h-8 text-center text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                      />
-                                    </div>
-                                    <span className="w-20 text-right font-bold text-foreground tabular-nums">
-                                      ₹ {(Number(nozzle.payment.cash.coins) || 0).toLocaleString("en-IN")}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Total Cash Pill in Modal */}
-                                <div className="mt-4 flex items-center justify-between rounded-lg border bg-emerald-50/70 p-2.5 dark:bg-emerald-950/30">
-                                  <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                                    Total Cash for {nozzle.name}
-                                  </span>
-                                  <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                                    ₹ {cashVal.toLocaleString("en-IN")}
-                                  </span>
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-
-                        {/* UPI / Digital */}
-                        <TableCell className="py-3">
-                          <div className="relative">
-                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground pointer-events-none">
-                              ₹
-                            </span>
-                            <Input
-                              type="number"
-                              step="any"
-                              min="0"
-                              value={nozzle.payment.upi}
-                              onChange={(e) => updatePaymentField(nozzle.id, "upi", e.target.value)}
-                              className="h-12 w-full text-center text-lg font-medium px-4 pl-8 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </TableCell>
-
-                        {/* Card / POS */}
-                        <TableCell className="py-3">
-                          <div className="relative">
-                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground pointer-events-none">
-                              ₹
-                            </span>
-                            <Input
-                              type="number"
-                              step="any"
-                              min="0"
-                              value={nozzle.payment.card}
-                              onChange={(e) => updatePaymentField(nozzle.id, "card", e.target.value)}
-                              className="h-12 w-full text-center text-lg font-medium px-4 pl-8 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </TableCell>
-
-                        {/* Credit */}
-                        <TableCell className="py-3">
-                          <div className="relative">
-                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground pointer-events-none">
-                              ₹
-                            </span>
-                            <Input
-                              type="number"
-                              step="any"
-                              min="0"
-                              value={nozzle.payment.credit}
-                              onChange={(e) => updatePaymentField(nozzle.id, "credit", e.target.value)}
-                              className="h-12 w-full text-center text-lg font-medium px-4 pl-8 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </TableCell>
-
-                        {/* Total For Nozzle */}
-                        <TableCell className="py-3 text-center font-bold text-lg text-foreground tabular-nums">
-                          ₹ {nozzleTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-
-          {/* Total Summary */}
-          <div className="pt-1">
-            <div className="flex w-fit items-center gap-2.5 rounded-lg border-2 border-emerald-500/40 bg-emerald-50/60 px-4 py-2 shadow-2xs dark:border-emerald-900/60 dark:bg-emerald-950/30">
-              <span className="text-xs font-bold uppercase tracking-tight text-emerald-700 dark:text-emerald-400">
-                Total Collected
-              </span>
-              <span className="text-xs font-bold text-emerald-500 dark:text-emerald-400">-</span>
-              <span className="text-base font-bold tracking-tight text-emerald-700 dark:text-emerald-400 tabular-nums">
-                ₹ {paymentTotals.total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Reconciliation Summary Card */}
-      {(() => {
-        const totalSales = 0;
-        const difference = paymentTotals.total - totalSales;
-
-        return (
-          <Card className="border shadow-xs">
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* Total Sales */}
-                <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3.5">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Total Sales
-                  </span>
-                  <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
-                    ₹ {totalSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-
-                {/* Total Collected */}
-                <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3.5">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Total Collected
-                  </span>
-                  <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
-                    ₹ {paymentTotals.total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-
-                {/* Difference */}
-                <div
-                  className={cn(
-                    "flex flex-col gap-1 rounded-lg border p-3.5 transition-colors",
-                    difference === 0
-                      ? "bg-muted/30 border-border text-foreground"
-                      : difference < 0
-                      ? "border-red-500/40 bg-red-50/60 dark:bg-red-950/30 dark:border-red-900/60"
-                      : "border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-900/60"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "text-xs font-semibold uppercase tracking-wider",
-                      difference === 0
-                        ? "text-muted-foreground"
-                        : difference < 0
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-emerald-600 dark:text-emerald-400"
-                    )}
+      {/* Amount Collected Card (Shown only when 'Add Collections' is clicked) */}
+      {showCollection && (
+        <Card className="border shadow-sm">
+          <CardContent className="space-y-6 pt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* 1. Cash - Denomination */}
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-foreground">
+                  Cash - Denomination (₹)
+                </Label>
+                <Dialog>
+                  <DialogTrigger
+                    type="button"
+                    className="group flex h-10 w-full items-center justify-between rounded-lg border border-input bg-background/80 px-3 py-2 text-xs font-semibold shadow-2xs transition-all hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
                   >
-                    Difference
+                    <span className="flex items-center gap-1.5 text-muted-foreground group-hover:text-foreground">
+                      <Banknote className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Denominations</span>
+                    </span>
+                    <span className="text-sm font-bold text-foreground tabular-nums">
+                      ₹ {pumpCash.toLocaleString("en-IN")}
+                    </span>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Banknote className="size-4 text-emerald-600" />
+                        Cash Denominations — {currentPumpData.name}
+                      </DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-2.5 py-2">
+                      <div className="grid grid-cols-1 gap-2">
+                        <DenominationRow
+                          multiplier={500}
+                          value={currentPumpData.payment.cash.d500}
+                          onChange={(v) => updateDenominationField("d500", v)}
+                        />
+                        <DenominationRow
+                          multiplier={200}
+                          value={currentPumpData.payment.cash.d200}
+                          onChange={(v) => updateDenominationField("d200", v)}
+                        />
+                        <DenominationRow
+                          multiplier={100}
+                          value={currentPumpData.payment.cash.d100}
+                          onChange={(v) => updateDenominationField("d100", v)}
+                        />
+                        <DenominationRow
+                          multiplier={50}
+                          value={currentPumpData.payment.cash.d50}
+                          onChange={(v) => updateDenominationField("d50", v)}
+                        />
+                        <DenominationRow
+                          multiplier={20}
+                          value={currentPumpData.payment.cash.d20}
+                          onChange={(v) => updateDenominationField("d20", v)}
+                        />
+                        <DenominationRow
+                          multiplier={10}
+                          value={currentPumpData.payment.cash.d10}
+                          onChange={(v) => updateDenominationField("d10", v)}
+                        />
+                        {/* Coins */}
+                        <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 p-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-[120px] font-semibold text-foreground">
+                            <Coins className="size-3.5 text-amber-600" />
+                            <span>Coins (₹)</span>
+                          </div>
+                          <div className="flex-1 max-w-[120px]">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={currentPumpData.payment.cash.coins}
+                              onChange={(e) =>
+                                updateDenominationField("coins", e.target.value)
+                              }
+                              className="h-8 text-center text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                          </div>
+                          <span className="w-20 text-right font-bold text-foreground tabular-nums">
+                            ₹ {(Number(currentPumpData.payment.cash.coins) || 0).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between rounded-lg border bg-emerald-50/70 p-2.5 dark:bg-emerald-950/30">
+                        <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                          Total Cash for {currentPumpData.name}
+                        </span>
+                        <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                          ₹ {pumpCash.toLocaleString("en-IN")}
+                        </span>
+                      </div>
+
+                      <div className="pt-2">
+                        <DialogClose render={<Button type="button" className="h-10 w-full text-sm font-semibold shadow-xs">Save</Button>} />
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {/* 2. Pinelabs Card */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-pinelabs-card" className="text-sm font-semibold text-foreground">
+                  Pinelabs Card (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground pointer-events-none">
+                    ₹
                   </span>
-                  <span
-                    className={cn(
-                      "text-xl font-bold tracking-tight tabular-nums",
-                      difference === 0
-                        ? "text-foreground"
-                        : difference < 0
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-emerald-600 dark:text-emerald-400"
-                    )}
-                  >
-                    {difference === 0
-                      ? "0"
-                      : difference < 0
-                      ? `- ₹ ${Math.abs(difference).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : `+ ₹ ${difference.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                  </span>
+                  <Input
+                    id="pump-pinelabs-card"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.pinelabsCard}
+                    onChange={(e) => updatePaymentField("pinelabsCard", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        );
-      })()}
+
+              {/* 3. Pinelabs UPI */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-pinelabs-upi" className="text-sm font-semibold text-foreground">
+                  Pinelabs UPI (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    ₹
+                  </span>
+                  <Input
+                    id="pump-pinelabs-upi"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.pinelabsUpi}
+                    onChange={(e) => updatePaymentField("pinelabsUpi", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Pinelabs ALP */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-pinelabs-alp" className="text-sm font-semibold text-foreground">
+                  Pinelabs ALP (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    ₹
+                  </span>
+                  <Input
+                    id="pump-pinelabs-alp"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.pinelabsAlp}
+                    onChange={(e) => updatePaymentField("pinelabsAlp", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+
+              {/* 5. POS */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-pos" className="text-sm font-semibold text-foreground">
+                  POS (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    ₹
+                  </span>
+                  <Input
+                    id="pump-pos"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.pos}
+                    onChange={(e) => updatePaymentField("pos", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+
+              {/* 6. QR */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-qr" className="text-sm font-semibold text-foreground">
+                  QR (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    ₹
+                  </span>
+                  <Input
+                    id="pump-qr"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.qr}
+                    onChange={(e) => updatePaymentField("qr", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+
+              {/* 7. UFILL */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-ufill" className="text-sm font-semibold text-foreground">
+                  UFILL (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    ₹
+                  </span>
+                  <Input
+                    id="pump-ufill"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.ufill}
+                    onChange={(e) => updatePaymentField("ufill", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+
+              {/* 8. Bill */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-bill" className="text-sm font-semibold text-foreground">
+                  Bill (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    ₹
+                  </span>
+                  <Input
+                    id="pump-bill"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.bill}
+                    onChange={(e) => updatePaymentField("bill", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+
+              {/* 9. Expenses */}
+              <div className="space-y-2">
+                <Label htmlFor="pump-expenses" className="text-sm font-semibold text-foreground">
+                  Expenses (₹)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground pointer-events-none">
+                    ₹
+                  </span>
+                  <Input
+                    id="pump-expenses"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={currentPumpData.payment.expenses}
+                    onChange={(e) => updatePaymentField("expenses", e.target.value)}
+                    className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Total Collected Pill & Reset Collections */}
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex w-fit items-center gap-2.5 rounded-lg border-2 border-emerald-500/40 bg-emerald-50/60 px-4 py-2 shadow-2xs dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                <span className="text-xs font-bold uppercase tracking-tight text-emerald-700 dark:text-emerald-400">
+                  Total Collected
+                </span>
+                <span className="text-xs font-bold text-emerald-500 dark:text-emerald-400">-</span>
+                <span className="text-base font-bold tracking-tight text-emerald-700 dark:text-emerald-400 tabular-nums">
+                  ₹ {pumpTotalPayment.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetCollections}
+                className="h-9 px-4 text-xs font-semibold"
+              >
+                <RotateCcw className="mr-1.5 size-3.5" />
+                Reset Collections
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Reconciliation Summary Card (Shown when collections are enabled) */}
+      {showCollection &&
+        (() => {
+          const totalSales = 0;
+          const difference = pumpTotalPayment - totalSales;
+
+          return (
+            <Card className="border shadow-xs">
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Total Sales */}
+                  <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3.5">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Total Sales
+                    </span>
+                    <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
+                      ₹ {totalSales.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {/* Total Collected */}
+                  <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3.5">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Total Collected
+                    </span>
+                    <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
+                      ₹ {pumpTotalPayment.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {/* Difference */}
+                  <div
+                    className={cn(
+                      "flex flex-col gap-1 rounded-lg border p-3.5 transition-colors",
+                      difference === 0
+                        ? "bg-muted/30 border-border text-foreground"
+                        : difference < 0
+                        ? "border-red-500/40 bg-red-50/60 dark:bg-red-950/30 dark:border-red-900/60"
+                        : "border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/30 dark:border-emerald-900/60"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "text-xs font-semibold uppercase tracking-wider",
+                        difference === 0
+                          ? "text-muted-foreground"
+                          : difference < 0
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-emerald-600 dark:text-emerald-400"
+                      )}
+                    >
+                      Difference
+                    </span>
+                    <span
+                      className={cn(
+                        "text-xl font-bold tracking-tight tabular-nums",
+                        difference === 0
+                          ? "text-foreground"
+                          : difference < 0
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-emerald-600 dark:text-emerald-400"
+                      )}
+                    >
+                      {difference === 0
+                        ? "0"
+                        : difference < 0
+                        ? `- ₹ ${Math.abs(difference).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : `+ ₹ ${difference.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
       {/* Close Shift Action */}
       <div className="pt-2">
         <Button
           type="button"
-          size="lg"
           onClick={() => {
             toast.success(`Shift for ${currentPumpData.name} closed successfully!`);
           }}
-          className="h-12 w-full text-base font-semibold shadow-md gap-2"
+          className="h-10 w-full text-sm font-semibold shadow-xs gap-2"
         >
           <Lock className="size-4" />
           Close Shift

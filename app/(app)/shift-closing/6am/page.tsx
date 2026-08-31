@@ -2,10 +2,8 @@ import { redirect } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { SixAmShiftClosingForm } from "@/components/shift-closing/six-am-closing";
-import { ShiftClosingCalculator } from "@/components/shift-closing/interim-calculator";
 import { requireTenantSession } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/rbac";
-import { getStationLayout } from "@/lib/station-config/service";
 import { IST_TIMEZONE } from "@/lib/timezone";
 
 export const dynamic = "force-dynamic";
@@ -16,16 +14,12 @@ export default async function SixAmShiftClosingPage() {
     redirect("/");
   }
 
-  const [layout, todayFormatted] = await Promise.all([
-    getStationLayout(session.tenantId),
-    Promise.resolve(formatInTimeZone(new Date(), IST_TIMEZONE, "dd-MM-yyyy (EEEE)")),
-  ]);
+  const todayIst = formatInTimeZone(new Date(), IST_TIMEZONE, "yyyy-MM-dd");
 
   return (
     <div className="space-y-6">
-      <PageHeader title="6 AM Shift Closing" />
-      <SixAmShiftClosingForm todayDate={todayFormatted} />
-      <ShiftClosingCalculator configuredPumps={layout.pumps} />
+      <PageHeader title="6 AM" />
+      <SixAmShiftClosingForm initialDate={todayIst} />
     </div>
   );
 }
