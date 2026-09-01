@@ -394,6 +394,41 @@ export function canAccessRouteSync(
   return true;
 }
 
+export function getNavItemsSync(session: SessionData): NavItem[] | null {
+  if (session.isPlatformAdmin) {
+    return [
+      {
+        href: "/platform",
+        label: "Tenants",
+        icon: "platform",
+      },
+    ];
+  }
+
+  const access = tenantAccessFromSession(session);
+  if (session.tenantId && access && !access.onboardingComplete) {
+    return [];
+  }
+
+  if (!sessionHasCachedPermissions(session)) {
+    return null;
+  }
+
+  const catalog = getNavCatalog();
+  return catalog
+    .filter(
+      (item) => item.href === "/" || session.permissions.includes(item.permission)
+    )
+    .map(({ href, label, icon, group, subgroup, subgroupKey }) => ({
+      href,
+      label,
+      icon,
+      group,
+      subgroup,
+      subgroupKey,
+    }));
+}
+
 export async function canAccessRoute(
   session: SessionData,
   pathname: string

@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { getTenantAccessState } from "@/lib/auth/permissions";
-import { getNavItems } from "@/lib/auth/rbac";
+import { getNavItems, getNavItemsSync } from "@/lib/auth/rbac";
 import { destroySession, getSession } from "@/lib/auth/session";
 import {
   hasCachedPermission,
@@ -20,25 +20,22 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  const tenantActivePromise =
-    session.tenantId && !session.isPlatformAdmin
-      ? (async () => {
-          const cachedAccess = tenantAccessFromSession(session);
-          if (cachedAccess) return cachedAccess.isActive;
-          const access = await getTenantAccessState(session.tenantId!);
-          return access.isActive;
-        })()
-      : Promise.resolve(true);
-
-  const [navItems, tenantActive] = await Promise.all([
-    getNavItems(session),
-    tenantActivePromise,
-  ]);
-
-  if (!tenantActive) {
-    await destroySession();
-    redirect("/login");
+  const cachedAccess = tenantAccessFromSession(session);
+  if (session.tenantId && !session.isPlatformAdmin) {
+    if (cachedAccess && !cachedAccess.isActive) {
+      await destroySession();
+      redirect("/login");
+    }
+    if (!cachedAccess) {
+      const access = await getTenantAccessState(session.tenantId);
+      if (!access.isActive) {
+        await destroySession();
+        redirect("/login");
+      }
+    }
   }
+
+  const navItems = getNavItemsSync(session) ?? (await getNavItems(session));
 
   const canUsePush =
     hasCachedPermission(session, "shift-closing:read") ?? false;

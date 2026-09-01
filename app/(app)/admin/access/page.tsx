@@ -1,34 +1,24 @@
-import { redirect } from "next/navigation";
-import { AccessAdmin } from "@/components/admin/access-admin";
+import { Suspense } from "react";
+import { AccessAdminContent } from "@/components/admin/access-admin-content";
 import { PageHeader } from "@/components/shared/page-blocks";
-import { getAccessConfiguration } from "@/lib/actions/access";
-import { getDefaultPath } from "@/lib/auth/rbac";
-import { getSession } from "@/lib/auth/session";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export const dynamic = "force-dynamic";
+function AccessAdminSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-56 rounded-lg" />
+      <Skeleton className="h-96 w-full rounded-xl" />
+    </div>
+  );
+}
 
-export default async function AdminAccessPage() {
-  const session = await getSession();
-  if (!session.isLoggedIn) {
-    redirect("/login");
-  }
-
-  const config = await getAccessConfiguration();
-  if (!config) {
-    redirect(await getDefaultPath(session));
-  }
-
+export default function AdminAccessPage() {
   return (
     <div>
       <PageHeader title="Roles & Access" />
-      <AccessAdmin
-        catalog={config.catalog}
-        roles={config.roles}
-        assignableRoles={config.assignableRoles}
-        permissionsByRoleId={config.permissionsByRoleId}
-        staff={config.staff}
-        adminRoleId={config.adminRoleId}
-      />
+      <Suspense fallback={<AccessAdminSkeleton />}>
+        <AccessAdminContent />
+      </Suspense>
     </div>
   );
 }

@@ -49,8 +49,8 @@ function getPoolOptions(connectionString: string) {
 
   return {
     prepare: !usesTransactionPooler(connectionString),
-    // One connection per serverless instance; session pooler cannot handle many.
-    max: isProduction ? 1 : 10,
+    // Transaction pooler supports many clients; allow parallel page queries.
+    max: isProduction ? 4 : 10,
     idle_timeout: isProduction ? 10 : 30,
     connect_timeout: 15,
     max_lifetime: isProduction ? 60 * 5 : 60 * 30,

@@ -1,45 +1,24 @@
-import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { PageHeader } from "@/components/shared/page-blocks";
-import { RspLedger } from "@/components/shift-closing/rsp-ledger";
-import {
-  isSystemAdminForSession,
-  requireTenantSession,
-} from "@/lib/auth/permissions";
-import {
-  getPendingEditRequests,
-  listDailyRspPrices,
-} from "@/lib/shift-closing/ledger";
+import { RspLedgerContent } from "@/components/shift-closing/rsp-ledger-content";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export const dynamic = "force-dynamic";
+function RspLedgerSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-48 rounded-lg" />
+      <Skeleton className="h-72 w-full rounded-xl" />
+    </div>
+  );
+}
 
-export default async function RspLedgerPage() {
-  const session = await requireTenantSession();
-  const isAdmin = await isSystemAdminForSession(session);
-
-  const [rows, pendingRequests, requestHistory] = await Promise.all([
-    listDailyRspPrices(session.tenantId),
-    getPendingEditRequests(session.tenantId, {
-      status: "pending",
-      entityType: "daily_rsp",
-    }),
-    getPendingEditRequests(session.tenantId, {
-      entityType: "daily_rsp",
-      ...(isAdmin
-        ? { limit: 30 }
-        : { requestedBy: session.userId, limit: 20 }),
-    }),
-  ]);
-
+export default function RspLedgerPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="RSP Ledger" />
-      <RspLedger
-        initialRows={rows}
-        pendingRequests={pendingRequests}
-        requestHistory={requestHistory}
-        isAdmin={isAdmin}
-        currentUserId={session.userId}
-      />
+      <Suspense fallback={<RspLedgerSkeleton />}>
+        <RspLedgerContent />
+      </Suspense>
     </div>
   );
 }

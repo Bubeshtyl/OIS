@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { rolePermissions, roles, tenants, users } from "@/lib/db/schema";
 import {
@@ -42,6 +42,51 @@ export const getPermissionsForRoleId = cache(
       .where(eq(rolePermissions.roleId, roleId));
 
     return rows.map((row) => row.permission as Permission);
+  }
+);
+
+export const getPermissionsForRoleIds = cache(
+  async (roleIds: string[]): Promise<Record<string, Permission[]>> => {
+    const unique = [...new Set(roleIds.filter(Boolean))];
+    if (unique.length === 0) return {};
+
+    const db = getDb();
+    const roleRows = await db
+      .select({
+        id: roles.id,
+        name: roles.name,
+        isSystem: roles.isSystem,
+      })
+      .from(roles)
+      .where(inArray(roles.id, unique));
+
+    const result: Record<string, Permission[]> = {};
+    const needsPermQuery: string[] = [];
+
+    for (const role of roleRows) {
+      if (role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME) {
+        result[role.id] = [...ADMIN_PERMISSIONS];
+      } else {
+        needsPermQuery.push(role.id);
+        result[role.id] = [];
+      }
+    }
+
+    if (needsPermQuery.length > 0) {
+      const rows = await db
+        .select({
+          roleId: rolePermissions.roleId,
+          permission: rolePermissions.permission,
+        })
+        .from(rolePermissions)
+        .where(inArray(rolePermissions.roleId, needsPermQuery));
+
+      for (const row of rows) {
+        result[row.roleId]?.push(row.permission as Permission);
+      }
+    }
+
+    return result;
   }
 );
 

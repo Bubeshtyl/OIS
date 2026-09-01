@@ -13,7 +13,8 @@ import {
   assertTenantRole,
   createTenantRole,
   deleteTenantRole,
-  getPermissionsForRoleId,
+  getPermissionsForRoleIds,
+  isSystemAdminForSession,
   isSystemAdminRole,
   listRolesForTenant,
   replaceRolePermissions,
@@ -33,19 +34,22 @@ export type AccessRole = { id: string; name: string };
 
 export async function getAccessConfiguration() {
   const session = await requireTenantSession();
-  if (!(await isSystemAdminRole(session.roleId))) {
+  if (!(await isSystemAdminForSession(session))) {
     return null;
   }
 
-  const tenantRoles = await listRolesForTenant(session.tenantId);
+  const [tenantRoles, staff] = await Promise.all([
+    listRolesForTenant(session.tenantId),
+    listStaff(session.tenantId),
+  ]);
+
   const editableRoles = tenantRoles.filter(
     (role) => !(role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME)
   );
 
-  const permissionsByRoleId: Record<string, Permission[]> = {};
-  for (const role of editableRoles) {
-    permissionsByRoleId[role.id] = await getPermissionsForRoleId(role.id);
-  }
+  const permissionsByRoleId = await getPermissionsForRoleIds(
+    editableRoles.map((role) => role.id)
+  );
 
   return {
     catalog: getGrantableNavCatalog(),
@@ -55,10 +59,11 @@ export async function getAccessConfiguration() {
       name,
     })) satisfies AccessRole[],
     permissionsByRoleId,
-    staff: await listStaff(session.tenantId),
-    adminRoleId: tenantRoles.find(
-      (role) => role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME
-    )?.id ?? null,
+    staff,
+    adminRoleId:
+      tenantRoles.find(
+        (role) => role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME
+      )?.id ?? null,
   };
 }
 
