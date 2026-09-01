@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { ActionState } from "@/lib/actions/inventory";
 import { revalidateStaffPages } from "@/lib/actions/revalidate";
-import { requireTenantSession } from "@/lib/auth/permissions";
+import { requireTenantSession, isSystemAdminRole } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/rbac";
 import { getDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -96,6 +96,13 @@ export async function saveStaffAction(
       return { success: false, error: "Staff not found." };
     }
 
+    if (
+      isAdminStaff(existing) &&
+      !(await isSystemAdminRole(session.roleId))
+    ) {
+      return { success: false, error: "You do not have permission." };
+    }
+
     if (!parsed.data.isActive && existing.id === session.userId) {
       return { success: false, error: "You cannot deactivate your own account." };
     }
@@ -163,6 +170,13 @@ export async function setStaffActiveAction(
   const existing = await getStaffById(session.tenantId, parsedId.data);
   if (!existing) {
     return { success: false, error: "Staff not found." };
+  }
+
+  if (
+    isAdminStaff(existing) &&
+    !(await isSystemAdminRole(session.roleId))
+  ) {
+    return { success: false, error: "You do not have permission." };
   }
 
   if (!isActive && existing.id === session.userId) {
