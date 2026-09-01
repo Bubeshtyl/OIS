@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { roles, users } from "@/lib/db/schema";
 import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
@@ -47,6 +47,61 @@ const staffColumns = {
   guardianPhone: users.guardianPhone,
 } as const;
 
+let staffProfileColumnsReady: Promise<void> | null = null;
+
+/** Preview/prod may deploy before `db:migrate` is run. These ALTERs are idempotent. */
+export async function ensureStaffProfileColumns() {
+  if (!staffProfileColumnsReady) {
+    staffProfileColumnsReady = (async () => {
+      const db = getDb();
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS joining_date date`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS primary_phone text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_phone text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS door_no text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS street text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS area text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS town_city text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS district text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS aadhar_number text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS guardian_name text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS guardian_relationship text`
+      );
+      await db.execute(
+        sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS guardian_phone text`
+      );
+    })().catch((error) => {
+      staffProfileColumnsReady = null;
+      throw error;
+    });
+  }
+
+  await staffProfileColumnsReady;
+}
+
 function toStaffMember(row: {
   id: string;
   name: string;
@@ -92,6 +147,7 @@ function toStaffMember(row: {
 }
 
 export async function listStaff(tenantId: string): Promise<StaffMember[]> {
+  await ensureStaffProfileColumns();
   const db = getDb();
   const rows = await db
     .select(staffColumns)
@@ -104,6 +160,7 @@ export async function listStaff(tenantId: string): Promise<StaffMember[]> {
 }
 
 export async function getStaffById(tenantId: string, staffId: string) {
+  await ensureStaffProfileColumns();
   const db = getDb();
   const [row] = await db
     .select({
