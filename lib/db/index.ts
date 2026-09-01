@@ -25,8 +25,14 @@ function getConnectionString() {
     );
   }
 
-  // Prefer session/direct pooler (5432). Transaction pooler (6543) causes
-  // statement timeouts under parallel queries in both dev and production.
+  // Production/serverless must use DATABASE_URL (transaction pooler, port 6543).
+  // Session pooler (5432) has a low shared limit (~15) and exhausts under Vercel
+  // concurrency when each instance opens its own pool.
+  if (process.env.NODE_ENV === "production") {
+    return databaseUrl;
+  }
+
+  // Local dev: prefer session pooler for parallel queries and prepared statements.
   if (process.env.DATABASE_MIGRATIONS_URL) {
     return process.env.DATABASE_MIGRATIONS_URL;
   }
@@ -36,6 +42,19 @@ function getConnectionString() {
   }
 
   return databaseUrl;
+}
+
+function getPoolOptions(connectionString: string) {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  return {
+    prepare: !usesTransactionPooler(connectionString),
+    // One connection per serverless instance; session pooler cannot handle many.
+    max: isProduction ? 1 : 10,
+    idle_timeout: isProduction ? 10 : 30,
+    connect_timeout: 15,
+    max_lifetime: isProduction ? 60 * 5 : 60 * 30,
+  };
 }
 
 declare global {
@@ -49,13 +68,7 @@ function getClient() {
   const connectionString = getConnectionString();
 
   if (!global.postgresClient) {
-    global.postgresClient = postgres(connectionString, {
-      prepare: !usesTransactionPooler(connectionString),
-      max: 10,
-      idle_timeout: 30,
-      connect_timeout: 15,
-      max_lifetime: 60 * 30,
-    });
+    global.postgresClient = postgres(connectionString, getPoolOptions(connectionString));
   }
 
   return global.postgresClient;

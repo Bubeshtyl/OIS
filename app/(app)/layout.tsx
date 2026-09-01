@@ -52,19 +52,25 @@ export default async function AppLayout({
 
     if (adminRole) {
       followUps.push(
-        countPendingEditRequests(session.tenantId).then((counts) => {
-          initialPendingBadges = counts;
-        })
+        countPendingEditRequests(session.tenantId)
+          .then((counts) => {
+            initialPendingBadges = counts;
+          })
+          .catch((err) => {
+            console.error("countPendingEditRequests error:", err);
+          })
       );
     }
 
     if (shiftClosingRead && isPushConfigured()) {
       followUps.push(
-        getPushNotificationStatus(session.tenantId, session.userId).then(
-          (status) => {
+        getPushNotificationStatus(session.tenantId, session.userId)
+          .then((status) => {
             initialPushStatus = status;
-          }
-        )
+          })
+          .catch((err) => {
+            console.error("getPushNotificationStatus error:", err);
+          })
       );
     }
 
