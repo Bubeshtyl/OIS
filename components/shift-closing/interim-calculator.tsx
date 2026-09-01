@@ -10,7 +10,6 @@ import {
   Coins,
   Loader2,
   Lock,
-  PlusCircle,
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -298,9 +297,11 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
 export function ShiftClosingCalculator({
   configuredPumps,
   sixAmStatus,
+  staffMembers = [],
 }: {
   configuredPumps?: PumpWithNozzles[];
   sixAmStatus?: SixAmStatus | null;
+  staffMembers?: Array<{ id: string; name: string }>;
 }) {
   const initialData = useMemo(
     () => buildInitialPumpsData(configuredPumps),
@@ -313,8 +314,10 @@ export function ShiftClosingCalculator({
   }, [initialData]);
 
   const [selectedPump, setSelectedPump] = useState<number>(() => pumpOptions[0] ?? 1);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>(
+    () => staffMembers[0]?.id ?? ""
+  );
   const [pumpsData, setPumpsData] = useState<Record<number, PumpData>>(initialData);
-  const [showCollection, setShowCollection] = useState<boolean>(false);
   const [calculatedResults, setCalculatedResults] = useState<
     Record<number, PumpCalculationResult> | null
   >(null);
@@ -559,34 +562,6 @@ export function ShiftClosingCalculator({
     );
   }
 
-  function handleReset() {
-    setPumpsData((prev) => {
-      const currentPump = prev[selectedPump] || currentPumpData;
-      const resetNozzles = currentPump.nozzles.map((nozzle) => ({
-        ...nozzle,
-        open: "",
-        close: "",
-        test: "",
-      }));
-      return {
-        ...prev,
-        [selectedPump]: {
-          ...currentPump,
-          nozzles: resetNozzles,
-        },
-      };
-    });
-
-    setCalculatedResults((prev) => {
-      if (!prev) return null;
-      const copy = { ...prev };
-      delete copy[selectedPump];
-      return Object.keys(copy).length > 0 ? copy : null;
-    });
-
-    toast.info(`Reset meter readings for ${currentPumpData.name}.`);
-  }
-
   function handleResetCollections() {
     setPumpsData((prev) => {
       const currentPump = prev[selectedPump] || currentPumpData;
@@ -602,12 +577,10 @@ export function ShiftClosingCalculator({
   }
 
   const currentCalculation = calculatedResults?.[selectedPump];
-
-  const hasAnyNozzleInput = useMemo(() => {
-    return currentPumpData.nozzles.some(
-      (n) => n.open.trim() !== "" || n.close.trim() !== "" || n.test.trim() !== ""
-    );
-  }, [currentPumpData.nozzles]);
+  const collectionsEnabled = Boolean(
+    currentCalculation && !currentCalculation.hasErrors
+  );
+  const collectionsDisabled = isGated || !collectionsEnabled;
 
   // Totals for current pump payments
   const pumpCash = calculateDenominationCash(currentPumpData.payment.cash);
@@ -772,31 +745,37 @@ export function ShiftClosingCalculator({
                 multiplier={500}
                 value={currentPumpData.payment.cash.d500}
                 onChange={(v) => updateDenominationField("d500", v)}
+                disabled={collectionsDisabled}
               />
               <DenominationRow
                 multiplier={200}
                 value={currentPumpData.payment.cash.d200}
                 onChange={(v) => updateDenominationField("d200", v)}
+                disabled={collectionsDisabled}
               />
               <DenominationRow
                 multiplier={100}
                 value={currentPumpData.payment.cash.d100}
                 onChange={(v) => updateDenominationField("d100", v)}
+                disabled={collectionsDisabled}
               />
               <DenominationRow
                 multiplier={50}
                 value={currentPumpData.payment.cash.d50}
                 onChange={(v) => updateDenominationField("d50", v)}
+                disabled={collectionsDisabled}
               />
               <DenominationRow
                 multiplier={20}
                 value={currentPumpData.payment.cash.d20}
                 onChange={(v) => updateDenominationField("d20", v)}
+                disabled={collectionsDisabled}
               />
               <DenominationRow
                 multiplier={10}
                 value={currentPumpData.payment.cash.d10}
                 onChange={(v) => updateDenominationField("d10", v)}
+                disabled={collectionsDisabled}
               />
               {/* Coins */}
               <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 p-2 text-xs">
@@ -808,6 +787,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     min="0"
                     step="any"
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.cash.coins}
                     onChange={(e) => updateDenominationField("coins", e.target.value)}
                     className="h-8 text-center text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -843,28 +823,62 @@ export function ShiftClosingCalculator({
       {/* Meter Readings Card */}
       <Card className="border shadow-sm">
         <CardContent className="space-y-6 pt-4">
-          <div className="max-w-xs space-y-2">
-            <Label htmlFor="pump-select" className="text-sm font-medium text-foreground">
-              Pump
-            </Label>
-            <Select
-              value={String(selectedPump)}
-              onValueChange={(val) => val && setSelectedPump(Number(val))}
-            >
-              <SelectTrigger id="pump-select" className="h-11 w-full bg-background text-base font-medium">
-                <SelectValue placeholder="Select Pump" />
-              </SelectTrigger>
-              <SelectContent>
-                {pumpOptions.map((num) => {
-                  const pName = pumpsData[num]?.name || `Pump ${num}`;
-                  return (
-                    <SelectItem key={num} value={String(num)} className="text-sm">
-                      {pName}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="staff-select" className="text-sm font-medium text-foreground">
+                Staff
+              </Label>
+              <Select
+                value={selectedStaffId || undefined}
+                onValueChange={(val) => val && setSelectedStaffId(val)}
+                disabled={staffMembers.length === 0}
+                items={staffMembers.map((member) => ({
+                  value: member.id,
+                  label: member.name,
+                }))}
+              >
+                <SelectTrigger id="staff-select" className="h-11 w-full bg-background text-base font-medium">
+                  <SelectValue
+                    placeholder={staffMembers.length === 0 ? "No staff available" : "Select staff"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {staffMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id} className="text-sm">
+                      {member.name}
                     </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pump-select" className="text-sm font-medium text-foreground">
+                Pump
+              </Label>
+              <Select
+                value={String(selectedPump)}
+                onValueChange={(val) => val && setSelectedPump(Number(val))}
+                items={pumpOptions.map((num) => ({
+                  value: String(num),
+                  label: pumpsData[num]?.name || `Pump ${num}`,
+                }))}
+              >
+                <SelectTrigger id="pump-select" className="h-11 w-full bg-background text-base font-medium">
+                  <SelectValue placeholder="Select Pump" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pumpOptions.map((num) => {
+                    const pName = pumpsData[num]?.name || `Pump ${num}`;
+                    return (
+                      <SelectItem key={num} value={String(num)} className="text-sm">
+                        {pName}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div
@@ -980,55 +994,27 @@ export function ShiftClosingCalculator({
               </div>
             )}
 
-            {/* Bottom 3 Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+            <div className="flex w-full">
               <Button
                 type="button"
                 disabled={isGated}
                 onClick={handleCalculate}
-                className="h-10 w-full sm:flex-1 text-sm font-semibold shadow-xs gap-2"
+                className="h-10 w-full text-sm font-semibold shadow-xs gap-2"
               >
                 <Calculator className="size-4" />
                 Calculate
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isGated}
-                onClick={handleReset}
-                className="h-10 w-full sm:flex-1 text-sm font-semibold gap-2"
-              >
-                <RotateCcw className="size-4" />
-                Reset
-              </Button>
-
-              <Button
-                type="button"
-                variant={showCollection ? "default" : "secondary"}
-                disabled={isGated || !hasAnyNozzleInput}
-                onClick={() => setShowCollection((prev) => !prev)}
-                className="h-10 w-full sm:flex-1 text-sm font-semibold shadow-xs gap-2"
-              >
-                <PlusCircle className="size-4" />
-                {showCollection ? "Hide Collections" : "Add Collections"}
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Payment Collections Card (Conditional) */}
-      {showCollection && (
-        <Card className="border shadow-sm">
-          <CardContent className="space-y-6 pt-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">
-                  Payment Collection Breakdown
-                </h3>
-              </div>
-            </div>
+      {/* Payment Collections Card */}
+      <Card className={cn("border shadow-sm", collectionsDisabled && "opacity-60")}>
+        <CardContent className="space-y-6 pt-4">
+          <div className="flex items-center justify-between border-b pb-3">
+            <h3 className="text-sm font-semibold text-foreground">Collections</h3>
+          </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* 1. Cash (with Denominations Dialog) */}
@@ -1041,7 +1027,7 @@ export function ShiftClosingCalculator({
                     type="button"
                     variant="ghost"
                     size="xs"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     onClick={() => setIsDenominationsOpen(true)}
                     className="h-6 px-1.5 text-[10px] gap-1 cursor-pointer font-medium text-muted-foreground hover:text-foreground"
                   >
@@ -1059,10 +1045,15 @@ export function ShiftClosingCalculator({
                     type="text"
                     readOnly
                     onClick={() => {
-                      if (!isGated) setIsDenominationsOpen(true);
+                      if (!collectionsDisabled) setIsDenominationsOpen(true);
                     }}
                     value={pumpCash > 0 ? pumpCash.toFixed(2) : "0.00"}
-                    className="h-10 w-full text-center text-sm font-semibold bg-muted/40 cursor-pointer px-3 pl-7 tracking-wider tabular-nums hover:bg-muted/60 transition-colors"
+                    className={cn(
+                      "h-10 w-full text-center text-sm font-semibold bg-muted/40 px-3 pl-7 tracking-wider tabular-nums",
+                      collectionsDisabled
+                        ? "cursor-not-allowed opacity-70"
+                        : "cursor-pointer hover:bg-muted/60 transition-colors"
+                    )}
                   />
                 </div>
               </div>
@@ -1081,7 +1072,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.pinelabsCard}
                     onChange={(e) => updatePaymentField("pinelabsCard", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1103,7 +1094,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.pinelabsUpi}
                     onChange={(e) => updatePaymentField("pinelabsUpi", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1125,7 +1116,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.pinelabsAlp}
                     onChange={(e) => updatePaymentField("pinelabsAlp", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1147,7 +1138,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.pos}
                     onChange={(e) => updatePaymentField("pos", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1169,7 +1160,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.qr}
                     onChange={(e) => updatePaymentField("qr", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1191,7 +1182,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.ufill}
                     onChange={(e) => updatePaymentField("ufill", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1213,7 +1204,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.bill}
                     onChange={(e) => updatePaymentField("bill", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1235,7 +1226,7 @@ export function ShiftClosingCalculator({
                     type="number"
                     step="any"
                     min="0"
-                    disabled={isGated}
+                    disabled={collectionsDisabled}
                     value={currentPumpData.payment.expenses}
                     onChange={(e) => updatePaymentField("expenses", e.target.value)}
                     className="h-10 w-full text-center text-sm font-medium px-3 pl-7 tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1260,7 +1251,7 @@ export function ShiftClosingCalculator({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={isGated}
+                disabled={collectionsDisabled}
                 onClick={handleResetCollections}
                 className="h-9 px-4 text-xs font-semibold"
               >
@@ -1270,11 +1261,9 @@ export function ShiftClosingCalculator({
             </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Reconciliation Summary Card (Shown when collections are enabled) */}
-      {showCollection &&
-        (() => {
+      {/* Reconciliation Summary Card */}
+      {(() => {
           const totalSales = currentCalculation?.totalSalesAmount || 0;
           const difference = pumpTotalPayment - totalSales;
 
@@ -1372,10 +1361,12 @@ function DenominationRow({
   multiplier,
   value,
   onChange,
+  disabled,
 }: {
   multiplier: number;
   value: string;
   onChange: (v: string) => void;
+  disabled?: boolean;
 }) {
   const count = Number(value) || 0;
   const total = count * multiplier;
@@ -1391,6 +1382,7 @@ function DenominationRow({
           type="number"
           min="0"
           step="1"
+          disabled={disabled}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="h-8 text-center text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"

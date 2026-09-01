@@ -270,7 +270,7 @@ function StaffAccessEditor({
   useEffect(() => {
     if (state.success) {
       toast.success(state.message);
-      router.refresh();
+      router.push("/staff");
     }
     if (state.error) toast.error(state.error);
   }, [state, router]);

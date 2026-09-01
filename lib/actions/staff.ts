@@ -38,7 +38,7 @@ const staffSchema = z.object({
   townCity: requiredText,
   district: requiredText,
   pincode: z.string().trim().regex(/^\d{6}$/),
-  aadharNumber: z.string().trim().regex(/^\d{12}$/),
+  aadharNumber: z.string().trim().regex(/^\d{1,16}$/),
   guardianName: requiredText,
   guardianRelationship: requiredText,
   guardianPhone: phoneSchema,
