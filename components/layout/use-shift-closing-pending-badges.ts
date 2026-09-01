@@ -28,8 +28,15 @@ export function useShiftClosingPendingBadges(
   useEffect(() => {
     if (!isAdmin) return;
 
+    const timeoutId = window.setTimeout(() => {
+      void refresh();
+    }, 0);
+
     const intervalId = window.setInterval(refresh, POLL_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
   }, [isAdmin, refresh]);
 
   return counts;

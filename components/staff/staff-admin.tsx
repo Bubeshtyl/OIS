@@ -9,7 +9,6 @@ import {
   setStaffActiveAction,
 } from "@/lib/actions/staff";
 import type { StaffMember } from "@/lib/staff/service";
-import { downloadStaffPdf } from "@/lib/staff/generate-staff-pdf";
 import { getIstTodayString } from "@/lib/timezone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -439,8 +438,9 @@ function StaffPdfAction({ staff }: { staff: StaffMember }) {
   const [pending, startTransition] = useTransition();
 
   function handleDownload() {
-    startTransition(() => {
+    startTransition(async () => {
       try {
+        const { downloadStaffPdf } = await import("@/lib/staff/generate-staff-pdf");
         downloadStaffPdf(staff);
         toast.success("Staff PDF downloaded.");
       } catch {

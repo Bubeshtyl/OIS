@@ -1,16 +1,14 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
-import {
-  getTenantAccessState,
-  isSystemAdminForSession,
-} from "@/lib/auth/permissions";
-import { getNavItems, hasPermission } from "@/lib/auth/rbac";
+import { getTenantAccessState } from "@/lib/auth/permissions";
+import { getNavItems } from "@/lib/auth/rbac";
 import { destroySession, getSession } from "@/lib/auth/session";
-import { tenantAccessFromSession } from "@/lib/auth/session-access";
-import { getPushNotificationStatus } from "@/lib/push/status";
-import type { PushNotificationStatus } from "@/lib/push/status";
-import { isPushConfigured } from "@/lib/push/vapid";
-import { countPendingEditRequests } from "@/lib/shift-closing/ledger";
+import {
+  hasCachedPermission,
+  isSystemAdminFromSession,
+  tenantAccessFromSession,
+} from "@/lib/auth/session-access";
 
 export default async function AppLayout({
   children,
@@ -22,73 +20,39 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  if (session.tenantId && !session.isPlatformAdmin) {
-    const cachedAccess = tenantAccessFromSession(session);
-    const access =
-      cachedAccess ?? (await getTenantAccessState(session.tenantId));
-    if (!access.isActive) {
-      await destroySession();
-      redirect("/login");
-    }
+  const tenantActivePromise =
+    session.tenantId && !session.isPlatformAdmin
+      ? (async () => {
+          const cachedAccess = tenantAccessFromSession(session);
+          if (cachedAccess) return cachedAccess.isActive;
+          const access = await getTenantAccessState(session.tenantId!);
+          return access.isActive;
+        })()
+      : Promise.resolve(true);
+
+  const [navItems, tenantActive] = await Promise.all([
+    getNavItems(session),
+    tenantActivePromise,
+  ]);
+
+  if (!tenantActive) {
+    await destroySession();
+    redirect("/login");
   }
 
-  const navItems = await getNavItems(session);
-
-  let initialPendingBadges = { rsp: 0, ledger: 0 };
-  let isAdmin = false;
-  let canUsePush = false;
-  let initialPushStatus: PushNotificationStatus | null = null;
-
-  if (session.tenantId && session.roleId && !session.isPlatformAdmin) {
-    const [shiftClosingRead, adminRole] = await Promise.all([
-      hasPermission(session, "shift-closing:read"),
-      isSystemAdminForSession(session),
-    ]);
-
-    canUsePush = shiftClosingRead;
-    isAdmin = adminRole;
-
-    const followUps: Promise<void>[] = [];
-
-    if (adminRole) {
-      followUps.push(
-        countPendingEditRequests(session.tenantId)
-          .then((counts) => {
-            initialPendingBadges = counts;
-          })
-          .catch((err) => {
-            console.error("countPendingEditRequests error:", err);
-          })
-      );
-    }
-
-    if (shiftClosingRead && isPushConfigured()) {
-      followUps.push(
-        getPushNotificationStatus(session.tenantId, session.userId)
-          .then((status) => {
-            initialPushStatus = status;
-          })
-          .catch((err) => {
-            console.error("getPushNotificationStatus error:", err);
-          })
-      );
-    }
-
-    if (followUps.length > 0) {
-      await Promise.all(followUps);
-    }
-  }
+  const canUsePush =
+    hasCachedPermission(session, "shift-closing:read") ?? false;
+  const isAdmin = isSystemAdminFromSession(session) ?? false;
 
   return (
     <AppShell
       session={session}
       navItems={navItems}
-      initialPendingBadges={initialPendingBadges}
+      initialPendingBadges={{ rsp: 0, ledger: 0 }}
       isAdmin={isAdmin}
       canUsePush={canUsePush}
-      initialPushStatus={initialPushStatus}
     >
-      {children}
+      <Suspense fallback={null}>{children}</Suspense>
     </AppShell>
   );
 }

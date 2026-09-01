@@ -42,7 +42,6 @@ import {
   useShiftClosingPendingBadges,
 } from "@/components/layout/use-shift-closing-pending-badges";
 import { PushNotificationsToggle } from "@/components/layout/push-notifications-toggle";
-import type { PushNotificationStatus } from "@/lib/push/status";
 import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
 import type { NavGroup, NavIcon, NavItem } from "@/lib/auth/rbac";
 import { Badge } from "@/components/ui/badge";
@@ -165,7 +164,7 @@ function NavSubLink({
       <SidebarMenuSubButton
         isActive={active}
         className={className}
-        render={<Link href={item.href} onClick={onNavigate} />}
+        render={<Link href={item.href} prefetch={false} onClick={onNavigate} />}
       >
         <SubIcon className="size-4" />
         <span className="min-w-0 truncate">{item.label}</span>
@@ -211,7 +210,7 @@ function NestedCollapsibleSubgroup({
           <SidebarMenuSubButton
             isActive={parentActive}
             className="min-w-0 flex-1"
-            render={<Link href={parent.href} onClick={onNavigate} />}
+            render={<Link href={parent.href} prefetch={false} onClick={onNavigate} />}
           >
             <SubIcon className="size-4" />
             <span>{parent.label}</span>
@@ -332,13 +331,11 @@ export function AppSidebar({
   initialPendingBadges = { rsp: 0, ledger: 0 },
   isAdmin = false,
   canUsePush = false,
-  initialPushStatus = null,
 }: {
   navItems: NavItem[];
   initialPendingBadges?: ShiftClosingPendingBadgeCounts;
   isAdmin?: boolean;
   canUsePush?: boolean;
-  initialPushStatus?: PushNotificationStatus | null;
 }) {
   const pathname = usePathname();
   const pendingBadges = useShiftClosingPendingBadges(
@@ -385,7 +382,7 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-0 px-4 pt-5 group-data-[collapsible=icon]:px-3 group-data-[collapsible=icon]:pt-4">
-        <Link href="/" onClick={closeMobileSidebar} className="outline-none">
+        <Link href="/" prefetch={false} onClick={closeMobileSidebar} className="outline-none">
           <AppLogo variant="sidebar" />
         </Link>
       </SidebarHeader>
@@ -407,7 +404,7 @@ export function AppSidebar({
                       tooltip={item.label}
                       className="h-10 rounded-xl"
                       render={
-                        <Link href={item.href} onClick={closeMobileSidebar} />
+                        <Link href={item.href} prefetch={false} onClick={closeMobileSidebar} />
                       }
                     >
                       <Icon className="size-[1.125rem]" />
@@ -441,10 +438,7 @@ export function AppSidebar({
       <SidebarFooter className="p-0 px-3 pb-5 group-data-[collapsible=icon]:px-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <PushNotificationsToggle
-              canUsePush={canUsePush}
-              initialPushStatus={initialPushStatus}
-            />
+            <PushNotificationsToggle canUsePush={canUsePush} />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <form action={logoutAction} className="w-full">

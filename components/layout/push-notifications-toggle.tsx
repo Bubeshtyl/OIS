@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Bell, BellOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  getPushNotificationStatusAction,
   subscribePushNotificationAction,
   unsubscribePushNotificationAction,
 } from "@/lib/actions/push-notifications";
@@ -12,30 +13,33 @@ import {
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
 } from "@/lib/push/client";
-import type { PushNotificationStatus } from "@/lib/push/status";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 
 export function PushNotificationsToggle({
   canUsePush,
-  initialPushStatus = null,
 }: {
   canUsePush: boolean;
-  initialPushStatus?: PushNotificationStatus | null;
 }) {
   const [pushSupported, setPushSupported] = useState(false);
-  const [subscribed, setSubscribed] = useState(
-    initialPushStatus?.subscribed ?? false
-  );
-  const [publicKey] = useState<string | null>(
-    initialPushStatus?.publicKey ?? null
-  );
+  const [configured, setConfigured] = useState(false);
+  const [subscribed, setSubscribed] = useState(false);
+  const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  const configured = initialPushStatus?.configured ?? false;
 
   useEffect(() => {
     setPushSupported(isPushSupported());
   }, []);
+
+  useEffect(() => {
+    if (!canUsePush || !pushSupported) return;
+
+    getPushNotificationStatusAction().then((res) => {
+      if (!res.success || !res.data) return;
+      setConfigured(res.data.configured);
+      setSubscribed(res.data.subscribed);
+      setPublicKey(res.data.publicKey);
+    });
+  }, [canUsePush, pushSupported]);
 
   if (!canUsePush || !configured || !pushSupported) {
     return null;
