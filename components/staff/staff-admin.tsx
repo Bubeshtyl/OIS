@@ -42,6 +42,44 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+function StaffField({
+  id,
+  label,
+  name,
+  defaultValue,
+  type = "text",
+  required,
+  autoComplete,
+  inputMode,
+  maxLength,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  defaultValue?: string | null;
+  type?: "text" | "date" | "tel" | "password";
+  required?: boolean;
+  autoComplete?: string;
+  inputMode?: "numeric" | "tel" | "text";
+  maxLength?: number;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        name={name}
+        type={type}
+        defaultValue={defaultValue ?? ""}
+        required={required}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
+        maxLength={maxLength}
+      />
+    </div>
+  );
+}
+
 function StaffFormSheet({
   staff,
   children,
@@ -77,45 +115,145 @@ function StaffFormSheet({
       }}
     >
       <DialogTrigger render={children} />
-      <DialogContent className="max-h-[min(90vh,32rem)] overflow-y-auto sm:max-w-md">
+      <DialogContent className="max-h-[min(90vh,44rem)] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{staff ? "Edit Staff" : "Add Staff"}</DialogTitle>
         </DialogHeader>
-        <form action={handleSubmit} className="space-y-3">
+        <form action={handleSubmit} className="space-y-4">
           {staff && <input type="hidden" name="id" value={staff.id} />}
           <input type="hidden" name="isActive" value={String(isActive)} />
-          <div className="space-y-2">
-            <Label htmlFor={`staff-name-${fieldId}`}>Name</Label>
-            <Input
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StaffField
               id={`staff-name-${fieldId}`}
+              label="Name"
               name="name"
               defaultValue={staff?.name}
               required
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`staff-username-${fieldId}`}>Username</Label>
-            <Input
+            <StaffField
+              id={`staff-joining-date-${fieldId}`}
+              label="Joining date"
+              name="joiningDate"
+              type="date"
+              defaultValue={staff?.joiningDate}
+              required
+            />
+            <StaffField
+              id={`staff-primary-phone-${fieldId}`}
+              label="Primary phone number"
+              name="primaryPhone"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              defaultValue={staff?.primaryPhone}
+              required
+            />
+            <StaffField
+              id={`staff-secondary-phone-${fieldId}`}
+              label="Secondary phone number"
+              name="secondaryPhone"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              defaultValue={staff?.secondaryPhone}
+            />
+            <StaffField
+              id={`staff-door-no-${fieldId}`}
+              label="Door no"
+              name="doorNo"
+              defaultValue={staff?.doorNo}
+              required
+            />
+            <StaffField
+              id={`staff-street-${fieldId}`}
+              label="Street"
+              name="street"
+              defaultValue={staff?.street}
+              required
+            />
+            <StaffField
+              id={`staff-area-${fieldId}`}
+              label="Area"
+              name="area"
+              defaultValue={staff?.area}
+              required
+            />
+            <StaffField
+              id={`staff-town-city-${fieldId}`}
+              label="Town/city"
+              name="townCity"
+              defaultValue={staff?.townCity}
+              required
+            />
+            <StaffField
+              id={`staff-district-${fieldId}`}
+              label="District"
+              name="district"
+              defaultValue={staff?.district}
+              required
+            />
+            <StaffField
+              id={`staff-pincode-${fieldId}`}
+              label="Pincode"
+              name="pincode"
+              inputMode="numeric"
+              maxLength={6}
+              defaultValue={staff?.pincode}
+              required
+            />
+            <StaffField
+              id={`staff-aadhar-${fieldId}`}
+              label="Aadhar number"
+              name="aadharNumber"
+              inputMode="numeric"
+              maxLength={12}
+              defaultValue={staff?.aadharNumber}
+              required
+            />
+            <StaffField
+              id={`staff-guardian-name-${fieldId}`}
+              label="Guardian name"
+              name="guardianName"
+              defaultValue={staff?.guardianName}
+              required
+            />
+            <StaffField
+              id={`staff-guardian-relationship-${fieldId}`}
+              label="Guardian relationship"
+              name="guardianRelationship"
+              defaultValue={staff?.guardianRelationship}
+              required
+            />
+            <StaffField
+              id={`staff-guardian-phone-${fieldId}`}
+              label="Guardian phone number"
+              name="guardianPhone"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              defaultValue={staff?.guardianPhone}
+              required
+            />
+            <StaffField
               id={`staff-username-${fieldId}`}
+              label="Username"
               name="username"
-              type="text"
               autoComplete="off"
               defaultValue={staff?.username}
-              minLength={3}
               maxLength={32}
               required
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`staff-password-${fieldId}`}>Password</Label>
-            <Input
-              id={`staff-password-${fieldId}`}
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              minLength={staff ? undefined : 6}
-              required={!staff}
-            />
+            <div className="space-y-2">
+              <Label htmlFor={`staff-password-${fieldId}`}>Password</Label>
+              <Input
+                id={`staff-password-${fieldId}`}
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                minLength={staff ? undefined : 6}
+                required={!staff}
+              />
+            </div>
           </div>
           <div className="flex items-center justify-between">
             <Label htmlFor={`staff-active-${fieldId}`}>Active</Label>
@@ -244,6 +382,7 @@ export function StaffAdmin({ staff }: { staff: StaffMember[] }) {
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
                 <TableHead>Name</TableHead>
+                <TableHead>Phone</TableHead>
                 <TableHead>Username</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
@@ -254,7 +393,7 @@ export function StaffAdmin({ staff }: { staff: StaffMember[] }) {
               {staff.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="py-10 text-center text-sm text-muted-foreground"
                   >
                     No staff yet.
@@ -264,6 +403,7 @@ export function StaffAdmin({ staff }: { staff: StaffMember[] }) {
                 staff.map((member) => (
                   <TableRow key={member.id}>
                     <TableCell className="font-medium">{member.name}</TableCell>
+                    <TableCell>{member.primaryPhone ?? "—"}</TableCell>
                     <TableCell>{member.username}</TableCell>
                     <TableCell>{member.roleName ?? "—"}</TableCell>
                     <TableCell>

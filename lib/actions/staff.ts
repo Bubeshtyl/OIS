@@ -17,9 +17,30 @@ import {
   listStaff,
 } from "@/lib/staff/service";
 
+const requiredText = z.string().trim().min(1);
+const phoneSchema = z.string().trim().regex(/^\d{10}$/);
+const optionalPhoneSchema = z
+  .string()
+  .trim()
+  .transform((value) => (value.length === 0 ? null : value))
+  .refine((value) => value === null || /^\d{10}$/.test(value));
+
 const staffSchema = z.object({
   id: z.string().uuid().optional(),
-  name: z.string().trim().min(1),
+  name: requiredText,
+  joiningDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/),
+  primaryPhone: phoneSchema,
+  secondaryPhone: optionalPhoneSchema,
+  doorNo: requiredText,
+  street: requiredText,
+  area: requiredText,
+  townCity: requiredText,
+  district: requiredText,
+  pincode: z.string().trim().regex(/^\d{6}$/),
+  aadharNumber: z.string().trim().regex(/^\d{12}$/),
+  guardianName: requiredText,
+  guardianRelationship: requiredText,
+  guardianPhone: phoneSchema,
   username: z
     .string()
     .trim()
@@ -29,6 +50,43 @@ const staffSchema = z.object({
   password: z.string().min(6).optional(),
   isActive: z.coerce.boolean(),
 });
+
+const staffFieldErrors: Record<string, string> = {
+  name: "Name is required.",
+  joiningDate: "Joining date is required.",
+  primaryPhone: "Primary phone number is required.",
+  secondaryPhone: "Secondary phone number is invalid.",
+  doorNo: "Door no is required.",
+  street: "Street is required.",
+  area: "Area is required.",
+  townCity: "Town/city is required.",
+  district: "District is required.",
+  pincode: "Pincode is required.",
+  aadharNumber: "Aadhar number is required.",
+  guardianName: "Guardian name is required.",
+  guardianRelationship: "Guardian relationship is required.",
+  guardianPhone: "Guardian phone number is required.",
+  username: "Invalid username.",
+  password: "Password must be at least 6 characters.",
+};
+
+function profileValues(data: z.infer<typeof staffSchema>) {
+  return {
+    joiningDate: data.joiningDate,
+    primaryPhone: data.primaryPhone,
+    secondaryPhone: data.secondaryPhone,
+    doorNo: data.doorNo,
+    street: data.street,
+    area: data.area,
+    townCity: data.townCity,
+    district: data.district,
+    pincode: data.pincode,
+    aadharNumber: data.aadharNumber,
+    guardianName: data.guardianName,
+    guardianRelationship: data.guardianRelationship,
+    guardianPhone: data.guardianPhone,
+  };
+}
 
 async function requireStaffAccess() {
   const session = await requireTenantSession();
@@ -56,26 +114,30 @@ export async function saveStaffAction(
   const parsed = staffSchema.safeParse({
     id: formData.get("id") || undefined,
     name: formData.get("name"),
+    joiningDate: formData.get("joiningDate"),
+    primaryPhone: formData.get("primaryPhone"),
+    secondaryPhone: formData.get("secondaryPhone") ?? "",
+    doorNo: formData.get("doorNo"),
+    street: formData.get("street"),
+    area: formData.get("area"),
+    townCity: formData.get("townCity"),
+    district: formData.get("district"),
+    pincode: formData.get("pincode"),
+    aadharNumber: formData.get("aadharNumber"),
+    guardianName: formData.get("guardianName"),
+    guardianRelationship: formData.get("guardianRelationship"),
+    guardianPhone: formData.get("guardianPhone"),
     username: formData.get("username"),
     password: formData.get("password") || undefined,
     isActive: formData.get("isActive") === "true",
   });
 
   if (!parsed.success) {
-    const path = parsed.error.issues[0]?.path[0];
-    if (path === "username") {
-      return { success: false, error: "Invalid username." };
-    }
-    if (path === "password") {
-      return {
-        success: false,
-        error: "Password must be at least 6 characters.",
-      };
-    }
-    if (path === "name") {
-      return { success: false, error: "Name is required." };
-    }
-    return { success: false, error: "Please check all required fields." };
+    const path = String(parsed.error.issues[0]?.path[0] ?? "");
+    return {
+      success: false,
+      error: staffFieldErrors[path] ?? "Please check all required fields.",
+    };
   }
 
   if (!parsed.data.id && !parsed.data.password) {
@@ -124,10 +186,11 @@ export async function saveStaffAction(
       username: string;
       isActive: boolean;
       passwordHash?: string;
-    } = {
+    } & ReturnType<typeof profileValues> = {
       name: parsed.data.name,
       username,
       isActive: parsed.data.isActive,
+      ...profileValues(parsed.data),
     };
 
     if (parsed.data.password) {
@@ -146,6 +209,7 @@ export async function saveStaffAction(
       isActive: parsed.data.isActive,
       isPlatformAdmin: false,
       passwordHash: await bcrypt.hash(parsed.data.password!, 10),
+      ...profileValues(parsed.data),
     });
   }
 

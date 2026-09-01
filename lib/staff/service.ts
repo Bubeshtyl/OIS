@@ -10,46 +10,106 @@ export type StaffMember = {
   isActive: boolean;
   roleId: string | null;
   roleName: string | null;
+  joiningDate: string | null;
+  primaryPhone: string | null;
+  secondaryPhone: string | null;
+  doorNo: string | null;
+  street: string | null;
+  area: string | null;
+  townCity: string | null;
+  district: string | null;
+  pincode: string | null;
+  aadharNumber: string | null;
+  guardianName: string | null;
+  guardianRelationship: string | null;
+  guardianPhone: string | null;
 };
 
-export async function listStaff(tenantId: string): Promise<StaffMember[]> {
-  const db = getDb();
-  const rows = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      username: users.username,
-      isActive: users.isActive,
-      roleId: users.roleId,
-      roleName: roles.name,
-    })
-    .from(users)
-    .leftJoin(roles, eq(users.roleId, roles.id))
-    .where(and(eq(users.tenantId, tenantId), eq(users.isPlatformAdmin, false)))
-    .orderBy(users.name);
+const staffColumns = {
+  id: users.id,
+  name: users.name,
+  username: users.username,
+  isActive: users.isActive,
+  roleId: users.roleId,
+  roleName: roles.name,
+  joiningDate: users.joiningDate,
+  primaryPhone: users.primaryPhone,
+  secondaryPhone: users.secondaryPhone,
+  doorNo: users.doorNo,
+  street: users.street,
+  area: users.area,
+  townCity: users.townCity,
+  district: users.district,
+  pincode: users.pincode,
+  aadharNumber: users.aadharNumber,
+  guardianName: users.guardianName,
+  guardianRelationship: users.guardianRelationship,
+  guardianPhone: users.guardianPhone,
+} as const;
 
-  return rows.map((row) => ({
+function toStaffMember(row: {
+  id: string;
+  name: string;
+  username: string;
+  isActive: boolean;
+  roleId: string | null;
+  roleName: string | null;
+  joiningDate: string | null;
+  primaryPhone: string | null;
+  secondaryPhone: string | null;
+  doorNo: string | null;
+  street: string | null;
+  area: string | null;
+  townCity: string | null;
+  district: string | null;
+  pincode: string | null;
+  aadharNumber: string | null;
+  guardianName: string | null;
+  guardianRelationship: string | null;
+  guardianPhone: string | null;
+}): StaffMember {
+  return {
     id: row.id,
     name: row.name,
     username: row.username,
     isActive: row.isActive,
     roleId: row.roleId,
     roleName: row.roleName ?? null,
-  }));
+    joiningDate: row.joiningDate,
+    primaryPhone: row.primaryPhone,
+    secondaryPhone: row.secondaryPhone,
+    doorNo: row.doorNo,
+    street: row.street,
+    area: row.area,
+    townCity: row.townCity,
+    district: row.district,
+    pincode: row.pincode,
+    aadharNumber: row.aadharNumber,
+    guardianName: row.guardianName,
+    guardianRelationship: row.guardianRelationship,
+    guardianPhone: row.guardianPhone,
+  };
+}
+
+export async function listStaff(tenantId: string): Promise<StaffMember[]> {
+  const db = getDb();
+  const rows = await db
+    .select(staffColumns)
+    .from(users)
+    .leftJoin(roles, eq(users.roleId, roles.id))
+    .where(and(eq(users.tenantId, tenantId), eq(users.isPlatformAdmin, false)))
+    .orderBy(users.name);
+
+  return rows.map(toStaffMember);
 }
 
 export async function getStaffById(tenantId: string, staffId: string) {
   const db = getDb();
   const [row] = await db
     .select({
-      id: users.id,
+      ...staffColumns,
       tenantId: users.tenantId,
-      name: users.name,
-      username: users.username,
-      isActive: users.isActive,
-      roleId: users.roleId,
       isPlatformAdmin: users.isPlatformAdmin,
-      roleName: roles.name,
       roleIsSystem: roles.isSystem,
     })
     .from(users)
