@@ -1,9 +1,9 @@
 "use server";
 
 import {
-  isSystemAdminRole,
   requireTenantSession,
 } from "@/lib/auth/permissions";
+import { hasPermission } from "@/lib/auth/rbac";
 import {
   hasPushSubscription,
   removePushSubscription,
@@ -24,10 +24,10 @@ export type PushNotificationActionState = {
 export async function getPushNotificationStatusAction() {
   try {
     const session = await requireTenantSession();
-    const isAdmin = await isSystemAdminRole(session.roleId);
+    const canUsePush = await hasPermission(session, "shift-closing:read");
     const configured = isPushConfigured();
     const subscribed =
-      configured && isAdmin
+      configured && canUsePush
         ? await hasPushSubscription(session.tenantId, session.userId)
         : false;
 
@@ -35,7 +35,7 @@ export async function getPushNotificationStatusAction() {
       success: true as const,
       data: {
         configured,
-        isAdmin,
+        canUsePush,
         subscribed,
         publicKey: configured ? getVapidPublicKey() : null,
       },
@@ -58,8 +58,8 @@ export async function subscribePushNotificationAction(input: {
 }): Promise<PushNotificationActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
-      return { success: false, error: "Only admins can enable push alerts." };
+    if (!(await hasPermission(session, "shift-closing:read"))) {
+      return { success: false, error: "Permission denied." };
     }
     if (!isPushConfigured()) {
       return {
@@ -91,8 +91,8 @@ export async function unsubscribePushNotificationAction(
 ): Promise<PushNotificationActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
-      return { success: false, error: "Only admins can manage push alerts." };
+    if (!(await hasPermission(session, "shift-closing:read"))) {
+      return { success: false, error: "Permission denied." };
     }
 
     await removePushSubscription(

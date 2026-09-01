@@ -20,12 +20,23 @@ export default async function ShiftClosingLedgerPage() {
     redirect("/");
   }
 
-  const [slipRows, interimRows, pendingRequests, isAdmin] = await Promise.all([
-    listMachineSlipEntriesRange(session.tenantId),
-    listInterimShiftClosings(session.tenantId),
-    getPendingEditRequests(session.tenantId, { status: "pending" }),
-    isSystemAdminRole(session.roleId),
-  ]);
+  const isAdmin = await isSystemAdminRole(session.roleId);
+
+  const [slipRows, interimRows, pendingRequests, requestHistory] =
+    await Promise.all([
+      listMachineSlipEntriesRange(session.tenantId),
+      listInterimShiftClosings(session.tenantId),
+      getPendingEditRequests(session.tenantId, {
+        status: "pending",
+        entityTypes: ["machine_slip_entry", "interim_shift_closing"],
+      }),
+      getPendingEditRequests(session.tenantId, {
+        entityTypes: ["machine_slip_entry", "interim_shift_closing"],
+        ...(isAdmin
+          ? { limit: 30 }
+          : { requestedBy: session.userId, limit: 20 }),
+      }),
+    ]);
 
   return (
     <div className="space-y-6">
@@ -34,7 +45,9 @@ export default async function ShiftClosingLedgerPage() {
         slipRows={slipRows}
         interimRows={interimRows}
         pendingRequests={pendingRequests}
+        requestHistory={requestHistory}
         isAdmin={isAdmin}
+        currentUserId={session.userId}
       />
     </div>
   );

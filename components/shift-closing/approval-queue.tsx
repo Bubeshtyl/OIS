@@ -51,6 +51,7 @@ export function ApprovalQueue({
         toast.success(res.message);
         setSelected(null);
         setReviewNote("");
+        window.location.reload();
       } else {
         toast.error(res.error || "Failed to approve.");
       }
@@ -68,6 +69,7 @@ export function ApprovalQueue({
         toast.success(res.message);
         setSelected(null);
         setReviewNote("");
+        window.location.reload();
       } else {
         toast.error(res.error || "Failed to reject.");
       }

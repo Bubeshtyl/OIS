@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { getTenantAccessState, isSystemAdminRole } from "@/lib/auth/permissions";
-import { getNavItems } from "@/lib/auth/rbac";
+import { getNavItems, hasPermission } from "@/lib/auth/rbac";
 import { destroySession, getSession } from "@/lib/auth/session";
 import { countPendingEditRequests } from "@/lib/shift-closing/ledger";
 
@@ -27,14 +27,13 @@ export default async function AppLayout({
 
   let initialPendingBadges = { rsp: 0, ledger: 0 };
   let isAdmin = false;
-  if (
-    session.tenantId &&
-    session.roleId &&
-    !session.isPlatformAdmin &&
-    (await isSystemAdminRole(session.roleId))
-  ) {
-    isAdmin = true;
-    initialPendingBadges = await countPendingEditRequests(session.tenantId);
+  let canUsePush = false;
+  if (session.tenantId && session.roleId && !session.isPlatformAdmin) {
+    canUsePush = await hasPermission(session, "shift-closing:read");
+    if (await isSystemAdminRole(session.roleId)) {
+      isAdmin = true;
+      initialPendingBadges = await countPendingEditRequests(session.tenantId);
+    }
   }
 
   return (
@@ -43,6 +42,7 @@ export default async function AppLayout({
       navItems={navItems}
       initialPendingBadges={initialPendingBadges}
       isAdmin={isAdmin}
+      canUsePush={canUsePush}
     >
       {children}
     </AppShell>

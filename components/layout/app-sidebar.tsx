@@ -330,10 +330,12 @@ export function AppSidebar({
   navItems,
   initialPendingBadges = { rsp: 0, ledger: 0 },
   isAdmin = false,
+  canUsePush = false,
 }: {
   navItems: NavItem[];
   initialPendingBadges?: ShiftClosingPendingBadgeCounts;
   isAdmin?: boolean;
+  canUsePush?: boolean;
 }) {
   const pathname = usePathname();
   const pendingBadges = useShiftClosingPendingBadges(initialPendingBadges);
@@ -433,7 +435,7 @@ export function AppSidebar({
       <SidebarFooter className="p-0 px-3 pb-5 group-data-[collapsible=icon]:px-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <PushNotificationsToggle isAdmin={isAdmin} />
+            <PushNotificationsToggle canUsePush={canUsePush} />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <form action={logoutAction} className="w-full">

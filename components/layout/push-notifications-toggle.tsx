@@ -15,14 +15,18 @@ import {
 } from "@/lib/push/client";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 
-export function PushNotificationsToggle({ isAdmin }: { isAdmin: boolean }) {
+export function PushNotificationsToggle({
+  canUsePush,
+}: {
+  canUsePush: boolean;
+}) {
   const [configured, setConfigured] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!isAdmin || !isPushSupported()) return;
+    if (!canUsePush || !isPushSupported()) return;
 
     getPushNotificationStatusAction().then((res) => {
       if (!res.success || !res.data) return;
@@ -30,9 +34,9 @@ export function PushNotificationsToggle({ isAdmin }: { isAdmin: boolean }) {
       setSubscribed(res.data.subscribed);
       setPublicKey(res.data.publicKey);
     });
-  }, [isAdmin]);
+  }, [canUsePush]);
 
-  if (!isAdmin || !isPushSupported() || !configured) {
+  if (!canUsePush || !isPushSupported() || !configured) {
     return null;
   }
 

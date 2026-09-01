@@ -19,13 +19,20 @@ export default async function RspLedgerPage() {
     redirect("/");
   }
 
-  const [rows, pendingRequests, isAdmin] = await Promise.all([
+  const isAdmin = await isSystemAdminRole(session.roleId);
+
+  const [rows, pendingRequests, requestHistory] = await Promise.all([
     listDailyRspPrices(session.tenantId),
     getPendingEditRequests(session.tenantId, {
       status: "pending",
       entityType: "daily_rsp",
     }),
-    isSystemAdminRole(session.roleId),
+    getPendingEditRequests(session.tenantId, {
+      entityType: "daily_rsp",
+      ...(isAdmin
+        ? { limit: 30 }
+        : { requestedBy: session.userId, limit: 20 }),
+    }),
   ]);
 
   return (
@@ -34,7 +41,9 @@ export default async function RspLedgerPage() {
       <RspLedger
         initialRows={rows}
         pendingRequests={pendingRequests}
+        requestHistory={requestHistory}
         isAdmin={isAdmin}
+        currentUserId={session.userId}
       />
     </div>
   );

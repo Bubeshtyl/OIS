@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Eye, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApprovalQueue } from "@/components/shift-closing/approval-queue";
+import { MyEditRequests } from "@/components/shift-closing/my-edit-requests";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,12 +70,16 @@ export function ShiftClosingLedger({
   slipRows,
   interimRows,
   pendingRequests,
+  requestHistory,
   isAdmin,
+  currentUserId,
 }: {
   slipRows: SlipRow[];
   interimRows: InterimRow[];
   pendingRequests: EditRequestListItem[];
+  requestHistory: EditRequestListItem[];
   isAdmin: boolean;
+  currentUserId: string;
 }) {
   const [tab, setTab] = useState<"slips" | "interim">("slips");
   const [slipFilter, setSlipFilter] = useState({ machine: "", from: "", to: "" });
@@ -352,14 +357,21 @@ export function ShiftClosingLedger({
           </CardContent>
         </Card>
 
-        <ApprovalQueue
-          requests={pendingRequests.filter(
-            (r) =>
-              r.entityType === "machine_slip_entry" ||
-              r.entityType === "interim_shift_closing"
-          )}
-          isAdmin={isAdmin}
-        />
+        <div className="space-y-4">
+          <ApprovalQueue
+            requests={pendingRequests.filter(
+              (r) =>
+                r.entityType === "machine_slip_entry" ||
+                r.entityType === "interim_shift_closing"
+            )}
+            isAdmin={isAdmin}
+          />
+          <MyEditRequests
+            requests={requestHistory}
+            currentUserId={currentUserId}
+            isAdmin={isAdmin}
+          />
+        </div>
       </div>
 
       <Dialog open={!!slipEdit} onOpenChange={(open) => !open && setSlipEdit(null)}>

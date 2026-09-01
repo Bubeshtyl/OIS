@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db";
 import {
@@ -22,7 +22,10 @@ import type {
 } from "@/lib/shift-closing/types";
 import { interimDetailToProposed } from "@/lib/shift-closing/types";
 import { ensureShiftClosingLedgerSchema } from "@/lib/shift-closing/ensure-schema";
-import { notifyAdminsOfLedgerEditRequest } from "@/lib/shift-closing/notify-admins";
+import {
+  notifyAdminsOfLedgerEditRequest,
+  notifyRequesterOfEditRequestOutcome,
+} from "@/lib/shift-closing/notify-admins";
 
 type Db = ReturnType<typeof getDb>;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -404,6 +407,7 @@ async function mapEditRequestRow(
     reviewNote: row.reviewNote,
     requestedAt: row.requestedAt,
     reviewedAt: row.reviewedAt,
+    requestedByUserId: row.requestedBy,
     requestedByName: requesterName,
     reviewedByName: reviewerName,
     proposedData: row.proposedData as ShiftClosingProposedData,
@@ -417,6 +421,9 @@ export async function getPendingEditRequests(
   filters: {
     status?: "pending" | "approved" | "rejected" | "cancelled";
     entityType?: ShiftClosingEntityType;
+    entityTypes?: ShiftClosingEntityType[];
+    requestedBy?: string;
+    limit?: number;
   } = {}
 ) {
   await ensureShiftClosingLedgerSchema();
@@ -428,11 +435,19 @@ export async function getPendingEditRequests(
   if (filters.entityType) {
     conditions.push(eq(shiftClosingEditRequests.entityType, filters.entityType));
   }
+  if (filters.entityTypes?.length) {
+    conditions.push(
+      inArray(shiftClosingEditRequests.entityType, filters.entityTypes)
+    );
+  }
+  if (filters.requestedBy) {
+    conditions.push(eq(shiftClosingEditRequests.requestedBy, filters.requestedBy));
+  }
 
   const requesterUser = alias(users, "edit_requester");
   const reviewerUser = alias(users, "edit_reviewer");
 
-  const rows = await db
+  let query = db
     .select({
       request: shiftClosingEditRequests,
       requesterName: requesterUser.name,
@@ -449,6 +464,12 @@ export async function getPendingEditRequests(
     )
     .where(and(...conditions))
     .orderBy(desc(shiftClosingEditRequests.requestedAt));
+
+  if (filters.limit) {
+    query = query.limit(filters.limit) as typeof query;
+  }
+
+  const rows = await query;
 
   return Promise.all(
     rows.map((r) =>
@@ -746,6 +767,18 @@ export async function approveEditRequest(
       detail: reviewNote ?? "Edit approved",
     });
 
+    void notifyRequesterOfEditRequestOutcome(
+      tenantId,
+      request.requestedBy,
+      {
+        entityType: request.entityType,
+        outcome: "approved",
+        reviewNote,
+      }
+    ).catch((error) => {
+      console.error("Failed to send edit approval push notification:", error);
+    });
+
     return updated;
   });
 }
@@ -797,6 +830,18 @@ export async function rejectEditRequest(
       createdBy: adminUserId,
       editRequestId: requestId,
       detail: reviewNote ?? "Edit rejected",
+    });
+
+    void notifyRequesterOfEditRequestOutcome(
+      tenantId,
+      request.requestedBy,
+      {
+        entityType: request.entityType,
+        outcome: "rejected",
+        reviewNote,
+      }
+    ).catch((error) => {
+      console.error("Failed to send edit rejection push notification:", error);
     });
 
     return updated;

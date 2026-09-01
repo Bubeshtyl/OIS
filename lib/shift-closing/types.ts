@@ -76,6 +76,7 @@ export interface EditRequestListItem {
   reviewNote: string | null;
   requestedAt: Date;
   reviewedAt: Date | null;
+  requestedByUserId: string;
   requestedByName: string | null;
   reviewedByName: string | null;
   proposedData: ShiftClosingProposedData;

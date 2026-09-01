@@ -76,3 +76,30 @@ export async function notifyAdminsOfLedgerEditRequestById(
     entityType: request.entityType,
   });
 }
+
+export async function notifyRequesterOfEditRequestOutcome(
+  tenantId: string,
+  requesterUserId: string,
+  input: {
+    entityType: ShiftClosingEntityType;
+    outcome: "approved" | "rejected";
+    reviewNote?: string | null;
+  }
+) {
+  const label = entityTypeLabel(input.entityType);
+  const url = ledgerUrlForEntityType(input.entityType);
+  const approved = input.outcome === "approved";
+
+  const title = approved ? "Edit request approved" : "Edit request rejected";
+  const body = approved
+    ? `Your ${label} edit was approved and applied.`
+    : `Your ${label} edit was rejected.${
+        input.reviewNote?.trim() ? ` Note: ${input.reviewNote.trim()}` : ""
+      }`;
+
+  await sendPushToUsers(tenantId, [requesterUserId], {
+    title,
+    body,
+    url,
+  });
+}

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApprovalQueue } from "@/components/shift-closing/approval-queue";
+import { MyEditRequests } from "@/components/shift-closing/my-edit-requests";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -49,11 +50,15 @@ type RspRow = {
 export function RspLedger({
   initialRows,
   pendingRequests,
+  requestHistory,
   isAdmin,
+  currentUserId,
 }: {
   initialRows: RspRow[];
   pendingRequests: EditRequestListItem[];
+  requestHistory: EditRequestListItem[];
   isAdmin: boolean;
+  currentUserId: string;
 }) {
   const [rows] = useState(initialRows);
   const [editRow, setEditRow] = useState<RspRow | null>(null);
@@ -164,7 +169,14 @@ export function RspLedger({
           </CardContent>
         </Card>
 
-        <ApprovalQueue requests={pendingRequests} isAdmin={isAdmin} />
+        <div className="space-y-4">
+          <ApprovalQueue requests={pendingRequests} isAdmin={isAdmin} />
+          <MyEditRequests
+            requests={requestHistory}
+            currentUserId={currentUserId}
+            isAdmin={isAdmin}
+          />
+        </div>
       </div>
 
       <Dialog open={!!editRow} onOpenChange={(open) => !open && setEditRow(null)}>

@@ -13,12 +13,14 @@ export function AppShell({
   navItems,
   initialPendingBadges,
   isAdmin,
+  canUsePush,
   children,
 }: {
   session: SessionData;
   navItems: NavItem[];
   initialPendingBadges?: ShiftClosingPendingBadgeCounts;
   isAdmin?: boolean;
+  canUsePush?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -35,6 +37,7 @@ export function AppShell({
         navItems={navItems}
         initialPendingBadges={initialPendingBadges}
         isAdmin={isAdmin}
+        canUsePush={canUsePush}
       />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
