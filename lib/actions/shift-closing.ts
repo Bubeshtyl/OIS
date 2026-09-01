@@ -14,6 +14,7 @@ import {
   type MachineSlipItem,
   type SaveInterimShiftClosingInput,
 } from "@/lib/shift-closing/service";
+import { getStaffById } from "@/lib/staff/service";
 
 export type ShiftClosingActionState = {
   success: boolean;
@@ -164,6 +165,18 @@ export async function closeInterimShiftAction(
         success: false,
         error: `Cannot close shift: Please complete the 6 AM entry first (${missing.join(" and ")} missing for ${dateStr}).`,
       };
+    }
+
+    if (!input.staffId) {
+      return { success: false, error: "Select a staff member." };
+    }
+
+    const staff = await getStaffById(session.tenantId, input.staffId);
+    if (!staff) {
+      return { success: false, error: "Selected staff member not found." };
+    }
+    if (!staff.isActive) {
+      return { success: false, error: "Selected staff member is inactive." };
     }
 
     const saved = await saveInterimShiftClosing(

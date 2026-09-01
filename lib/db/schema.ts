@@ -710,6 +710,9 @@ export const interimShiftClosings = pgTable(
     }),
     pumpNumber: integer("pump_number").notNull(),
     pumpName: text("pump_name").notNull(),
+    staffId: uuid("staff_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     shiftDate: timestamp("shift_date", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -1037,9 +1040,15 @@ export const interimShiftClosingsRelations = relations(
       fields: [interimShiftClosings.pumpId],
       references: [stationPumps.id],
     }),
+    staff: one(users, {
+      fields: [interimShiftClosings.staffId],
+      references: [users.id],
+      relationName: "interimShiftClosingStaff",
+    }),
     creator: one(users, {
       fields: [interimShiftClosings.createdBy],
       references: [users.id],
+      relationName: "interimShiftClosingCreator",
     }),
     nozzles: many(interimNozzleReadings),
     paymentCollection: one(interimPaymentCollections),

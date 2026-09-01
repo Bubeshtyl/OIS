@@ -587,6 +587,11 @@ export function ShiftClosingCalculator({
   const pumpTotalPayment = calculatePumpTotalPayment(currentPumpData.payment);
 
   function handleCloseShift() {
+    if (!selectedStaffId) {
+      toast.error("Please select a staff member.");
+      return;
+    }
+
     if (!currentCalculation || currentCalculation.hasErrors) {
       toast.error("Please calculate meter readings without errors first.");
       return;
@@ -600,6 +605,7 @@ export function ShiftClosingCalculator({
         pumpId: currentPumpData.pumpId,
         pumpNumber: selectedPump,
         pumpName: currentPumpData.name,
+        staffId: selectedStaffId,
         totalGross: currentCalculation.totalGross,
         totalTest: currentCalculation.totalTest,
         totalNetLitres: currentCalculation.totalNetSale,
@@ -1341,7 +1347,13 @@ export function ShiftClosingCalculator({
       <div className="pt-2">
         <Button
           type="button"
-          disabled={isGated || !currentCalculation || currentCalculation.hasErrors || isClosingShift}
+          disabled={
+            isGated ||
+            !selectedStaffId ||
+            !currentCalculation ||
+            currentCalculation.hasErrors ||
+            isClosingShift
+          }
           onClick={handleCloseShift}
           className="h-10 w-full text-sm font-semibold shadow-xs gap-2"
         >
