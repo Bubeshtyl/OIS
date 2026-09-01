@@ -20,14 +20,14 @@ export default async function AdminAccessPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Roles & Access"
-        subtitle="Create roles, choose which routes each role can use, then assign users under Teams."
-      />
+      <PageHeader title="Roles & Access" />
       <AccessAdmin
         catalog={config.catalog}
         roles={config.roles}
+        assignableRoles={config.assignableRoles}
         permissionsByRoleId={config.permissionsByRoleId}
+        staff={config.staff}
+        adminRoleId={config.adminRoleId}
       />
     </div>
   );
