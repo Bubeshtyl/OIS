@@ -18,6 +18,8 @@ export type NavIcon =
   | "dashboard"
   | "shift-closing"
   | "clock"
+  | "ledger"
+  | "rsp-ledger"
   | "gauge"
   | "receive"
   | "transfer"
@@ -73,6 +75,20 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     label: "Home",
     icon: "home",
     permission: "dashboard:read",
+  },
+  {
+    href: "/shift-closing/rsp",
+    label: "RSP Ledger",
+    icon: "rsp-ledger",
+    group: "shift-closing",
+    permission: "shift-closing:read",
+  },
+  {
+    href: "/shift-closing/ledger",
+    label: "Ledger",
+    icon: "ledger",
+    group: "shift-closing",
+    permission: "shift-closing:read",
   },
   {
     href: "/shift-closing/6am",

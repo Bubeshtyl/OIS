@@ -43,6 +43,22 @@ export const returnCaseEventTypeEnum = pgEnum("return_case_event_type", [
   "CLOSED",
 ]);
 
+export const shiftClosingEntityTypeEnum = pgEnum("shift_closing_entity_type", [
+  "daily_rsp",
+  "machine_slip_entry",
+  "interim_shift_closing",
+]);
+
+export const shiftClosingEditRequestStatusEnum = pgEnum(
+  "shift_closing_edit_request_status",
+  ["pending", "approved", "rejected", "cancelled"]
+);
+
+export const shiftClosingLedgerEventTypeEnum = pgEnum(
+  "shift_closing_ledger_event_type",
+  ["created", "edit_requested", "edit_approved", "edit_rejected"]
+);
+
 export const locationEnum = pgEnum("location", [
   "SUPPLIER",
   "DEPOT",
@@ -652,6 +668,7 @@ export const dailyRspPrices = pgTable(
     recordedBy: uuid("recorded_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    revision: integer("revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -681,6 +698,7 @@ export const machineSlipEntries = pgTable(
     recordedBy: uuid("recorded_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    revision: integer("revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -738,7 +756,82 @@ export const interimShiftClosings = pgTable(
     createdBy: uuid("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    revision: integer("revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  }
+);
+
+export const shiftClosingEditRequests = pgTable(
+  "shift_closing_edit_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    entityType: shiftClosingEntityTypeEnum("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    status: shiftClosingEditRequestStatusEnum("status")
+      .notNull()
+      .default("pending"),
+    proposedData: jsonb("proposed_data").notNull(),
+    requestNote: text("request_note"),
+    reviewNote: text("review_note"),
+    requestedBy: uuid("requested_by")
+      .notNull()
+      .references(() => users.id),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    requestedAt: timestamp("requested_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  }
+);
+
+export const shiftClosingLedgerEvents = pgTable(
+  "shift_closing_ledger_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    entityType: shiftClosingEntityTypeEnum("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    eventType: shiftClosingLedgerEventTypeEnum("event_type").notNull(),
+    detail: text("detail"),
+    editRequestId: uuid("edit_request_id").references(
+      () => shiftClosingEditRequests.id,
+      { onDelete: "set null" }
+    ),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  }
+);
+
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
   }
@@ -1079,6 +1172,58 @@ export const interimPaymentCollectionsRelations = relations(
   })
 );
 
+export const shiftClosingEditRequestsRelations = relations(
+  shiftClosingEditRequests,
+  ({ one }) => ({
+    tenant: one(tenants, {
+      fields: [shiftClosingEditRequests.tenantId],
+      references: [tenants.id],
+    }),
+    requester: one(users, {
+      fields: [shiftClosingEditRequests.requestedBy],
+      references: [users.id],
+      relationName: "shiftClosingEditRequester",
+    }),
+    reviewer: one(users, {
+      fields: [shiftClosingEditRequests.reviewedBy],
+      references: [users.id],
+      relationName: "shiftClosingEditReviewer",
+    }),
+  })
+);
+
+export const shiftClosingLedgerEventsRelations = relations(
+  shiftClosingLedgerEvents,
+  ({ one }) => ({
+    tenant: one(tenants, {
+      fields: [shiftClosingLedgerEvents.tenantId],
+      references: [tenants.id],
+    }),
+    editRequest: one(shiftClosingEditRequests, {
+      fields: [shiftClosingLedgerEvents.editRequestId],
+      references: [shiftClosingEditRequests.id],
+    }),
+    creator: one(users, {
+      fields: [shiftClosingLedgerEvents.createdBy],
+      references: [users.id],
+    }),
+  })
+);
+
+export const pushSubscriptionsRelations = relations(
+  pushSubscriptions,
+  ({ one }) => ({
+    tenant: one(tenants, {
+      fields: [pushSubscriptions.tenantId],
+      references: [tenants.id],
+    }),
+    user: one(users, {
+      fields: [pushSubscriptions.userId],
+      references: [users.id],
+    }),
+  })
+);
+
 export type Tenant = typeof tenants.$inferSelect;
 export type Role = typeof roles.$inferSelect;
 export type User = typeof users.$inferSelect;
@@ -1091,6 +1236,17 @@ export type MachineSlipEntry = typeof machineSlipEntries.$inferSelect;
 export type InterimShiftClosing = typeof interimShiftClosings.$inferSelect;
 export type InterimNozzleReading = typeof interimNozzleReadings.$inferSelect;
 export type InterimPaymentCollection = typeof interimPaymentCollections.$inferSelect;
+export type ShiftClosingEditRequest =
+  typeof shiftClosingEditRequests.$inferSelect;
+export type ShiftClosingLedgerEvent =
+  typeof shiftClosingLedgerEvents.$inferSelect;
+export type ShiftClosingEntityType =
+  (typeof shiftClosingEntityTypeEnum.enumValues)[number];
+export type ShiftClosingEditRequestStatus =
+  (typeof shiftClosingEditRequestStatusEnum.enumValues)[number];
+export type ShiftClosingLedgerEventType =
+  (typeof shiftClosingLedgerEventTypeEnum.enumValues)[number];
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InventoryTransaction = typeof inventoryTransactions.$inferSelect;
 export type StockBalance = typeof stockBalance.$inferSelect;
 export type ReturnedCase = typeof returnedCases.$inferSelect;

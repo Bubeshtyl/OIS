@@ -638,7 +638,14 @@ export function ShiftClosingCalculator({
       });
 
       if (res.success) {
-        toast.success(res.message || `Shift for ${currentPumpData.name} closed successfully!`);
+        toast.success(res.message || `Shift for ${currentPumpData.name} closed successfully!`, {
+          action: {
+            label: "View Ledger",
+            onClick: () => {
+              window.location.href = "/shift-closing/ledger";
+            },
+          },
+        });
       } else {
         toast.error(res.error || "Failed to close shift.");
       }

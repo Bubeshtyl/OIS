@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   dailyRspPrices,
@@ -6,9 +6,15 @@ import {
   interimShiftClosings,
   interimNozzleReadings,
   interimPaymentCollections,
+  shiftClosingLedgerEvents,
   type DailyRspPrice,
   type MachineSlipEntry,
 } from "@/lib/db/schema";
+import { logShiftClosingCreated } from "@/lib/shift-closing/ledger";
+import { ensureShiftClosingLedgerSchema } from "@/lib/shift-closing/ensure-schema";
+import { EditRequiresApprovalError } from "@/lib/shift-closing/types";
+
+export { EditRequiresApprovalError } from "@/lib/shift-closing/types";
 
 export interface SixAmStatus {
   hasRsp: boolean;
@@ -27,6 +33,7 @@ export async function getDailyRsp(
   tenantId: string,
   dateStr: string
 ): Promise<DailyRspPrice | null> {
+  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   const [row] = await db
     .select()
@@ -53,6 +60,13 @@ export async function saveDailyRsp(
   }
 ) {
   const db = getDb();
+  const existing = await getDailyRsp(tenantId, data.priceDate);
+  if (existing) {
+    throw new EditRequiresApprovalError(
+      `RSP for ${data.priceDate} already exists. Request an edit from the RSP Ledger.`
+    );
+  }
+
   const [row] = await db
     .insert(dailyRspPrices)
     .values({
@@ -64,17 +78,15 @@ export async function saveDailyRsp(
       recordedBy: userId,
       updatedAt: new Date(),
     })
-    .onConflictDoUpdate({
-      target: [dailyRspPrices.tenantId, dailyRspPrices.priceDate],
-      set: {
-        hsdPrice: data.hsdPrice,
-        msPrice: data.msPrice,
-        speedPrice: data.speedPrice,
-        recordedBy: userId,
-        updatedAt: new Date(),
-      },
-    })
     .returning();
+
+  await logShiftClosingCreated(
+    tenantId,
+    userId,
+    "daily_rsp",
+    row.id,
+    `RSP recorded for ${data.priceDate}`
+  );
 
   return row;
 }
@@ -83,6 +95,7 @@ export async function getMachineSlipEntries(
   tenantId: string,
   dateStr: string
 ): Promise<MachineSlipEntry[]> {
+  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   return db
     .select()
@@ -114,6 +127,25 @@ export async function saveMachineSlipEntries(
 
   const results = [];
   for (const entry of data.entries) {
+    const [existing] = await db
+      .select({ id: machineSlipEntries.id })
+      .from(machineSlipEntries)
+      .where(
+        and(
+          eq(machineSlipEntries.tenantId, tenantId),
+          eq(machineSlipEntries.entryDate, data.entryDate),
+          eq(machineSlipEntries.machineNumber, entry.machineNumber),
+          eq(machineSlipEntries.nozzleNumber, entry.nozzleNumber)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      throw new EditRequiresApprovalError(
+        `Slip entry for ${data.entryDate} · ${entry.machineNumber} · Nozzle ${entry.nozzleNumber} already exists. Request an edit from the Ledger.`
+      );
+    }
+
     const [row] = await db
       .insert(machineSlipEntries)
       .values({
@@ -125,20 +157,16 @@ export async function saveMachineSlipEntries(
         recordedBy: userId,
         updatedAt: new Date(),
       })
-      .onConflictDoUpdate({
-        target: [
-          machineSlipEntries.tenantId,
-          machineSlipEntries.entryDate,
-          machineSlipEntries.machineNumber,
-          machineSlipEntries.nozzleNumber,
-        ],
-        set: {
-          reading: entry.reading,
-          recordedBy: userId,
-          updatedAt: new Date(),
-        },
-      })
       .returning();
+
+    await logShiftClosingCreated(
+      tenantId,
+      userId,
+      "machine_slip_entry",
+      row.id,
+      `Slip ${data.entryDate} · ${entry.machineNumber} · N${entry.nozzleNumber}`
+    );
+
     results.push(row);
   }
 
@@ -149,6 +177,7 @@ export async function getSixAmStatus(
   tenantId: string,
   dateStr: string
 ): Promise<SixAmStatus> {
+  await ensureShiftClosingLedgerSchema();
   const [rspRow, slipEntries] = await Promise.all([
     getDailyRsp(tenantId, dateStr),
     getMachineSlipEntries(tenantId, dateStr),
@@ -274,6 +303,15 @@ export async function saveInterimShiftClosing(
         totalCollected: String(p.totalCollected),
       });
     }
+
+    await tx.insert(shiftClosingLedgerEvents).values({
+      tenantId,
+      entityType: "interim_shift_closing",
+      entityId: shiftClosing.id,
+      eventType: "created",
+      detail: `Interim close for ${input.pumpName}`,
+      createdBy: userId,
+    });
 
     return shiftClosing;
   });

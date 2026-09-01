@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, Loader2, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState, useTransition } from "react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+  RotateCcw,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -66,6 +74,10 @@ const SLIP_GROUPS: SlipEntryGroup[] = [
   },
 ];
 
+function slipKey(machineNumber: string, nozzleNumber: number) {
+  return `${machineNumber}:${nozzleNumber}`;
+}
+
 function buildSlipReadingsMap(
   slips?: Array<{ machineNumber: string; nozzleNumber: number; reading: string }>
 ): Record<string, string> {
@@ -87,6 +99,16 @@ function buildSlipReadingsMap(
   return map;
 }
 
+function buildExistingSlipKeys(
+  slips?: Array<{ machineNumber: string; nozzleNumber: number; reading: string }>
+) {
+  const keys = new Set<string>();
+  for (const slip of slips ?? []) {
+    keys.add(slipKey(slip.machineNumber, slip.nozzleNumber));
+  }
+  return keys;
+}
+
 export function SixAmShiftClosingForm({
   initialDate,
   initialRsp,
@@ -106,23 +128,39 @@ export function SixAmShiftClosingForm({
     hsd: initialRsp?.hsd || "",
     speed: initialRsp?.speed || "",
   });
-  const [savedPrices, setSavedPrices] = useState(Boolean(initialRsp));
-
+  const [hasRecordedRsp, setHasRecordedRsp] = useState(Boolean(initialRsp));
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     "group-1": true,
     "group-2": false,
     "group-3": false,
   });
-
   const [slipReadings, setSlipReadings] = useState<Record<string, string>>(() =>
     buildSlipReadingsMap(initialSlips)
+  );
+  const [existingSlipKeys, setExistingSlipKeys] = useState<Set<string>>(() =>
+    buildExistingSlipKeys(initialSlips)
   );
 
   const [isSavingRsp, startSavingRsp] = useTransition();
   const [isSavingSlips, startSavingSlips] = useTransition();
   const [isLoadingDate, startLoadingDate] = useTransition();
 
-  // When date changes, load data for selected date
+  const hasRecordedSlips = existingSlipKeys.size > 0;
+
+  const newEntriesCount = useMemo(() => {
+    let count = 0;
+    for (const group of SLIP_GROUPS) {
+      for (const nozzle of group.nozzles) {
+        const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
+        const val = slipReadings[nozzle.id];
+        if (val && val.trim() !== "" && !existingSlipKeys.has(key)) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }, [slipReadings, existingSlipKeys]);
+
   function handleDateChange(newDate: string) {
     setSelectedDate(newDate);
     startLoadingDate(async () => {
@@ -133,22 +171,56 @@ export function SixAmShiftClosingForm({
           ms: data.rsp.msPrice,
           speed: data.rsp.speedPrice,
         });
-        setSavedPrices(true);
+        setHasRecordedRsp(true);
       } else {
         setPrices({ hsd: "", ms: "", speed: "" });
-        setSavedPrices(false);
+        setHasRecordedRsp(false);
       }
 
-      setSlipReadings(
-        buildSlipReadingsMap(
-          data.slips?.map((s) => ({
-            machineNumber: s.machineNumber,
-            nozzleNumber: s.nozzleNumber,
-            reading: s.reading,
-          }))
-        )
-      );
+      const mappedSlips =
+        data.slips?.map((s) => ({
+          machineNumber: s.machineNumber,
+          nozzleNumber: s.nozzleNumber,
+          reading: s.reading,
+        })) ?? [];
+
+      setSlipReadings(buildSlipReadingsMap(mappedSlips));
+      setExistingSlipKeys(buildExistingSlipKeys(mappedSlips));
     });
+  }
+
+  function handleRspSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (hasRecordedRsp) {
+      toast.error("RSP for this date is already recorded. Request edits from the RSP Ledger.");
+      return;
+    }
+    if (!prices.ms || !prices.hsd || !prices.speed) {
+      toast.error("Please enter daily prices for HSD, MS, and SPEED.");
+      return;
+    }
+
+    startSavingRsp(async () => {
+      const res = await saveDailyRspAction({
+        priceDate: selectedDate,
+        hsdPrice: prices.hsd,
+        msPrice: prices.ms,
+        speedPrice: prices.speed,
+      });
+
+      if (res.success) {
+        setHasRecordedRsp(true);
+        toast.success(res.message || "RSP fuel prices saved successfully!");
+      } else {
+        toast.error(res.error || "Failed to save RSP prices.");
+      }
+    });
+  }
+
+  function handleRspReset() {
+    if (hasRecordedRsp) return;
+    setPrices({ ms: "", hsd: "", speed: "" });
+    toast.info("Reset fuel price inputs.");
   }
 
   function toggleGroup(id: string) {
@@ -165,40 +237,6 @@ export function SixAmShiftClosingForm({
     }));
   }
 
-  function handleRspSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!prices.ms || !prices.hsd || !prices.speed) {
-      toast.error("Please enter daily prices for HSD, MS, and SPEED.");
-      return;
-    }
-
-    startSavingRsp(async () => {
-      const res = await saveDailyRspAction({
-        priceDate: selectedDate,
-        hsdPrice: prices.hsd,
-        msPrice: prices.ms,
-        speedPrice: prices.speed,
-      });
-
-      if (res.success) {
-        setSavedPrices(true);
-        toast.success(res.message || "RSP fuel prices saved successfully!");
-      } else {
-        toast.error(res.error || "Failed to save RSP prices.");
-      }
-    });
-  }
-
-  function handleRspReset() {
-    setPrices({
-      ms: "",
-      hsd: "",
-      speed: "",
-    });
-    setSavedPrices(false);
-    toast.info("Reset fuel price inputs.");
-  }
-
   function handleSlipSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -210,8 +248,9 @@ export function SixAmShiftClosingForm({
 
     for (const group of SLIP_GROUPS) {
       for (const nozzle of group.nozzles) {
+        const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
         const val = slipReadings[nozzle.id];
-        if (val && val.trim() !== "") {
+        if (val && val.trim() !== "" && !existingSlipKeys.has(key)) {
           entriesToSave.push({
             machineNumber: group.machineNumber,
             nozzleNumber: nozzle.nozzleNumber,
@@ -222,7 +261,11 @@ export function SixAmShiftClosingForm({
     }
 
     if (entriesToSave.length === 0) {
-      toast.error("Please enter at least one slip reading before saving.");
+      toast.error(
+        hasRecordedSlips
+          ? "Recorded readings are locked. Request edits from the Ledger."
+          : "Please enter at least one slip reading before saving."
+      );
       return;
     }
 
@@ -234,6 +277,7 @@ export function SixAmShiftClosingForm({
 
       if (res.success) {
         toast.success(res.message || "Slip entries saved successfully!");
+        handleDateChange(selectedDate);
       } else {
         toast.error(res.error || "Failed to save slip entries.");
       }
@@ -241,32 +285,57 @@ export function SixAmShiftClosingForm({
   }
 
   function handleSlipReset() {
-    setSlipReadings({});
-    toast.info("Reset all slip entry readings.");
+    const preserved: Record<string, string> = {};
+    for (const group of SLIP_GROUPS) {
+      for (const nozzle of group.nozzles) {
+        const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
+        if (existingSlipKeys.has(key) && slipReadings[nozzle.id]) {
+          preserved[nozzle.id] = slipReadings[nozzle.id];
+        }
+      }
+    }
+    setSlipReadings(preserved);
+    toast.info("Cleared unsaved slip inputs.");
   }
 
   return (
     <div className="space-y-6">
-      {/* 1. RSP Card */}
       <Card className="border shadow-xs">
         <CardHeader className="p-4 pb-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-sm font-semibold">RSP</CardTitle>
-            {savedPrices && (
-              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300">
+            {hasRecordedRsp ? (
+              <Badge
+                variant="outline"
+                className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+              >
                 Recorded for {selectedDate}
               </Badge>
-            )}
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-2">
+          {hasRecordedRsp ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+              RSP for {selectedDate} is already in the ledger and cannot be changed
+              here.{" "}
+              <Link
+                href="/shift-closing/rsp"
+                className={cn(
+                  buttonVariants({ variant: "link", size: "sm" }),
+                  "h-auto p-0 inline-flex items-center gap-1"
+                )}
+              >
+                Request edits from RSP Ledger
+                <ExternalLink className="size-3.5" />
+              </Link>
+            </div>
+          ) : null}
+
           <form onSubmit={handleRspSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* 1. Editable Date */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-foreground">
-                  Date
-                </Label>
+                <Label className="text-xs font-semibold text-foreground">Date</Label>
                 <DatePicker
                   value={selectedDate}
                   onChange={handleDateChange}
@@ -275,13 +344,15 @@ export function SixAmShiftClosingForm({
                 />
               </div>
 
-              {/* 2. HSD (Diesel) */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="price-hsd" className="text-xs font-semibold text-foreground">
                     HSD
                   </Label>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
+                  >
                     Diesel
                   </Badge>
                 </div>
@@ -296,23 +367,28 @@ export function SixAmShiftClosingForm({
                     min="0"
                     placeholder="0.00"
                     value={prices.hsd}
-                    onChange={(e) => {
-                      setPrices((prev) => ({ ...prev, hsd: e.target.value }));
-                      setSavedPrices(false);
-                    }}
+                    onChange={(e) =>
+                      setPrices((prev) => ({ ...prev, hsd: e.target.value }))
+                    }
+                    readOnly={hasRecordedRsp}
                     required
-                    className="h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className={cn(
+                      "h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                      hasRecordedRsp && "bg-muted/50"
+                    )}
                   />
                 </div>
               </div>
 
-              {/* 3. MS (Petrol) */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="price-ms" className="text-xs font-semibold text-foreground">
                     MS
                   </Label>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  >
                     Petrol
                   </Badge>
                 </div>
@@ -327,23 +403,28 @@ export function SixAmShiftClosingForm({
                     min="0"
                     placeholder="0.00"
                     value={prices.ms}
-                    onChange={(e) => {
-                      setPrices((prev) => ({ ...prev, ms: e.target.value }));
-                      setSavedPrices(false);
-                    }}
+                    onChange={(e) =>
+                      setPrices((prev) => ({ ...prev, ms: e.target.value }))
+                    }
+                    readOnly={hasRecordedRsp}
                     required
-                    className="h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className={cn(
+                      "h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                      hasRecordedRsp && "bg-muted/50"
+                    )}
                   />
                 </div>
               </div>
 
-              {/* 4. SPEED */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="price-speed" className="text-xs font-semibold text-foreground">
                     SPEED
                   </Label>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300"
+                  >
                     Speed
                   </Badge>
                 </div>
@@ -358,54 +439,87 @@ export function SixAmShiftClosingForm({
                     min="0"
                     placeholder="0.00"
                     value={prices.speed}
-                    onChange={(e) => {
-                      setPrices((prev) => ({ ...prev, speed: e.target.value }));
-                      setSavedPrices(false);
-                    }}
+                    onChange={(e) =>
+                      setPrices((prev) => ({ ...prev, speed: e.target.value }))
+                    }
+                    readOnly={hasRecordedRsp}
                     required
-                    className="h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className={cn(
+                      "h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                      hasRecordedRsp && "bg-muted/50"
+                    )}
                   />
                 </div>
               </div>
             </div>
 
-            <div className="pt-1 flex flex-wrap items-center gap-2.5">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={isSavingRsp || isLoadingDate}
-                className="h-9 w-full sm:w-auto px-6 text-xs font-semibold"
-              >
-                {isSavingRsp ? (
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="mr-1.5 size-3.5" />
-                )}
-                Save
-              </Button>
+            {!hasRecordedRsp ? (
+              <div className="pt-1 flex flex-wrap items-center gap-2.5">
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isSavingRsp || isLoadingDate}
+                  className="h-9 w-full sm:w-auto px-6 text-xs font-semibold"
+                >
+                  {isSavingRsp ? (
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-1.5 size-3.5" />
+                  )}
+                  Save RSP
+                </Button>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isSavingRsp || isLoadingDate}
-                onClick={handleRspReset}
-                className="h-9 w-full sm:w-auto px-5 text-xs font-semibold"
-              >
-                <RotateCcw className="mr-1.5 size-3.5" />
-                Reset
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSavingRsp || isLoadingDate}
+                  onClick={handleRspReset}
+                  className="h-9 w-full sm:w-auto px-5 text-xs font-semibold"
+                >
+                  <RotateCcw className="mr-1.5 size-3.5" />
+                  Reset
+                </Button>
+              </div>
+            ) : null}
           </form>
         </CardContent>
       </Card>
 
-      {/* 2. Slip Entry Card */}
       <Card className="border shadow-xs">
         <CardHeader className="p-4 pb-2">
-          <CardTitle className="text-sm font-semibold">Slip Entry</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-sm font-semibold">6 AM Slip Entry</CardTitle>
+            <div className="flex items-center gap-2">
+              {hasRecordedSlips ? (
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+                >
+                  {existingSlipKeys.size} recorded
+                </Badge>
+              ) : null}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-4 pt-2">
+          {hasRecordedSlips ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+              Some readings for {selectedDate} are already in the ledger and cannot
+              be changed here.{" "}
+              <Link
+                href="/shift-closing/ledger"
+                className={cn(
+                  buttonVariants({ variant: "link", size: "sm" }),
+                  "h-auto p-0 inline-flex items-center gap-1"
+                )}
+              >
+                Request edits from Ledger
+                <ExternalLink className="size-3.5" />
+              </Link>
+            </div>
+          ) : null}
+
           <form onSubmit={handleSlipSubmit} className="space-y-4">
             <div className="space-y-3">
               {SLIP_GROUPS.map((group) => {
@@ -416,7 +530,6 @@ export function SixAmShiftClosingForm({
                     key={group.id}
                     className="rounded-xl border bg-card transition-all shadow-2xs overflow-hidden"
                   >
-                    {/* Collapsible Dropdown Header Bar */}
                     <button
                       type="button"
                       onClick={() => toggleGroup(group.id)}
@@ -437,30 +550,46 @@ export function SixAmShiftClosingForm({
                       </div>
                     </button>
 
-                    {/* Nozzle Input Content */}
                     {isOpen && (
                       <div className="p-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          {group.nozzles.map((nozzle) => (
-                            <div key={nozzle.id} className="space-y-1.5">
-                              <Label
-                                htmlFor={nozzle.id}
-                                className="text-xs font-medium text-foreground"
-                              >
-                                {nozzle.label}
-                              </Label>
-                              <Input
-                                id={nozzle.id}
-                                type="number"
-                                step="any"
-                                value={slipReadings[nozzle.id] ?? ""}
-                                onChange={(e) =>
-                                  handleSlipInputChange(nozzle.id, e.target.value)
-                                }
-                                className="h-10 text-center text-sm font-medium tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                            </div>
-                          ))}
+                          {group.nozzles.map((nozzle) => {
+                            const key = slipKey(
+                              group.machineNumber,
+                              nozzle.nozzleNumber
+                            );
+                            const isLocked = existingSlipKeys.has(key);
+
+                            return (
+                              <div key={nozzle.id} className="space-y-1.5">
+                                <Label
+                                  htmlFor={nozzle.id}
+                                  className="text-xs font-medium text-foreground"
+                                >
+                                  {nozzle.label}
+                                  {isLocked ? (
+                                    <span className="ml-1 text-[10px] text-muted-foreground">
+                                      (recorded)
+                                    </span>
+                                  ) : null}
+                                </Label>
+                                <Input
+                                  id={nozzle.id}
+                                  type="number"
+                                  step="any"
+                                  value={slipReadings[nozzle.id] ?? ""}
+                                  onChange={(e) =>
+                                    handleSlipInputChange(nozzle.id, e.target.value)
+                                  }
+                                  readOnly={isLocked}
+                                  className={cn(
+                                    "h-10 text-center text-sm font-medium tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                                    isLocked && "bg-muted/50"
+                                  )}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -469,12 +598,13 @@ export function SixAmShiftClosingForm({
               })}
             </div>
 
-            {/* Bottom Actions */}
             <div className="pt-2 flex flex-wrap items-center gap-2.5">
               <Button
                 type="submit"
                 size="sm"
-                disabled={isSavingSlips || isLoadingDate}
+                disabled={
+                  isSavingSlips || isLoadingDate || newEntriesCount === 0
+                }
                 className="h-9 w-full sm:w-auto px-6 text-xs font-semibold"
               >
                 {isSavingSlips ? (
@@ -482,7 +612,8 @@ export function SixAmShiftClosingForm({
                 ) : (
                   <CheckCircle2 className="mr-1.5 size-3.5" />
                 )}
-                Save
+                Save new readings
+                {newEntriesCount > 0 ? ` (${newEntriesCount})` : ""}
               </Button>
 
               <Button
@@ -494,7 +625,7 @@ export function SixAmShiftClosingForm({
                 className="h-9 w-full sm:w-auto px-5 text-xs font-semibold"
               >
                 <RotateCcw className="mr-1.5 size-3.5" />
-                Reset
+                Reset unsaved
               </Button>
             </div>
           </form>

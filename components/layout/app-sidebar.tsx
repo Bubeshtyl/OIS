@@ -14,6 +14,7 @@ import {
   FileText,
   Gauge,
   Home,
+  IndianRupee,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -21,6 +22,7 @@ import {
   MapPin,
   Percent,
   Receipt,
+  ScrollText,
   Settings,
   SquareArrowDown,
   SquareArrowUp,
@@ -35,7 +37,14 @@ import {
 } from "lucide-react";
 import { AppLogo } from "@/components/brand/app-logo";
 import { logoutAction } from "@/lib/auth/actions";
+import {
+  pendingBadgeCountForHref,
+  useShiftClosingPendingBadges,
+} from "@/components/layout/use-shift-closing-pending-badges";
+import { PushNotificationsToggle } from "@/components/layout/push-notifications-toggle";
+import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
 import type { NavGroup, NavIcon, NavItem } from "@/lib/auth/rbac";
+import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
@@ -63,6 +72,8 @@ const iconMap: Record<NavIcon, LucideIcon> = {
   dashboard: LayoutDashboard,
   "shift-closing": Clock,
   clock: Clock,
+  ledger: ScrollText,
+  "rsp-ledger": IndianRupee,
   gauge: Gauge,
   receive: SquareArrowDown,
   transfer: SquareArrowUp,
@@ -118,19 +129,35 @@ function SidebarDivider() {
   );
 }
 
+function NavPendingBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+
+  return (
+    <Badge
+      variant="destructive"
+      className="ml-auto h-5 min-w-5 shrink-0 justify-center px-1.5 text-[10px] tabular-nums"
+    >
+      {count > 99 ? "99+" : count}
+    </Badge>
+  );
+}
+
 function NavSubLink({
   item,
   pathname,
   onNavigate,
   className,
+  pendingBadges,
 }: {
   item: NavItem;
   pathname: string;
   onNavigate: () => void;
   className?: string;
+  pendingBadges: ShiftClosingPendingBadgeCounts;
 }) {
   const SubIcon = iconMap[item.icon];
   const active = isItemActive(pathname, item.href);
+  const badgeCount = pendingBadgeCountForHref(item.href, pendingBadges);
 
   return (
     <SidebarMenuSubItem>
@@ -140,7 +167,8 @@ function NavSubLink({
         render={<Link href={item.href} onClick={onNavigate} />}
       >
         <SubIcon className="size-4" />
-        <span>{item.label}</span>
+        <span className="min-w-0 truncate">{item.label}</span>
+        <NavPendingBadge count={badgeCount} />
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
   );
@@ -151,11 +179,13 @@ function NestedCollapsibleSubgroup({
   nestedItems,
   pathname,
   onNavigate,
+  pendingBadges,
 }: {
   parent: NavItem;
   nestedItems: NavItem[];
   pathname: string;
   onNavigate: () => void;
+  pendingBadges: ShiftClosingPendingBadgeCounts;
 }) {
   const SubIcon = iconMap[parent.icon];
   const parentActive = pathname === parent.href;
@@ -201,6 +231,7 @@ function NestedCollapsibleSubgroup({
               item={child}
               pathname={pathname}
               onNavigate={onNavigate}
+              pendingBadges={pendingBadges}
             />
           ))}
         </ul>
@@ -215,12 +246,14 @@ function CollapsibleNavGroup({
   items,
   pathname,
   onNavigate,
+  pendingBadges,
 }: {
   label: string;
   icon: NavIcon;
   items: NavItem[];
   pathname: string;
   onNavigate: () => void;
+  pendingBadges: ShiftClosingPendingBadgeCounts;
 }) {
   const Icon = iconMap[icon];
   const isActive = items.some((item) => isItemActive(pathname, item.href));
@@ -271,6 +304,7 @@ function CollapsibleNavGroup({
                     nestedItems={nested}
                     pathname={pathname}
                     onNavigate={onNavigate}
+                    pendingBadges={pendingBadges}
                   />
                 );
               }
@@ -281,6 +315,7 @@ function CollapsibleNavGroup({
                   item={item}
                   pathname={pathname}
                   onNavigate={onNavigate}
+                  pendingBadges={pendingBadges}
                 />
               );
             })}
@@ -291,8 +326,17 @@ function CollapsibleNavGroup({
   );
 }
 
-export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
+export function AppSidebar({
+  navItems,
+  initialPendingBadges = { rsp: 0, ledger: 0 },
+  isAdmin = false,
+}: {
+  navItems: NavItem[];
+  initialPendingBadges?: ShiftClosingPendingBadgeCounts;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
+  const pendingBadges = useShiftClosingPendingBadges(initialPendingBadges);
   const items = navItems;
   const topItems = items.filter((item) => !item.group);
   const shiftClosingItems = items.filter(
@@ -375,6 +419,7 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
                     items={section.items}
                     pathname={pathname}
                     onNavigate={closeMobileSidebar}
+                    pendingBadges={pendingBadges}
                   />
                 );
               })}
@@ -387,6 +432,9 @@ export function AppSidebar({ navItems }: { navItems: NavItem[] }) {
 
       <SidebarFooter className="p-0 px-3 pb-5 group-data-[collapsible=icon]:px-2">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <PushNotificationsToggle isAdmin={isAdmin} />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <form action={logoutAction} className="w-full">
               <SidebarMenuButton

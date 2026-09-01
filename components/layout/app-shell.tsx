@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import type { SessionData } from "@/lib/auth/session-config";
+import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
 import type { NavItem } from "@/lib/auth/rbac";
 import {
   SidebarInset,
@@ -10,10 +11,14 @@ import {
 export function AppShell({
   session,
   navItems,
+  initialPendingBadges,
+  isAdmin,
   children,
 }: {
   session: SessionData;
   navItems: NavItem[];
+  initialPendingBadges?: ShiftClosingPendingBadgeCounts;
+  isAdmin?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -26,7 +31,11 @@ export function AppShell({
         } as React.CSSProperties
       }
     >
-      <AppSidebar navItems={navItems} />
+      <AppSidebar
+        navItems={navItems}
+        initialPendingBadges={initialPendingBadges}
+        isAdmin={isAdmin}
+      />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />

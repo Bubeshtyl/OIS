@@ -192,6 +192,14 @@ export async function countActiveAdmins(
   tenantId: string,
   exceptUserId?: string
 ): Promise<number> {
+  const rows = await listActiveAdminUserIds(tenantId, exceptUserId);
+  return rows.length;
+}
+
+export async function listActiveAdminUserIds(
+  tenantId: string,
+  exceptUserId?: string
+): Promise<string[]> {
   const db = getDb();
   const rows = await db
     .select({ id: users.id })
@@ -207,7 +215,9 @@ export async function countActiveAdmins(
       )
     );
 
-  return rows.filter((row) => row.id !== exceptUserId).length;
+  return rows
+    .map((row) => row.id)
+    .filter((id) => id !== exceptUserId);
 }
 
 export function isAdminStaff(staff: {
