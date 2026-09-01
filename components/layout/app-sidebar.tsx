@@ -42,6 +42,7 @@ import {
   useShiftClosingPendingBadges,
 } from "@/components/layout/use-shift-closing-pending-badges";
 import { PushNotificationsToggle } from "@/components/layout/push-notifications-toggle";
+import type { PushNotificationStatus } from "@/lib/push/status";
 import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
 import type { NavGroup, NavIcon, NavItem } from "@/lib/auth/rbac";
 import { Badge } from "@/components/ui/badge";
@@ -331,14 +332,19 @@ export function AppSidebar({
   initialPendingBadges = { rsp: 0, ledger: 0 },
   isAdmin = false,
   canUsePush = false,
+  initialPushStatus = null,
 }: {
   navItems: NavItem[];
   initialPendingBadges?: ShiftClosingPendingBadgeCounts;
   isAdmin?: boolean;
   canUsePush?: boolean;
+  initialPushStatus?: PushNotificationStatus | null;
 }) {
   const pathname = usePathname();
-  const pendingBadges = useShiftClosingPendingBadges(initialPendingBadges);
+  const pendingBadges = useShiftClosingPendingBadges(
+    initialPendingBadges,
+    isAdmin
+  );
   const items = navItems;
   const topItems = items.filter((item) => !item.group);
   const shiftClosingItems = items.filter(
@@ -435,7 +441,10 @@ export function AppSidebar({
       <SidebarFooter className="p-0 px-3 pb-5 group-data-[collapsible=icon]:px-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <PushNotificationsToggle canUsePush={canUsePush} />
+            <PushNotificationsToggle
+              canUsePush={canUsePush}
+              initialPushStatus={initialPushStatus}
+            />
           </SidebarMenuItem>
           <SidebarMenuItem>
             <form action={logoutAction} className="w-full">

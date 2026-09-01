@@ -3,6 +3,9 @@ import { AppShell } from "@/components/layout/app-shell";
 import { getTenantAccessState, isSystemAdminRole } from "@/lib/auth/permissions";
 import { getNavItems, hasPermission } from "@/lib/auth/rbac";
 import { destroySession, getSession } from "@/lib/auth/session";
+import { getPushNotificationStatus } from "@/lib/push/status";
+import type { PushNotificationStatus } from "@/lib/push/status";
+import { isPushConfigured } from "@/lib/push/vapid";
 import { countPendingEditRequests } from "@/lib/shift-closing/ledger";
 
 export default async function AppLayout({
@@ -28,11 +31,39 @@ export default async function AppLayout({
   let initialPendingBadges = { rsp: 0, ledger: 0 };
   let isAdmin = false;
   let canUsePush = false;
+  let initialPushStatus: PushNotificationStatus | null = null;
+
   if (session.tenantId && session.roleId && !session.isPlatformAdmin) {
-    canUsePush = await hasPermission(session, "shift-closing:read");
-    if (await isSystemAdminRole(session.roleId)) {
-      isAdmin = true;
-      initialPendingBadges = await countPendingEditRequests(session.tenantId);
+    const [shiftClosingRead, adminRole] = await Promise.all([
+      hasPermission(session, "shift-closing:read"),
+      isSystemAdminRole(session.roleId),
+    ]);
+
+    canUsePush = shiftClosingRead;
+    isAdmin = adminRole;
+
+    const followUps: Promise<void>[] = [];
+
+    if (adminRole) {
+      followUps.push(
+        countPendingEditRequests(session.tenantId).then((counts) => {
+          initialPendingBadges = counts;
+        })
+      );
+    }
+
+    if (shiftClosingRead && isPushConfigured()) {
+      followUps.push(
+        getPushNotificationStatus(session.tenantId, session.userId).then(
+          (status) => {
+            initialPushStatus = status;
+          }
+        )
+      );
+    }
+
+    if (followUps.length > 0) {
+      await Promise.all(followUps);
     }
   }
 
@@ -43,6 +74,7 @@ export default async function AppLayout({
       initialPendingBadges={initialPendingBadges}
       isAdmin={isAdmin}
       canUsePush={canUsePush}
+      initialPushStatus={initialPushStatus}
     >
       {children}
     </AppShell>

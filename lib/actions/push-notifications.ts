@@ -5,14 +5,11 @@ import {
 } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/rbac";
 import {
-  hasPushSubscription,
   removePushSubscription,
   savePushSubscription,
 } from "@/lib/push/service";
-import {
-  getVapidPublicKey,
-  isPushConfigured,
-} from "@/lib/push/vapid";
+import { getPushNotificationStatus } from "@/lib/push/status";
+import { isPushConfigured } from "@/lib/push/vapid";
 
 export type PushNotificationActionState = {
   success: boolean;
@@ -25,19 +22,19 @@ export async function getPushNotificationStatusAction() {
   try {
     const session = await requireTenantSession();
     const canUsePush = await hasPermission(session, "shift-closing:read");
-    const configured = isPushConfigured();
-    const subscribed =
-      configured && canUsePush
-        ? await hasPushSubscription(session.tenantId, session.userId)
-        : false;
+    const status = canUsePush
+      ? await getPushNotificationStatus(session.tenantId, session.userId)
+      : {
+          configured: isPushConfigured(),
+          subscribed: false,
+          publicKey: null,
+        };
 
     return {
       success: true as const,
       data: {
-        configured,
+        ...status,
         canUsePush,
-        subscribed,
-        publicKey: configured ? getVapidPublicKey() : null,
       },
     };
   } catch (err: unknown) {

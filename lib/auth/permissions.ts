@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { rolePermissions, roles, tenants, users } from "@/lib/db/schema";
@@ -9,35 +10,35 @@ import {
 import type { SessionData } from "@/lib/auth/session-config";
 import { getSession, requireSession } from "@/lib/auth/session";
 
-export async function getPermissionsForRoleId(
-  roleId: string | null | undefined
-): Promise<Permission[]> {
-  if (!roleId) return [];
+export const getPermissionsForRoleId = cache(
+  async (roleId: string | null | undefined): Promise<Permission[]> => {
+    if (!roleId) return [];
 
-  const db = getDb();
-  const [role] = await db
-    .select({
-      id: roles.id,
-      name: roles.name,
-      isSystem: roles.isSystem,
-    })
-    .from(roles)
-    .where(eq(roles.id, roleId))
-    .limit(1);
+    const db = getDb();
+    const [role] = await db
+      .select({
+        id: roles.id,
+        name: roles.name,
+        isSystem: roles.isSystem,
+      })
+      .from(roles)
+      .where(eq(roles.id, roleId))
+      .limit(1);
 
-  if (!role) return [];
+    if (!role) return [];
 
-  if (role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME) {
-    return [...ADMIN_PERMISSIONS];
+    if (role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME) {
+      return [...ADMIN_PERMISSIONS];
+    }
+
+    const rows = await db
+      .select({ permission: rolePermissions.permission })
+      .from(rolePermissions)
+      .where(eq(rolePermissions.roleId, roleId));
+
+    return rows.map((row) => row.permission as Permission);
   }
-
-  const rows = await db
-    .select({ permission: rolePermissions.permission })
-    .from(rolePermissions)
-    .where(eq(rolePermissions.roleId, roleId));
-
-  return rows.map((row) => row.permission as Permission);
-}
+);
 
 export async function replaceRolePermissions(
   roleId: string,
@@ -92,49 +93,48 @@ export async function requirePlatformAdmin(): Promise<SessionData> {
   return session;
 }
 
+export const getTenantAccessState = cache(
+  async (
+    tenantId: string
+  ): Promise<{
+    onboardingComplete: boolean;
+    isActive: boolean;
+  }> => {
+    const db = getDb();
+    const [tenant] = await db
+      .select({
+        onboardingComplete: tenants.onboardingComplete,
+        isActive: tenants.isActive,
+      })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    return {
+      onboardingComplete: tenant?.onboardingComplete ?? false,
+      isActive: tenant?.isActive ?? false,
+    };
+  }
+);
+
 export async function getTenantOnboardingComplete(
   tenantId: string
 ): Promise<boolean> {
-  const db = getDb();
-  const [tenant] = await db
-    .select({ onboardingComplete: tenants.onboardingComplete })
-    .from(tenants)
-    .where(eq(tenants.id, tenantId))
-    .limit(1);
-  return tenant?.onboardingComplete ?? false;
+  const access = await getTenantAccessState(tenantId);
+  return access.onboardingComplete;
 }
 
-export async function getTenantAccessState(tenantId: string): Promise<{
-  onboardingComplete: boolean;
-  isActive: boolean;
-}> {
-  const db = getDb();
-  const [tenant] = await db
-    .select({
-      onboardingComplete: tenants.onboardingComplete,
-      isActive: tenants.isActive,
-    })
-    .from(tenants)
-    .where(eq(tenants.id, tenantId))
-    .limit(1);
-  return {
-    onboardingComplete: tenant?.onboardingComplete ?? false,
-    isActive: tenant?.isActive ?? false,
-  };
-}
-
-export async function isSystemAdminRole(
-  roleId: string | null | undefined
-): Promise<boolean> {
-  if (!roleId) return false;
-  const db = getDb();
-  const [role] = await db
-    .select({ isSystem: roles.isSystem, name: roles.name })
-    .from(roles)
-    .where(eq(roles.id, roleId))
-    .limit(1);
-  return Boolean(role?.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME);
-}
+export const isSystemAdminRole = cache(
+  async (roleId: string | null | undefined): Promise<boolean> => {
+    if (!roleId) return false;
+    const db = getDb();
+    const [role] = await db
+      .select({ isSystem: roles.isSystem, name: roles.name })
+      .from(roles)
+      .where(eq(roles.id, roleId))
+      .limit(1);
+    return Boolean(role?.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME);
+  }
+);
 
 /** All roles configured for a tenant, including the fixed system Admin role. */
 export async function listRolesForTenant(tenantId: string) {

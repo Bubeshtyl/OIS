@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { getPendingEditRequestBadgeCountsAction } from "@/lib/actions/shift-closing";
 import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
 
@@ -10,9 +9,9 @@ const POLL_INTERVAL_MS = 45_000;
 const EMPTY_COUNTS: ShiftClosingPendingBadgeCounts = { rsp: 0, ledger: 0 };
 
 export function useShiftClosingPendingBadges(
-  initialCounts: ShiftClosingPendingBadgeCounts = EMPTY_COUNTS
+  initialCounts: ShiftClosingPendingBadgeCounts = EMPTY_COUNTS,
+  isAdmin = false
 ) {
-  const pathname = usePathname();
   const [counts, setCounts] = useState(initialCounts);
 
   const refresh = useCallback(async () => {
@@ -27,10 +26,11 @@ export function useShiftClosingPendingBadges(
   }, [initialCounts]);
 
   useEffect(() => {
-    refresh();
+    if (!isAdmin) return;
+
     const intervalId = window.setInterval(refresh, POLL_INTERVAL_MS);
     return () => window.clearInterval(intervalId);
-  }, [refresh, pathname]);
+  }, [isAdmin, refresh]);
 
   return counts;
 }

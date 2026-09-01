@@ -11,7 +11,6 @@ import {
   type MachineSlipEntry,
 } from "@/lib/db/schema";
 import { logShiftClosingCreated } from "@/lib/shift-closing/ledger";
-import { ensureShiftClosingLedgerSchema } from "@/lib/shift-closing/ensure-schema";
 import { EditRequiresApprovalError } from "@/lib/shift-closing/types";
 
 export { EditRequiresApprovalError } from "@/lib/shift-closing/types";
@@ -33,7 +32,6 @@ export async function getDailyRsp(
   tenantId: string,
   dateStr: string
 ): Promise<DailyRspPrice | null> {
-  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   const [row] = await db
     .select()
@@ -95,7 +93,6 @@ export async function getMachineSlipEntries(
   tenantId: string,
   dateStr: string
 ): Promise<MachineSlipEntry[]> {
-  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   return db
     .select()
@@ -177,7 +174,6 @@ export async function getSixAmStatus(
   tenantId: string,
   dateStr: string
 ): Promise<SixAmStatus> {
-  await ensureShiftClosingLedgerSchema();
   const [rspRow, slipEntries] = await Promise.all([
     getDailyRsp(tenantId, dateStr),
     getMachineSlipEntries(tenantId, dateStr),

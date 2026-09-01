@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import type { SessionData } from "@/lib/auth/session-config";
+import type { PushNotificationStatus } from "@/lib/push/status";
 import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
 import type { NavItem } from "@/lib/auth/rbac";
 import {
@@ -14,6 +15,7 @@ export function AppShell({
   initialPendingBadges,
   isAdmin,
   canUsePush,
+  initialPushStatus,
   children,
 }: {
   session: SessionData;
@@ -21,6 +23,7 @@ export function AppShell({
   initialPendingBadges?: ShiftClosingPendingBadgeCounts;
   isAdmin?: boolean;
   canUsePush?: boolean;
+  initialPushStatus?: PushNotificationStatus | null;
   children: React.ReactNode;
 }) {
   return (
@@ -38,6 +41,7 @@ export function AppShell({
         initialPendingBadges={initialPendingBadges}
         isAdmin={isAdmin}
         canUsePush={canUsePush}
+        initialPushStatus={initialPushStatus}
       />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">

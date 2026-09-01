@@ -21,7 +21,6 @@ import type {
   ShiftClosingProposedData,
 } from "@/lib/shift-closing/types";
 import { interimDetailToProposed } from "@/lib/shift-closing/types";
-import { ensureShiftClosingLedgerSchema } from "@/lib/shift-closing/ensure-schema";
 import {
   notifyAdminsOfLedgerEditRequest,
   notifyRequesterOfEditRequestOutcome,
@@ -76,7 +75,6 @@ export async function listDailyRspPrices(
   tenantId: string,
   filters: { from?: string; to?: string } = {}
 ) {
-  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   const conditions = [eq(dailyRspPrices.tenantId, tenantId)];
   if (filters.from) {
@@ -111,7 +109,6 @@ export async function listMachineSlipEntriesRange(
   tenantId: string,
   filters: { from?: string; to?: string; machineNumber?: string } = {}
 ) {
-  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   const conditions = [eq(machineSlipEntries.tenantId, tenantId)];
   if (filters.from) {
@@ -153,7 +150,6 @@ export async function listInterimShiftClosings(
   tenantId: string,
   filters: { from?: string; to?: string; pumpNumber?: number } = {}
 ) {
-  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   const conditions = [eq(interimShiftClosings.tenantId, tenantId)];
   if (filters.from) {
@@ -364,7 +360,6 @@ export type ShiftClosingPendingBadgeCounts = {
 export async function countPendingEditRequests(
   tenantId: string
 ): Promise<ShiftClosingPendingBadgeCounts> {
-  await ensureShiftClosingLedgerSchema();
   const db = getDb();
 
   const [row] = await db
@@ -426,7 +421,6 @@ export async function getPendingEditRequests(
     limit?: number;
   } = {}
 ) {
-  await ensureShiftClosingLedgerSchema();
   const db = getDb();
   const conditions = [eq(shiftClosingEditRequests.tenantId, tenantId)];
   if (filters.status) {

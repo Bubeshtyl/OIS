@@ -284,20 +284,6 @@ export function SixAmShiftClosingForm({
     });
   }
 
-  function handleSlipReset() {
-    const preserved: Record<string, string> = {};
-    for (const group of SLIP_GROUPS) {
-      for (const nozzle of group.nozzles) {
-        const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
-        if (existingSlipKeys.has(key) && slipReadings[nozzle.id]) {
-          preserved[nozzle.id] = slipReadings[nozzle.id];
-        }
-      }
-    }
-    setSlipReadings(preserved);
-    toast.info("Cleared unsaved slip inputs.");
-  }
-
   return (
     <div className="space-y-6">
       <Card className="border shadow-xs">
@@ -614,18 +600,6 @@ export function SixAmShiftClosingForm({
                 )}
                 Save new readings
                 {newEntriesCount > 0 ? ` (${newEntriesCount})` : ""}
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isSavingSlips || isLoadingDate}
-                onClick={handleSlipReset}
-                className="h-9 w-full sm:w-auto px-5 text-xs font-semibold"
-              >
-                <RotateCcw className="mr-1.5 size-3.5" />
-                Reset unsaved
               </Button>
             </div>
           </form>
