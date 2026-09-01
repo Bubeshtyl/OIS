@@ -9,6 +9,11 @@ import {
 } from "@/lib/auth/role-defaults";
 import type { SessionData } from "@/lib/auth/session-config";
 import { getSession, requireSession } from "@/lib/auth/session";
+import {
+  hasCachedPermission,
+  isSystemAdminFromSession,
+  tenantAccessFromSession,
+} from "@/lib/auth/session-access";
 
 export const getPermissionsForRoleId = cache(
   async (roleId: string | null | undefined): Promise<Permission[]> => {
@@ -64,6 +69,9 @@ export async function sessionHasPermission(
   if (session.isPlatformAdmin) return false;
   if (!session.roleId) return false;
 
+  const cached = hasCachedPermission(session, permission);
+  if (cached !== null) return cached;
+
   const permissions = await getPermissionsForRoleId(session.roleId);
   return permissions.includes(permission);
 }
@@ -78,6 +86,15 @@ export async function requireTenantSession(): Promise<TenantSession> {
   if (session.isPlatformAdmin || !session.tenantId || !session.roleId) {
     throw new Error("Unauthorized");
   }
+
+  const cachedAccess = tenantAccessFromSession(session);
+  if (cachedAccess) {
+    if (!cachedAccess.isActive) {
+      throw new Error("Unauthorized");
+    }
+    return session as TenantSession;
+  }
+
   const access = await getTenantAccessState(session.tenantId);
   if (!access.isActive) {
     throw new Error("Unauthorized");
@@ -135,6 +152,14 @@ export const isSystemAdminRole = cache(
     return Boolean(role?.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME);
   }
 );
+
+export async function isSystemAdminForSession(
+  session: SessionData
+): Promise<boolean> {
+  const cached = isSystemAdminFromSession(session);
+  if (cached !== null) return cached;
+  return isSystemAdminRole(session.roleId);
+}
 
 /** All roles configured for a tenant, including the fixed system Admin role. */
 export async function listRolesForTenant(tenantId: string) {

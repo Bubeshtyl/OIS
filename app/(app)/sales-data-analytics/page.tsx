@@ -1,12 +1,14 @@
 import { Suspense } from "react";
-import { FootfallMetricsChart } from "@/components/sales-data-analytics/footfall-metrics-chart";
+import {
+  FootfallMetricsChart,
+  SalesBreakdownPieChart,
+  SalesMetricsChart,
+  SalesMetricsLineChart,
+} from "@/components/sales-data-analytics/analytics-charts-dynamic";
 import { FootfallMetricsTable } from "@/components/sales-data-analytics/footfall-metrics-table";
 import { FootfallProductTabs } from "@/components/sales-data-analytics/footfall-product-tabs";
 import { SalesAnalyticsFilters } from "@/components/sales-data-analytics/sales-analytics-filters";
-import { SalesBreakdownPieChart } from "@/components/sales-data-analytics/sales-breakdown-pie-chart";
 import { SalesGranularityTabs } from "@/components/sales-data-analytics/sales-granularity-tabs";
-import { SalesMetricsChart } from "@/components/sales-data-analytics/sales-metrics-chart";
-import { SalesMetricsLineChart } from "@/components/sales-data-analytics/sales-metrics-line-chart";
 import { PageHeader } from "@/components/shared/page-blocks";
 import {
   Card,

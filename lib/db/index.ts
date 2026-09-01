@@ -25,16 +25,14 @@ function getConnectionString() {
     );
   }
 
-  // In dev, prefer session/direct pooler (5432). The transaction pooler (6543)
-  // often causes statement timeouts and multi-second page loads under parallel queries.
-  if (process.env.NODE_ENV === "development") {
-    if (process.env.DATABASE_MIGRATIONS_URL) {
-      return process.env.DATABASE_MIGRATIONS_URL;
-    }
+  // Prefer session/direct pooler (5432). Transaction pooler (6543) causes
+  // statement timeouts under parallel queries in both dev and production.
+  if (process.env.DATABASE_MIGRATIONS_URL) {
+    return process.env.DATABASE_MIGRATIONS_URL;
+  }
 
-    if (usesTransactionPooler(databaseUrl)) {
-      return toSessionPoolerUrl(databaseUrl);
-    }
+  if (usesTransactionPooler(databaseUrl)) {
+    return toSessionPoolerUrl(databaseUrl);
   }
 
   return databaseUrl;

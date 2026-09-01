@@ -2,10 +2,9 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { RspLedger } from "@/components/shift-closing/rsp-ledger";
 import {
-  isSystemAdminRole,
+  isSystemAdminForSession,
   requireTenantSession,
 } from "@/lib/auth/permissions";
-import { hasPermission } from "@/lib/auth/rbac";
 import {
   getPendingEditRequests,
   listDailyRspPrices,
@@ -15,11 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RspLedgerPage() {
   const session = await requireTenantSession();
-  if (!(await hasPermission(session, "shift-closing:read"))) {
-    redirect("/");
-  }
-
-  const isAdmin = await isSystemAdminRole(session.roleId);
+  const isAdmin = await isSystemAdminForSession(session);
 
   const [rows, pendingRequests, requestHistory] = await Promise.all([
     listDailyRspPrices(session.tenantId),

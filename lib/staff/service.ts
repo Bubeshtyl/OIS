@@ -147,7 +147,6 @@ function toStaffMember(row: {
 }
 
 export async function listStaff(tenantId: string): Promise<StaffMember[]> {
-  await ensureStaffProfileColumns();
   const db = getDb();
   const rows = await db
     .select(staffColumns)
@@ -160,7 +159,6 @@ export async function listStaff(tenantId: string): Promise<StaffMember[]> {
 }
 
 export async function getStaffById(tenantId: string, staffId: string) {
-  await ensureStaffProfileColumns();
   const db = getDb();
   const [row] = await db
     .select({

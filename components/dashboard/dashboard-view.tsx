@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Container, Droplet, Scale, SquareArrowUp } from "lucide-react";
 import {
@@ -10,7 +11,7 @@ import { StockSummaryTable } from "@/components/dashboard/stock-summary-table";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { QuickActionTiles } from "@/components/dashboard/quick-action-tiles";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
-import { SalesChart } from "@/components/dashboard/sales-chart";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StockUnitToggle } from "@/components/shared/stock-unit-toggle";
 import { useStockDisplayUnit } from "@/components/shared/use-stock-display-unit";
 import {
@@ -26,6 +27,14 @@ import {
   formatStockQuantity,
   type StockDisplayUnit,
 } from "@/lib/format";
+
+const SalesChart = dynamic(
+  () =>
+    import("@/components/dashboard/sales-chart").then((mod) => mod.SalesChart),
+  {
+    loading: () => <Skeleton className="h-72 w-full rounded-xl" />,
+  }
+);
 
 type ProductRow = {
   id: string;

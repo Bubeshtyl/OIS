@@ -5,7 +5,9 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { roles, tenants, users } from "@/lib/db/schema";
-import { getDefaultPath } from "@/lib/auth/rbac";
+import { getPermissionsForRoleId } from "@/lib/auth/permissions";
+import { getDefaultPath, getDefaultPathSync } from "@/lib/auth/rbac";
+import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
 import {
   destroySession,
   getSession,
@@ -40,7 +42,9 @@ export async function loginAction(
         isPlatformAdmin: users.isPlatformAdmin,
         isActive: users.isActive,
         roleName: roles.name,
+        roleIsSystem: roles.isSystem,
         tenantIsActive: tenants.isActive,
+        tenantOnboardingComplete: tenants.onboardingComplete,
       })
       .from(users)
       .leftJoin(roles, eq(users.roleId, roles.id))
@@ -76,6 +80,10 @@ export async function loginAction(
       .set({ lastLoginAt: new Date() })
       .where(eq(users.id, user.id));
 
+    const permissions = user.isPlatformAdmin
+      ? []
+      : await getPermissionsForRoleId(user.roleId);
+
     await saveSession({
       userId: user.id,
       username: user.username,
@@ -85,6 +93,12 @@ export async function loginAction(
       roleName: user.roleName,
       isPlatformAdmin: user.isPlatformAdmin,
       isLoggedIn: true,
+      permissions,
+      tenantOnboardingComplete: user.tenantOnboardingComplete ?? false,
+      tenantIsActive: user.tenantIsActive ?? true,
+      isSystemAdmin: Boolean(
+        user.roleIsSystem && user.roleName === SYSTEM_ADMIN_ROLE_NAME
+      ),
     });
   } catch {
     return {
@@ -94,7 +108,7 @@ export async function loginAction(
   }
 
   const session = await getSession();
-  redirect(await getDefaultPath(session));
+  redirect(getDefaultPathSync(session) ?? (await getDefaultPath(session)));
 }
 
 export async function logoutAction() {

@@ -1,10 +1,34 @@
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
+import { hydrateSessionIfNeeded } from "@/lib/auth/hydrate-session";
+import { sessionHasCachedPermissions } from "@/lib/auth/session-access";
 import {
   defaultSession,
   sessionOptions,
   type SessionData,
 } from "./session-config";
+
+async function maybeHydrateAndSave(session: SessionData) {
+  if (
+    !session.isLoggedIn ||
+    session.isPlatformAdmin ||
+    sessionHasCachedPermissions(session) ||
+    !session.tenantId ||
+    !session.roleId
+  ) {
+    return session;
+  }
+
+  const hydrated = await hydrateSessionIfNeeded(session);
+  const cookieStore = await cookies();
+  const ironSession = await getIronSession<SessionData>(
+    cookieStore,
+    sessionOptions
+  );
+  Object.assign(ironSession, hydrated);
+  await ironSession.save();
+  return hydrated;
+}
 
 export async function getSession() {
   const cookieStore = await cookies();
@@ -17,7 +41,7 @@ export async function getSession() {
     return { ...defaultSession, ...session };
   }
 
-  return session;
+  return maybeHydrateAndSave(session);
 }
 
 export async function requireSession() {

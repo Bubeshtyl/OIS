@@ -1,9 +1,15 @@
+import { cache } from "react";
 import {
   getPermissionsForRoleId,
   getTenantAccessState,
-  getTenantOnboardingComplete,
   sessionHasPermission,
 } from "@/lib/auth/permissions";
+import {
+  hasCachedPermission,
+  isSystemAdminFromSession,
+  sessionHasCachedPermissions,
+  tenantAccessFromSession,
+} from "@/lib/auth/session-access";
 import {
   ADMIN_PERMISSIONS,
   type Permission,
@@ -299,30 +305,102 @@ export async function hasPermission(
   session: SessionData,
   permission: Permission
 ): Promise<boolean> {
+  const cached = hasCachedPermission(session, permission);
+  if (cached !== null) return cached;
   return sessionHasPermission(session, permission);
 }
 
-export async function canWriteInventory(session: SessionData): Promise<boolean> {
-  return (
-    (await hasPermission(session, "receive:write")) ||
-    (await hasPermission(session, "transfer:write")) ||
-    (await hasPermission(session, "sales:write"))
-  );
+function resolveTenantAccess(session: SessionData) {
+  const cached = tenantAccessFromSession(session);
+  if (cached) return Promise.resolve(cached);
+  if (!session.tenantId) return Promise.resolve(null);
+  return getTenantAccessState(session.tenantId);
+}
+
+export function getDefaultPathSync(session: SessionData): string | null {
+  if (session.isPlatformAdmin) return "/platform";
+  const access = tenantAccessFromSession(session);
+  if (access) {
+    return access.onboardingComplete ? "/" : "/onboarding";
+  }
+  return null;
 }
 
 export async function getDefaultPath(session: SessionData): Promise<string> {
-  if (session.isPlatformAdmin) return "/platform";
+  const cached = getDefaultPathSync(session);
+  if (cached) return cached;
   if (session.tenantId) {
-    const complete = await getTenantOnboardingComplete(session.tenantId);
-    if (!complete) return "/onboarding";
+    const access = await getTenantAccessState(session.tenantId);
+    if (!access.onboardingComplete) return "/onboarding";
   }
   return "/";
+}
+
+export function canAccessRouteSync(
+  session: SessionData,
+  pathname: string
+): boolean | null {
+  if (session.isPlatformAdmin) {
+    return (
+      pathname === "/platform" ||
+      pathname.startsWith("/platform/") ||
+      pathname === "/login"
+    );
+  }
+
+  if (pathname === "/platform" || pathname.startsWith("/platform/")) {
+    return false;
+  }
+
+  const access = tenantAccessFromSession(session);
+  if (session.tenantId) {
+    if (access?.isActive === false) return false;
+    if (!access) return null;
+
+    if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
+      if (!session.roleId) return false;
+      return !access.onboardingComplete;
+    }
+
+    if (!access.onboardingComplete) return false;
+  } else if (
+    pathname === "/onboarding" ||
+    pathname.startsWith("/onboarding/")
+  ) {
+    return false;
+  }
+
+  if (pathname === "/") return true;
+  if (!sessionHasCachedPermissions(session)) return null;
+
+  const routePermissions = buildRoutePermissions();
+  const routes = Object.keys(routePermissions).sort(
+    (a, b) => b.length - a.length
+  );
+
+  for (const route of routes) {
+    const matches =
+      route === "/"
+        ? pathname === "/"
+        : pathname === route || pathname.startsWith(`${route}/`);
+
+    if (matches) {
+      const permission = routePermissions[route];
+      const perms = Array.isArray(permission) ? permission : [permission];
+      return perms.some((p) => session.permissions.includes(p));
+    }
+  }
+
+  return true;
 }
 
 export async function canAccessRoute(
   session: SessionData,
   pathname: string
 ): Promise<boolean> {
+  const cached = canAccessRouteSync(session, pathname);
+  if (cached !== null) return cached;
+
   if (session.isPlatformAdmin) {
     return (
       pathname === "/platform" ||
@@ -381,7 +459,7 @@ export async function canAccessRoute(
   return true;
 }
 
-export async function getNavItems(session: SessionData): Promise<NavItem[]> {
+export const getNavItems = cache(async (session: SessionData): Promise<NavItem[]> => {
   if (session.isPlatformAdmin) {
     return [
       {
@@ -392,13 +470,15 @@ export async function getNavItems(session: SessionData): Promise<NavItem[]> {
     ];
   }
 
-  if (session.tenantId) {
-    const complete = await getTenantOnboardingComplete(session.tenantId);
-    if (!complete) return [];
+  const access = await resolveTenantAccess(session);
+  if (session.tenantId && access && !access.onboardingComplete) {
+    return [];
   }
 
   const catalog = getNavCatalog();
-  const permissions = await getPermissionsForRoleId(session.roleId);
+  const permissions = sessionHasCachedPermissions(session)
+    ? session.permissions
+    : await getPermissionsForRoleId(session.roleId);
 
   return catalog
     .filter(
@@ -412,6 +492,14 @@ export async function getNavItems(session: SessionData): Promise<NavItem[]> {
       subgroup,
       subgroupKey,
     }));
+});
+
+export async function canWriteInventory(session: SessionData): Promise<boolean> {
+  return (
+    (await hasPermission(session, "receive:write")) ||
+    (await hasPermission(session, "transfer:write")) ||
+    (await hasPermission(session, "sales:write"))
+  );
 }
 
 /** Permissions to persist when a grantable catalog route is enabled. */

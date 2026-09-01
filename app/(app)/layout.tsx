@@ -1,8 +1,12 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
-import { getTenantAccessState, isSystemAdminRole } from "@/lib/auth/permissions";
+import {
+  getTenantAccessState,
+  isSystemAdminForSession,
+} from "@/lib/auth/permissions";
 import { getNavItems, hasPermission } from "@/lib/auth/rbac";
 import { destroySession, getSession } from "@/lib/auth/session";
+import { tenantAccessFromSession } from "@/lib/auth/session-access";
 import { getPushNotificationStatus } from "@/lib/push/status";
 import type { PushNotificationStatus } from "@/lib/push/status";
 import { isPushConfigured } from "@/lib/push/vapid";
@@ -19,7 +23,9 @@ export default async function AppLayout({
   }
 
   if (session.tenantId && !session.isPlatformAdmin) {
-    const access = await getTenantAccessState(session.tenantId);
+    const cachedAccess = tenantAccessFromSession(session);
+    const access =
+      cachedAccess ?? (await getTenantAccessState(session.tenantId));
     if (!access.isActive) {
       await destroySession();
       redirect("/login");
@@ -36,7 +42,7 @@ export default async function AppLayout({
   if (session.tenantId && session.roleId && !session.isPlatformAdmin) {
     const [shiftClosingRead, adminRole] = await Promise.all([
       hasPermission(session, "shift-closing:read"),
-      isSystemAdminRole(session.roleId),
+      isSystemAdminForSession(session),
     ]);
 
     canUsePush = shiftClosingRead;

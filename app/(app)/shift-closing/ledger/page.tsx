@@ -1,11 +1,9 @@
-import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { ShiftClosingLedger } from "@/components/shift-closing/shift-closing-ledger";
 import {
-  isSystemAdminRole,
+  isSystemAdminForSession,
   requireTenantSession,
 } from "@/lib/auth/permissions";
-import { hasPermission } from "@/lib/auth/rbac";
 import {
   getPendingEditRequests,
   listInterimShiftClosings,
@@ -16,11 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ShiftClosingLedgerPage() {
   const session = await requireTenantSession();
-  if (!(await hasPermission(session, "shift-closing:read"))) {
-    redirect("/");
-  }
-
-  const isAdmin = await isSystemAdminRole(session.roleId);
+  const isAdmin = await isSystemAdminForSession(session);
 
   const [slipRows, interimRows, pendingRequests, requestHistory] =
     await Promise.all([

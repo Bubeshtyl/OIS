@@ -288,51 +288,186 @@ async function getEntityCurrentData(
   entityType: ShiftClosingEntityType,
   entityId: string
 ): Promise<ShiftClosingProposedData | Record<string, unknown> | null> {
+  const map = await batchGetEntityCurrentData(tenantId, [
+    { entityType, entityId },
+  ]);
+  return map.get(entityCacheKey(entityType, entityId)) ?? null;
+}
+
+function entityCacheKey(
+  entityType: ShiftClosingEntityType,
+  entityId: string
+) {
+  return `${entityType}:${entityId}`;
+}
+
+async function batchGetEntityCurrentData(
+  tenantId: string,
+  entities: Array<{ entityType: ShiftClosingEntityType; entityId: string }>
+): Promise<
+  Map<string, ShiftClosingProposedData | Record<string, unknown> | null>
+> {
+  const result = new Map<
+    string,
+    ShiftClosingProposedData | Record<string, unknown> | null
+  >();
+
+  if (entities.length === 0) return result;
+
+  const rspIds: string[] = [];
+  const slipIds: string[] = [];
+  const interimIds: string[] = [];
+
+  for (const entity of entities) {
+    if (entity.entityType === "daily_rsp") rspIds.push(entity.entityId);
+    else if (entity.entityType === "machine_slip_entry") {
+      slipIds.push(entity.entityId);
+    } else {
+      interimIds.push(entity.entityId);
+    }
+  }
+
   const db = getDb();
 
-  if (entityType === "daily_rsp") {
-    const [row] = await db
+  if (rspIds.length > 0) {
+    const rows = await db
       .select()
       .from(dailyRspPrices)
       .where(
         and(
           eq(dailyRspPrices.tenantId, tenantId),
-          eq(dailyRspPrices.id, entityId)
+          inArray(dailyRspPrices.id, rspIds)
         )
-      )
-      .limit(1);
-    if (!row) return null;
-    return {
-      priceDate: row.priceDate,
-      hsdPrice: row.hsdPrice,
-      msPrice: row.msPrice,
-      speedPrice: row.speedPrice,
-    } satisfies DailyRspProposedData;
+      );
+
+    for (const row of rows) {
+      result.set(entityCacheKey("daily_rsp", row.id), {
+        priceDate: row.priceDate,
+        hsdPrice: row.hsdPrice,
+        msPrice: row.msPrice,
+        speedPrice: row.speedPrice,
+      } satisfies DailyRspProposedData);
+    }
   }
 
-  if (entityType === "machine_slip_entry") {
-    const [row] = await db
+  if (slipIds.length > 0) {
+    const rows = await db
       .select()
       .from(machineSlipEntries)
       .where(
         and(
           eq(machineSlipEntries.tenantId, tenantId),
-          eq(machineSlipEntries.id, entityId)
+          inArray(machineSlipEntries.id, slipIds)
         )
-      )
-      .limit(1);
-    if (!row) return null;
-    return {
-      entryDate: row.entryDate,
-      machineNumber: row.machineNumber,
-      nozzleNumber: row.nozzleNumber,
-      reading: row.reading,
-    } satisfies MachineSlipProposedData;
+      );
+
+    for (const row of rows) {
+      result.set(entityCacheKey("machine_slip_entry", row.id), {
+        entryDate: row.entryDate,
+        machineNumber: row.machineNumber,
+        nozzleNumber: row.nozzleNumber,
+        reading: row.reading,
+      } satisfies MachineSlipProposedData);
+    }
   }
 
-  const detail = await getInterimShiftClosingById(tenantId, entityId);
-  if (!detail) return null;
-  return interimDetailToProposed(detail);
+  if (interimIds.length > 0) {
+    const staffUser = alias(users, "batch_staff");
+    const creatorUser = alias(users, "batch_creator");
+
+    const closings = await db
+      .select({
+        id: interimShiftClosings.id,
+        pumpNumber: interimShiftClosings.pumpNumber,
+        pumpName: interimShiftClosings.pumpName,
+        staffId: interimShiftClosings.staffId,
+        staffName: staffUser.name,
+        shiftDate: interimShiftClosings.shiftDate,
+        totalGross: interimShiftClosings.totalGross,
+        totalTest: interimShiftClosings.totalTest,
+        totalNetLitres: interimShiftClosings.totalNetLitres,
+        totalSalesAmount: interimShiftClosings.totalSalesAmount,
+        totalCollected: interimShiftClosings.totalCollected,
+        difference: interimShiftClosings.difference,
+        revision: interimShiftClosings.revision,
+        createdAt: interimShiftClosings.createdAt,
+        createdByName: creatorUser.name,
+      })
+      .from(interimShiftClosings)
+      .leftJoin(staffUser, eq(interimShiftClosings.staffId, staffUser.id))
+      .leftJoin(creatorUser, eq(interimShiftClosings.createdBy, creatorUser.id))
+      .where(
+        and(
+          eq(interimShiftClosings.tenantId, tenantId),
+          inArray(interimShiftClosings.id, interimIds)
+        )
+      );
+
+    const [nozzles, payments] = await Promise.all([
+      db
+        .select()
+        .from(interimNozzleReadings)
+        .where(inArray(interimNozzleReadings.shiftClosingId, interimIds)),
+      db
+        .select()
+        .from(interimPaymentCollections)
+        .where(inArray(interimPaymentCollections.shiftClosingId, interimIds)),
+    ]);
+
+    const nozzlesByClosing = new Map<string, typeof nozzles>();
+    for (const nozzle of nozzles) {
+      const list = nozzlesByClosing.get(nozzle.shiftClosingId) ?? [];
+      list.push(nozzle);
+      nozzlesByClosing.set(nozzle.shiftClosingId, list);
+    }
+
+    const paymentByClosing = new Map(
+      payments.map((payment) => [payment.shiftClosingId, payment])
+    );
+
+    for (const closing of closings) {
+      const payment = paymentByClosing.get(closing.id);
+      const detail: InterimShiftClosingDetail = {
+        ...closing,
+        nozzleReadings: (nozzlesByClosing.get(closing.id) ?? []).map((n) => ({
+          id: n.id,
+          nozzleId: n.nozzleId,
+          nozzleName: n.nozzleName,
+          openingReading: n.openingReading,
+          closingReading: n.closingReading,
+          testVolume: n.testVolume,
+          netVolume: n.netVolume,
+          ratePerLitre: n.ratePerLitre,
+          salesAmount: n.salesAmount,
+        })),
+        paymentCollection: payment
+          ? {
+              cashAmount: payment.cashAmount,
+              cashDenominations: payment.cashDenominations as Record<
+                string,
+                unknown
+              > | null,
+              pinelabsCard: payment.pinelabsCard,
+              pinelabsUpi: payment.pinelabsUpi,
+              pinelabsAlp: payment.pinelabsAlp,
+              pos: payment.pos,
+              qr: payment.qr,
+              ufill: payment.ufill,
+              bill: payment.bill,
+              expenses: payment.expenses,
+              totalCollected: payment.totalCollected,
+            }
+          : null,
+      };
+
+      result.set(
+        entityCacheKey("interim_shift_closing", closing.id),
+        interimDetailToProposed(detail)
+      );
+    }
+  }
+
+  return result;
 }
 
 function entityLabel(
@@ -385,13 +520,12 @@ async function mapEditRequestRow(
   tenantId: string,
   row: typeof shiftClosingEditRequests.$inferSelect,
   requesterName: string | null,
-  reviewerName: string | null
+  reviewerName: string | null,
+  entityData?: ShiftClosingProposedData | Record<string, unknown> | null
 ): Promise<EditRequestListItem> {
-  const currentData = await getEntityCurrentData(
-    tenantId,
-    row.entityType,
-    row.entityId
-  );
+  const currentData =
+    entityData ??
+    (await getEntityCurrentData(tenantId, row.entityType, row.entityId));
 
   return {
     id: row.id,
@@ -465,13 +599,24 @@ export async function getPendingEditRequests(
 
   const rows = await query;
 
+  const entityDataMap = await batchGetEntityCurrentData(
+    tenantId,
+    rows.map((r) => ({
+      entityType: r.request.entityType,
+      entityId: r.request.entityId,
+    }))
+  );
+
   return Promise.all(
     rows.map((r) =>
       mapEditRequestRow(
         tenantId,
         r.request,
         r.requesterName,
-        r.reviewerName
+        r.reviewerName,
+        entityDataMap.get(
+          entityCacheKey(r.request.entityType, r.request.entityId)
+        ) ?? null
       )
     )
   );

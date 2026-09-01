@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
-  isSystemAdminRole,
+  isSystemAdminForSession,
   requireTenantSession,
 } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/rbac";
@@ -400,7 +400,7 @@ export async function approveShiftClosingEditAction(
 ): Promise<ShiftClosingActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isSystemAdminForSession(session))) {
       return { success: false, error: "Only admins can approve edits." };
     }
 
@@ -428,7 +428,7 @@ export async function rejectShiftClosingEditAction(
 ): Promise<ShiftClosingActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isSystemAdminForSession(session))) {
       return { success: false, error: "Only admins can reject edits." };
     }
 
@@ -499,7 +499,13 @@ export async function getPendingEditRequestBadgeCountsAction(): Promise<{
 }> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (session.isSystemAdmin === false) {
+      return { success: true, data: { rsp: 0, ledger: 0 } };
+    }
+    if (
+      session.isSystemAdmin !== true &&
+      !(await isSystemAdminForSession(session))
+    ) {
       return { success: true, data: { rsp: 0, ledger: 0 } };
     }
 

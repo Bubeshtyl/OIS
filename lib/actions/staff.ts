@@ -11,7 +11,6 @@ import { getDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import {
   countActiveAdmins,
-  ensureStaffProfileColumns,
   findUserIdByUsername,
   getStaffById,
   isAdminStaff,
@@ -112,7 +111,6 @@ export async function saveStaffAction(
     return { success: false, error };
   }
 
-  await ensureStaffProfileColumns();
 
   const parsed = staffSchema.safeParse({
     id: formData.get("id") || undefined,

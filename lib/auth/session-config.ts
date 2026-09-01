@@ -1,4 +1,5 @@
 import { SessionOptions } from "iron-session";
+import type { Permission } from "@/lib/auth/role-defaults";
 
 export interface SessionData {
   userId: string;
@@ -9,6 +10,11 @@ export interface SessionData {
   roleName: string | null;
   isPlatformAdmin: boolean;
   isLoggedIn: boolean;
+  /** Cached at login to avoid DB round trips on every request. */
+  permissions?: Permission[];
+  tenantOnboardingComplete?: boolean;
+  tenantIsActive?: boolean;
+  isSystemAdmin?: boolean;
 }
 
 export const defaultSession: SessionData = {
