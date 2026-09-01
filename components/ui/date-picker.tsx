@@ -59,9 +59,11 @@ export function DatePicker({
       )}
     >
       <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
-      <span className="truncate">
-        {hasValue ? formatRangeLabel(value!, value!) : placeholder}
-      </span>
+      {hasValue || placeholder ? (
+        <span className="truncate">
+          {hasValue ? formatRangeLabel(value!, value!) : placeholder}
+        </span>
+      ) : null}
     </Button>
   );
 

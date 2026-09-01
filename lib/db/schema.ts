@@ -128,6 +128,19 @@ export const users = pgTable("users", {
   isPlatformAdmin: boolean("is_platform_admin").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  joiningDate: date("joining_date"),
+  primaryPhone: text("primary_phone"),
+  secondaryPhone: text("secondary_phone"),
+  doorNo: text("door_no"),
+  street: text("street"),
+  area: text("area"),
+  townCity: text("town_city"),
+  district: text("district"),
+  pincode: text("pincode"),
+  aadharNumber: text("aadhar_number"),
+  guardianName: text("guardian_name"),
+  guardianRelationship: text("guardian_relationship"),
+  guardianPhone: text("guardian_phone"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
@@ -697,6 +710,9 @@ export const interimShiftClosings = pgTable(
     }),
     pumpNumber: integer("pump_number").notNull(),
     pumpName: text("pump_name").notNull(),
+    staffId: uuid("staff_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     shiftDate: timestamp("shift_date", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -1024,9 +1040,15 @@ export const interimShiftClosingsRelations = relations(
       fields: [interimShiftClosings.pumpId],
       references: [stationPumps.id],
     }),
+    staff: one(users, {
+      fields: [interimShiftClosings.staffId],
+      references: [users.id],
+      relationName: "interimShiftClosingStaff",
+    }),
     creator: one(users, {
       fields: [interimShiftClosings.createdBy],
       references: [users.id],
+      relationName: "interimShiftClosingCreator",
     }),
     nozzles: many(interimNozzleReadings),
     paymentCollection: one(interimPaymentCollections),

@@ -192,6 +192,7 @@ export interface SaveInterimShiftClosingInput {
   pumpId?: string | null;
   pumpNumber: number;
   pumpName: string;
+  staffId: string;
   shiftDate?: Date;
   totalGross: number;
   totalTest: number;
@@ -227,6 +228,7 @@ export async function saveInterimShiftClosing(
         pumpId: input.pumpId || null,
         pumpNumber: input.pumpNumber,
         pumpName: input.pumpName,
+        staffId: input.staffId,
         shiftDate: input.shiftDate || new Date(),
         totalGross: String(input.totalGross),
         totalTest: String(input.totalTest),

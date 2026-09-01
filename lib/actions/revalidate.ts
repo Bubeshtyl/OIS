@@ -24,9 +24,18 @@ export function revalidateProductPages() {
   revalidateInventoryPages();
 }
 
+export function revalidateStaffPages() {
+  revalidatePath("/staff");
+  revalidatePath("/admin/access");
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/teams");
+}
+
 export function revalidateUserPages() {
   revalidatePath("/admin/users");
   revalidatePath("/admin/teams");
+  revalidatePath("/staff");
+  revalidatePath("/admin/access");
 }
 
 export function revalidateTeamPages() {
@@ -48,6 +57,7 @@ export function revalidateSettingsPages() {
 
 export function revalidateAccessPages() {
   revalidatePath("/admin/access");
+  revalidatePath("/staff");
   // Nav and route guards depend on role permissions for the whole app.
   revalidatePath("/", "layout");
 }

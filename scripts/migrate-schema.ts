@@ -1309,6 +1309,7 @@ async function migrateToMultiTenant(db: Db) {
       pump_id uuid REFERENCES station_pumps(id) ON DELETE SET NULL,
       pump_number integer NOT NULL,
       pump_name text NOT NULL,
+      staff_id uuid REFERENCES users(id) ON DELETE SET NULL,
       shift_date timestamptz NOT NULL DEFAULT now(),
       total_gross numeric(14, 3) NOT NULL DEFAULT 0,
       total_test numeric(14, 3) NOT NULL DEFAULT 0,
@@ -1325,6 +1326,16 @@ async function migrateToMultiTenant(db: Db) {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS interim_shift_closings_tenant_date_idx
       ON interim_shift_closings (tenant_id, shift_date, pump_number)
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE interim_shift_closings
+      ADD COLUMN IF NOT EXISTS staff_id uuid REFERENCES users(id) ON DELETE SET NULL
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS interim_shift_closings_staff_idx
+      ON interim_shift_closings (staff_id)
   `);
 
   await db.execute(sql`
@@ -1369,6 +1380,46 @@ async function migrateToMultiTenant(db: Db) {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS interim_payment_collections_closing_idx
       ON interim_payment_collections (shift_closing_id)
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS joining_date date
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS primary_phone text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_phone text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS door_no text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS street text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS area text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS town_city text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS district text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS aadhar_number text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS guardian_name text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS guardian_relationship text
+  `);
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS guardian_phone text
   `);
 
   console.log("Multi-tenant migration applied.");
