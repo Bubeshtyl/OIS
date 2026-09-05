@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   Building2,
@@ -67,6 +67,47 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+/** Daily hotspots only — hover/focus prefetch, never viewport prefetch. */
+const HOVER_PREFETCH_PATHS = new Set([
+  "/",
+  "/shift-closing/6am",
+  "/shift-closing/interim",
+  "/receive",
+]);
+
+function SidebarNavLink({
+  href,
+  onClick,
+  className,
+  children,
+  onMouseEnter,
+  onFocus,
+  ...rest
+}: ComponentProps<typeof Link>) {
+  const router = useRouter();
+  const hrefPath = typeof href === "string" ? href : href.pathname ?? "";
+  const canHoverPrefetch = HOVER_PREFETCH_PATHS.has(hrefPath);
+
+  return (
+    <Link
+      href={href}
+      prefetch={false}
+      onClick={onClick}
+      className={className}
+      {...rest}
+      onMouseEnter={(event) => {
+        if (canHoverPrefetch) void router.prefetch(hrefPath);
+        onMouseEnter?.(event);
+      }}
+      onFocus={(event) => {
+        if (canHoverPrefetch) void router.prefetch(hrefPath);
+        onFocus?.(event);
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
 const iconMap: Record<NavIcon, LucideIcon> = {
   home: Home,
   dashboard: LayoutDashboard,
@@ -164,7 +205,7 @@ function NavSubLink({
       <SidebarMenuSubButton
         isActive={active}
         className={className}
-        render={<Link href={item.href} prefetch={false} onClick={onNavigate} />}
+        render={<SidebarNavLink href={item.href} onClick={onNavigate} />}
       >
         <SubIcon className="size-4" />
         <span className="min-w-0 truncate">{item.label}</span>
@@ -210,7 +251,7 @@ function NestedCollapsibleSubgroup({
           <SidebarMenuSubButton
             isActive={parentActive}
             className="min-w-0 flex-1"
-            render={<Link href={parent.href} prefetch={false} onClick={onNavigate} />}
+            render={<SidebarNavLink href={parent.href} onClick={onNavigate} />}
           >
             <SubIcon className="size-4" />
             <span>{parent.label}</span>
@@ -382,9 +423,9 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-0 px-4 pt-5 group-data-[collapsible=icon]:px-3 group-data-[collapsible=icon]:pt-4">
-        <Link href="/" prefetch={false} onClick={closeMobileSidebar} className="outline-none">
+        <SidebarNavLink href="/" onClick={closeMobileSidebar} className="outline-none">
           <AppLogo variant="sidebar" />
-        </Link>
+        </SidebarNavLink>
       </SidebarHeader>
 
       <SidebarDivider />
@@ -404,7 +445,7 @@ export function AppSidebar({
                       tooltip={item.label}
                       className="h-10 rounded-xl"
                       render={
-                        <Link href={item.href} prefetch={false} onClick={closeMobileSidebar} />
+                        <SidebarNavLink href={item.href} onClick={closeMobileSidebar} />
                       }
                     >
                       <Icon className="size-[1.125rem]" />
