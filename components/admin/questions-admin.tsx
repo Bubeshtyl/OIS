@@ -23,7 +23,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -36,19 +35,20 @@ import {
 
 const initialState: ActionState = { success: false };
 
-function QuestionFormSheet({
+function QuestionFormDialog({
+  open,
+  onOpenChange,
   question,
   nextOrder,
   questions,
-  children,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   question?: TicketQuestion;
   nextOrder: number;
   questions: TicketQuestion[];
-  children: React.ReactElement;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(
     saveQuestionAction,
     initialState
@@ -60,48 +60,75 @@ function QuestionFormSheet({
   const [dependsOnQuestionId, setDependsOnQuestionId] = useState(
     question?.dependsOnQuestionId ?? ""
   );
-  const [subChoicesByParent, setSubChoicesByParent] = useState<Record<string, string>>(
-    () => {
-      const initial: Record<string, string> = {};
-      if (question?.choicesByParent) {
-        for (const [choice, subChoices] of Object.entries(question.choicesByParent)) {
-          initial[choice] = subChoices.join(", ");
-        }
+  const [subChoicesByParent, setSubChoicesByParent] = useState<
+    Record<string, string>
+  >(() => {
+    const initial: Record<string, string> = {};
+    if (question?.choicesByParent) {
+      for (const [choice, subChoices] of Object.entries(
+        question.choicesByParent
+      )) {
+        initial[choice] = subChoices.join(", ");
       }
-      return initial;
     }
-  );
+    return initial;
+  });
 
   const parentCandidates = questions.filter(
     (q) => q.answerType === "CHOICE" && q.id !== question?.id
   );
-  const parentQuestion = parentCandidates.find((q) => q.id === dependsOnQuestionId);
+  const parentQuestion = parentCandidates.find(
+    (q) => q.id === dependsOnQuestionId
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setIsActive(question?.isActive ?? true);
+    setAnswerType(question?.answerType ?? "TEXT");
+    setDependsOnQuestionId(question?.dependsOnQuestionId ?? "");
+    const initial: Record<string, string> = {};
+    if (question?.choicesByParent) {
+      for (const [choice, subChoices] of Object.entries(
+        question.choicesByParent
+      )) {
+        initial[choice] = subChoices.join(", ");
+      }
+    }
+    setSubChoicesByParent(initial);
+  }, [open, question]);
 
   useEffect(() => {
     if (state.success) {
       toast.success(state.message);
-      setOpen(false);
+      onOpenChange(false);
       router.refresh();
     }
     if (state.error) toast.error(state.error);
-  }, [state, router]);
+  }, [state, router, onOpenChange]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={children} />
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(90vh,32rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{question ? "Edit Question" : "Add Question"}</DialogTitle>
+          <DialogTitle>
+            {question ? "Edit Question" : "Add Question"}
+          </DialogTitle>
         </DialogHeader>
-        <form action={formAction} className="space-y-3">
-          {question && <input type="hidden" name="id" value={question.id} />}
+        <form action={formAction} className="space-y-3" key={question?.id ?? "new"}>
+          {question ? <input type="hidden" name="id" value={question.id} /> : null}
           <input type="hidden" name="isActive" value={String(isActive)} />
           <input type="hidden" name="answerType" value={answerType} />
-          <input type="hidden" name="dependsOnQuestionId" value={dependsOnQuestionId} />
+          <input
+            type="hidden"
+            name="dependsOnQuestionId"
+            value={dependsOnQuestionId}
+          />
           <input
             type="hidden"
             name="choicesByParent"
-            value={dependsOnQuestionId ? JSON.stringify(subChoicesByParent) : ""}
+            value={
+              dependsOnQuestionId ? JSON.stringify(subChoicesByParent) : ""
+            }
           />
           <div className="space-y-2">
             <Label htmlFor="order">Order *</Label>
@@ -136,7 +163,10 @@ function QuestionFormSheet({
                 { value: "CHOICE", label: "Choice" },
               ]}
             >
-              <SelectTrigger className="w-full" disabled={Boolean(dependsOnQuestionId)}>
+              <SelectTrigger
+                className="w-full"
+                disabled={Boolean(dependsOnQuestionId)}
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -148,8 +178,8 @@ function QuestionFormSheet({
           <div className="space-y-2">
             <Label>Depends on (optional)</Label>
             <p className="text-xs text-muted-foreground">
-              Only ask this question when a specific answer was given to an earlier
-              Choice question.
+              Only ask this question when a specific answer was given to an
+              earlier Choice question.
             </p>
             <Select
               value={dependsOnQuestionId || "none"}
@@ -160,7 +190,10 @@ function QuestionFormSheet({
               }}
               items={[
                 { value: "none", label: "None — always ask" },
-                ...parentCandidates.map((q) => ({ value: q.id, label: q.prompt })),
+                ...parentCandidates.map((q) => ({
+                  value: q.id,
+                  label: q.prompt,
+                })),
               ]}
             >
               <SelectTrigger className="w-full">
@@ -176,13 +209,15 @@ function QuestionFormSheet({
               </SelectContent>
             </Select>
           </div>
-          {dependsOnQuestionId && parentQuestion && (
+          {dependsOnQuestionId && parentQuestion ? (
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label>Choices per &ldquo;{parentQuestion.prompt}&rdquo; answer *</Label>
+                <Label>
+                  Choices per &ldquo;{parentQuestion.prompt}&rdquo; answer *
+                </Label>
                 <p className="text-xs text-muted-foreground">
-                  Comma-separated choices to show for each answer. Leave a field blank
-                  to skip this question entirely for that answer.
+                  Comma-separated choices to show for each answer. Leave a field
+                  blank to skip this question entirely for that answer.
                 </p>
               </div>
               {(parentQuestion.choices ?? []).map((choice) => (
@@ -201,8 +236,8 @@ function QuestionFormSheet({
                 </div>
               ))}
             </div>
-          )}
-          {!dependsOnQuestionId && answerType === "CHOICE" && (
+          ) : null}
+          {!dependsOnQuestionId && answerType === "CHOICE" ? (
             <div className="space-y-2">
               <Label htmlFor="choices">Choices *</Label>
               <p className="text-xs text-muted-foreground">
@@ -215,7 +250,7 @@ function QuestionFormSheet({
                 rows={2}
               />
             </div>
-          )}
+          ) : null}
           <div className="flex items-center justify-between">
             <Label htmlFor="active">Active</Label>
             <Switch checked={isActive} onCheckedChange={setIsActive} />
@@ -225,7 +260,7 @@ function QuestionFormSheet({
               type="button"
               variant="outline"
               className="flex-1"
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
             >
               Cancel
             </Button>
@@ -239,20 +274,41 @@ function QuestionFormSheet({
   );
 }
 
+function choicesLabel(question: TicketQuestion) {
+  if (question.choices?.length) return question.choices.join(", ");
+  if (question.choicesByParent) {
+    return Object.entries(question.choicesByParent)
+      .map(([choice, subChoices]) => `${choice}: ${subChoices.join(", ")}`)
+      .join(" | ");
+  }
+  return "—";
+}
+
 export function QuestionsAdmin({ questions }: { questions: TicketQuestion[] }) {
+  const [editor, setEditor] = useState<TicketQuestion | "new" | null>(null);
   const nextOrder =
     questions.length > 0
       ? Math.max(...questions.map((q) => q.order)) + 1
       : 1;
+  const editingQuestion = editor && editor !== "new" ? editor : undefined;
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
-        <QuestionFormSheet nextOrder={nextOrder} questions={questions}>
-          <Button className="min-h-11">+ Add</Button>
-        </QuestionFormSheet>
+      <div className="mb-4 flex h-11 items-center justify-end">
+        <Button className="min-h-11" onClick={() => setEditor("new")}>
+          + Add
+        </Button>
       </div>
-      <Table>
+      <Table className="table-fixed">
+        <colgroup>
+          <col className="w-[4.5rem]" />
+          <col />
+          <col className="w-[5.5rem]" />
+          <col className="w-[18%]" />
+          <col className="w-[16%]" />
+          <col className="w-[5.5rem]" />
+          <col className="w-[5.5rem]" />
+        </colgroup>
         <TableHeader>
           <TableRow>
             <TableHead>Order</TableHead>
@@ -266,34 +322,51 @@ export function QuestionsAdmin({ questions }: { questions: TicketQuestion[] }) {
         </TableHeader>
         <TableBody>
           {questions.map((question) => {
-            const parent = questions.find((q) => q.id === question.dependsOnQuestionId);
+            const parent = questions.find(
+              (q) => q.id === question.dependsOnQuestionId
+            );
             return (
-              <TableRow key={question.id}>
+              <TableRow key={question.id} className="h-12">
                 <TableCell>{question.order}</TableCell>
-                <TableCell className="max-w-xs">{question.prompt}</TableCell>
-                <TableCell>{question.answerType === "TEXT" ? "Text" : "Choice"}</TableCell>
+                <TableCell className="max-w-0 truncate">{question.prompt}</TableCell>
                 <TableCell>
-                  {question.choices?.join(", ") ??
-                    (question.choicesByParent
-                      ? Object.entries(question.choicesByParent)
-                          .map(([choice, subChoices]) => `${choice}: ${subChoices.join(", ")}`)
-                          .join(" | ")
-                      : "—")}
+                  {question.answerType === "TEXT" ? "Text" : "Choice"}
                 </TableCell>
-                <TableCell>{parent ? parent.prompt : "—"}</TableCell>
-                <TableCell>{question.isActive ? "Active" : "Inactive"}</TableCell>
+                <TableCell className="max-w-0 truncate text-muted-foreground">
+                  {choicesLabel(question)}
+                </TableCell>
+                <TableCell className="max-w-0 truncate text-muted-foreground">
+                  {parent ? parent.prompt : "—"}
+                </TableCell>
                 <TableCell>
-                  <QuestionFormSheet question={question} nextOrder={nextOrder} questions={questions}>
-                    <Button variant="outline" size="sm">
-                      Edit
-                    </Button>
-                  </QuestionFormSheet>
+                  {question.isActive ? "Active" : "Inactive"}
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditor(question)}
+                  >
+                    Edit
+                  </Button>
                 </TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
+
+      {editor ? (
+        <QuestionFormDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditor(null);
+          }}
+          question={editingQuestion}
+          nextOrder={nextOrder}
+          questions={questions}
+        />
+      ) : null}
     </div>
   );
 }

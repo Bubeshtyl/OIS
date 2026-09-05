@@ -11,13 +11,17 @@ import {
   tenantAccessFromSession,
 } from "@/lib/auth/session-access";
 
-/** Paints immediately so FCP is not gated on session/cookie work. */
+/** Paints immediately so FCP is not gated on session/cookie work.
+ *  Width must match AppShell defaultOpen={false} + collapsible="icon"
+ *  (icon rail ~3rem), not the expanded sidebar — mismatch causes huge CLS.
+ */
 function AppShellFallback() {
   return (
     <div className="flex min-h-svh w-full">
-      <aside className="hidden w-[15.5rem] shrink-0 border-r bg-muted/30 md:block" />
+      <aside className="hidden w-12 shrink-0 border-r bg-muted/30 md:block" />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
+          <span className="size-7 shrink-0 rounded-md bg-muted/60" />
           <span className="text-sm font-medium text-muted-foreground">TYL</span>
         </header>
         <div className="flex flex-1 flex-col gap-6 p-4 pt-0 md:p-8 md:pt-0">
