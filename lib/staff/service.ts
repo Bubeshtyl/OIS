@@ -158,6 +158,44 @@ export async function listStaff(tenantId: string): Promise<StaffMember[]> {
   return rows.map(toStaffMember);
 }
 
+/** Slim staff rows for Roles & Access — skips address/guardian columns. */
+export async function listStaffForAccess(tenantId: string): Promise<StaffMember[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      isActive: users.isActive,
+      roleId: users.roleId,
+      roleName: roles.name,
+    })
+    .from(users)
+    .leftJoin(roles, eq(users.roleId, roles.id))
+    .where(and(eq(users.tenantId, tenantId), eq(users.isPlatformAdmin, false)))
+    .orderBy(users.name);
+
+  return rows.map((row) =>
+    toStaffMember({
+      ...row,
+      roleName: row.roleName ?? null,
+      joiningDate: null,
+      primaryPhone: null,
+      secondaryPhone: null,
+      doorNo: null,
+      street: null,
+      area: null,
+      townCity: null,
+      district: null,
+      pincode: null,
+      aadharNumber: null,
+      guardianName: null,
+      guardianRelationship: null,
+      guardianPhone: null,
+    })
+  );
+}
+
 export async function getStaffById(tenantId: string, staffId: string) {
   const db = getDb();
   const [row] = await db

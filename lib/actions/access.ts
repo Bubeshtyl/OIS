@@ -27,7 +27,7 @@ import {
   countActiveAdmins,
   getStaffById,
   isAdminStaff,
-  listStaff,
+  listStaffForAccess,
 } from "@/lib/staff/service";
 
 export type AccessRole = { id: string; name: string };
@@ -38,18 +38,18 @@ export async function getAccessConfiguration() {
     return null;
   }
 
-  const [tenantRoles, staff] = await Promise.all([
-    listRolesForTenant(session.tenantId),
-    listStaff(session.tenantId),
-  ]);
+  const staffPromise = listStaffForAccess(session.tenantId);
+  const tenantRoles = await listRolesForTenant(session.tenantId);
 
   const editableRoles = tenantRoles.filter(
     (role) => !(role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME)
   );
 
-  const permissionsByRoleId = await getPermissionsForRoleIds(
-    editableRoles.map((role) => role.id)
-  );
+  // Overlap staff fetch with permissions — don't wait for both before either.
+  const [staff, permissionsByRoleId] = await Promise.all([
+    staffPromise,
+    getPermissionsForRoleIds(editableRoles.map((role) => role.id)),
+  ]);
 
   return {
     catalog: getGrantableNavCatalog(),
