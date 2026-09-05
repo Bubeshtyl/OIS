@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { memo, useCallback, useMemo, useRef, useState, useTransition } from "react";
+import type { MutableRefObject } from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -109,6 +110,15 @@ function buildExistingSlipKeys(
   return keys;
 }
 
+type DayPayload = {
+  rsp: { hsd: string; ms: string; speed: string } | null;
+  slips: Array<{
+    machineNumber: string;
+    nozzleNumber: number;
+    reading: string;
+  }>;
+};
+
 export function SixAmShiftClosingForm({
   initialDate,
   initialRsp,
@@ -122,77 +132,89 @@ export function SixAmShiftClosingForm({
     reading: string;
   }>;
 }) {
-  const [selectedDate, setSelectedDate] = useState<string>(initialDate);
-  const [prices, setPrices] = useState({
-    ms: initialRsp?.ms || "",
-    hsd: initialRsp?.hsd || "",
-    speed: initialRsp?.speed || "",
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [day, setDay] = useState<DayPayload>({
+    rsp: initialRsp ?? null,
+    slips: initialSlips ?? [],
   });
-  const [hasRecordedRsp, setHasRecordedRsp] = useState(Boolean(initialRsp));
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    "group-1": true,
-    "group-2": false,
-    "group-3": false,
-  });
-  const [slipReadings, setSlipReadings] = useState<Record<string, string>>(() =>
-    buildSlipReadingsMap(initialSlips)
-  );
-  const [existingSlipKeys, setExistingSlipKeys] = useState<Set<string>>(() =>
-    buildExistingSlipKeys(initialSlips)
-  );
-
-  const [isSavingRsp, startSavingRsp] = useTransition();
-  const [isSavingSlips, startSavingSlips] = useTransition();
   const [isLoadingDate, startLoadingDate] = useTransition();
-
-  const hasRecordedSlips = existingSlipKeys.size > 0;
-
-  const newEntriesCount = useMemo(() => {
-    let count = 0;
-    for (const group of SLIP_GROUPS) {
-      for (const nozzle of group.nozzles) {
-        const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
-        const val = slipReadings[nozzle.id];
-        if (val && val.trim() !== "" && !existingSlipKeys.has(key)) {
-          count += 1;
-        }
-      }
-    }
-    return count;
-  }, [slipReadings, existingSlipKeys]);
+  const [dataEpoch, setDataEpoch] = useState(0);
 
   function handleDateChange(newDate: string) {
     setSelectedDate(newDate);
     startLoadingDate(async () => {
       const data = await fetchSixAmDataForDateAction(newDate);
-      if (data.rsp) {
-        setPrices({
-          hsd: data.rsp.hsdPrice,
-          ms: data.rsp.msPrice,
-          speed: data.rsp.speedPrice,
-        });
-        setHasRecordedRsp(true);
-      } else {
-        setPrices({ hsd: "", ms: "", speed: "" });
-        setHasRecordedRsp(false);
-      }
-
-      const mappedSlips =
-        data.slips?.map((s) => ({
-          machineNumber: s.machineNumber,
-          nozzleNumber: s.nozzleNumber,
-          reading: s.reading,
-        })) ?? [];
-
-      setSlipReadings(buildSlipReadingsMap(mappedSlips));
-      setExistingSlipKeys(buildExistingSlipKeys(mappedSlips));
+      setDay({
+        rsp: data.rsp
+          ? {
+              hsd: data.rsp.hsdPrice,
+              ms: data.rsp.msPrice,
+              speed: data.rsp.speedPrice,
+            }
+          : null,
+        slips:
+          data.slips?.map((s) => ({
+            machineNumber: s.machineNumber,
+            nozzleNumber: s.nozzleNumber,
+            reading: s.reading,
+          })) ?? [],
+      });
+      setDataEpoch((n) => n + 1);
     });
   }
+
+  function refreshDay() {
+    handleDateChange(selectedDate);
+  }
+
+  return (
+    <div className="space-y-6">
+      <RspSection
+        key={`${selectedDate}-${dataEpoch}-rsp`}
+        selectedDate={selectedDate}
+        today={initialDate}
+        initialRsp={day.rsp}
+        isLoadingDate={isLoadingDate}
+        onDateChange={handleDateChange}
+      />
+      <SlipSection
+        key={`${selectedDate}-${dataEpoch}-slips`}
+        selectedDate={selectedDate}
+        initialSlips={day.slips}
+        isLoadingDate={isLoadingDate}
+        onSaved={refreshDay}
+      />
+    </div>
+  );
+}
+
+function RspSection({
+  selectedDate,
+  today,
+  initialRsp,
+  isLoadingDate,
+  onDateChange,
+}: {
+  selectedDate: string;
+  today: string;
+  initialRsp: { hsd: string; ms: string; speed: string } | null;
+  isLoadingDate: boolean;
+  onDateChange: (date: string) => void;
+}) {
+  const hasRecordedRsp = Boolean(initialRsp);
+  const [prices, setPrices] = useState({
+    ms: initialRsp?.ms || "",
+    hsd: initialRsp?.hsd || "",
+    speed: initialRsp?.speed || "",
+  });
+  const [isSavingRsp, startSavingRsp] = useTransition();
 
   function handleRspSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (hasRecordedRsp) {
-      toast.error("RSP for this date is already recorded. Request edits from the RSP Ledger.");
+      toast.error(
+        "RSP for this date is already recorded. Request edits from the RSP Ledger."
+      );
       return;
     }
     if (!prices.ms || !prices.hsd || !prices.speed) {
@@ -209,8 +231,8 @@ export function SixAmShiftClosingForm({
       });
 
       if (res.success) {
-        setHasRecordedRsp(true);
         toast.success(res.message || "RSP fuel prices saved successfully!");
+        onDateChange(selectedDate);
       } else {
         toast.error(res.error || "Failed to save RSP prices.");
       }
@@ -223,19 +245,208 @@ export function SixAmShiftClosingForm({
     toast.info("Reset fuel price inputs.");
   }
 
-  function toggleGroup(id: string) {
+  return (
+    <Card className="border shadow-xs">
+      <CardHeader className="p-4 pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold">RSP</CardTitle>
+          {hasRecordedRsp ? (
+            <Badge
+              variant="outline"
+              className="border-emerald-300 bg-emerald-50 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+            >
+              Recorded for {selectedDate}
+            </Badge>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent className="p-4 pt-2">
+        {hasRecordedRsp ? (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            RSP for {selectedDate} is already in the ledger and cannot be changed
+            here.{" "}
+            <Link
+              href="/shift-closing/rsp"
+              className={cn(
+                buttonVariants({ variant: "link", size: "sm" }),
+                "inline-flex h-auto items-center gap-1 p-0"
+              )}
+            >
+              Request edits from RSP Ledger
+              <ExternalLink className="size-3.5" />
+            </Link>
+          </div>
+        ) : null}
+
+        <form onSubmit={handleRspSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-foreground">Date</Label>
+              <DatePicker
+                value={selectedDate}
+                onChange={onDateChange}
+                today={today}
+                className="h-10 text-xs font-medium"
+              />
+            </div>
+
+            <PriceField
+              id="price-hsd"
+              label="HSD"
+              badge="Diesel"
+              badgeClassName="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
+              value={prices.hsd}
+              readOnly={hasRecordedRsp}
+              onChange={(hsd) => setPrices((prev) => ({ ...prev, hsd }))}
+            />
+            <PriceField
+              id="price-ms"
+              label="MS"
+              badge="Petrol"
+              badgeClassName="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+              value={prices.ms}
+              readOnly={hasRecordedRsp}
+              onChange={(ms) => setPrices((prev) => ({ ...prev, ms }))}
+            />
+            <PriceField
+              id="price-speed"
+              label="SPEED"
+              badge="Speed"
+              badgeClassName="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300"
+              value={prices.speed}
+              readOnly={hasRecordedRsp}
+              onChange={(speed) => setPrices((prev) => ({ ...prev, speed }))}
+            />
+          </div>
+
+          {!hasRecordedRsp ? (
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSavingRsp || isLoadingDate}
+                className="h-9 w-full px-6 text-xs font-semibold sm:w-auto"
+              >
+                {isSavingRsp ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1.5 size-3.5" />
+                )}
+                Save RSP
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSavingRsp || isLoadingDate}
+                onClick={handleRspReset}
+                className="h-9 w-full px-5 text-xs font-semibold sm:w-auto"
+              >
+                <RotateCcw className="mr-1.5 size-3.5" />
+                Reset
+              </Button>
+            </div>
+          ) : null}
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+const PriceField = memo(function PriceField({
+  id,
+  label,
+  badge,
+  badgeClassName,
+  value,
+  readOnly,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  badge: string;
+  badgeClassName: string;
+  value: string;
+  readOnly: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <Label htmlFor={id} className="text-xs font-semibold text-foreground">
+          {label}
+        </Label>
+        <Badge
+          variant="outline"
+          className={cn("px-1.5 py-0 text-[10px]", badgeClassName)}
+        >
+          {badge}
+        </Badge>
+      </div>
+      <div className="relative">
+        <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-xs font-semibold text-muted-foreground">
+          ₹
+        </span>
+        <Input
+          id={id}
+          type="number"
+          step="0.01"
+          min="0"
+          placeholder="0.00"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          readOnly={readOnly}
+          required
+          className={cn(
+            "h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+            readOnly && "bg-muted/50"
+          )}
+        />
+      </div>
+    </div>
+  );
+});
+
+function SlipSection({
+  selectedDate,
+  initialSlips,
+  isLoadingDate,
+  onSaved,
+}: {
+  selectedDate: string;
+  initialSlips: Array<{
+    machineNumber: string;
+    nozzleNumber: number;
+    reading: string;
+  }>;
+  isLoadingDate: boolean;
+  onSaved: () => void;
+}) {
+  const existingSlipKeys = useMemo(
+    () => buildExistingSlipKeys(initialSlips),
+    [initialSlips]
+  );
+  const initialReadings = useMemo(
+    () => buildSlipReadingsMap(initialSlips),
+    [initialSlips]
+  );
+  const readingsRef = useRef<Record<string, string>>({ ...initialReadings });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    "group-1": true,
+    "group-2": false,
+    "group-3": false,
+  });
+  const [isSavingSlips, startSavingSlips] = useTransition();
+
+  const hasRecordedSlips = existingSlipKeys.size > 0;
+
+  const toggleGroup = useCallback((id: string) => {
     setOpenGroups((prev) => ({
       ...prev,
       [id]: !prev[id],
     }));
-  }
-
-  function handleSlipInputChange(nozzleId: string, value: string) {
-    setSlipReadings((prev) => ({
-      ...prev,
-      [nozzleId]: value,
-    }));
-  }
+  }, []);
 
   function handleSlipSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -249,7 +460,7 @@ export function SixAmShiftClosingForm({
     for (const group of SLIP_GROUPS) {
       for (const nozzle of group.nozzles) {
         const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
-        const val = slipReadings[nozzle.id];
+        const val = readingsRef.current[nozzle.id];
         if (val && val.trim() !== "" && !existingSlipKeys.has(key)) {
           entriesToSave.push({
             machineNumber: group.machineNumber,
@@ -277,7 +488,7 @@ export function SixAmShiftClosingForm({
 
       if (res.success) {
         toast.success(res.message || "Slip entries saved successfully!");
-        handleDateChange(selectedDate);
+        onSaved();
       } else {
         toast.error(res.error || "Failed to save slip entries.");
       }
@@ -285,326 +496,178 @@ export function SixAmShiftClosingForm({
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="border shadow-xs">
-        <CardHeader className="p-4 pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-sm font-semibold">RSP</CardTitle>
-            {hasRecordedRsp ? (
-              <Badge
-                variant="outline"
-                className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
-              >
-                Recorded for {selectedDate}
-              </Badge>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 pt-2">
-          {hasRecordedRsp ? (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-              RSP for {selectedDate} is already in the ledger and cannot be changed
-              here.{" "}
-              <Link
-                href="/shift-closing/rsp"
-                className={cn(
-                  buttonVariants({ variant: "link", size: "sm" }),
-                  "h-auto p-0 inline-flex items-center gap-1"
-                )}
-              >
-                Request edits from RSP Ledger
-                <ExternalLink className="size-3.5" />
-              </Link>
-            </div>
-          ) : null}
-
-          <form onSubmit={handleRspSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-foreground">Date</Label>
-                <DatePicker
-                  value={selectedDate}
-                  onChange={handleDateChange}
-                  today={initialDate}
-                  className="h-10 text-xs font-medium"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="price-hsd" className="text-xs font-semibold text-foreground">
-                    HSD
-                  </Label>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
-                  >
-                    Diesel
-                  </Badge>
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none">
-                    ₹
-                  </span>
-                  <Input
-                    id="price-hsd"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={prices.hsd}
-                    onChange={(e) =>
-                      setPrices((prev) => ({ ...prev, hsd: e.target.value }))
-                    }
-                    readOnly={hasRecordedRsp}
-                    required
-                    className={cn(
-                      "h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                      hasRecordedRsp && "bg-muted/50"
-                    )}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="price-ms" className="text-xs font-semibold text-foreground">
-                    MS
-                  </Label>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
-                  >
-                    Petrol
-                  </Badge>
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none">
-                    ₹
-                  </span>
-                  <Input
-                    id="price-ms"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={prices.ms}
-                    onChange={(e) =>
-                      setPrices((prev) => ({ ...prev, ms: e.target.value }))
-                    }
-                    readOnly={hasRecordedRsp}
-                    required
-                    className={cn(
-                      "h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                      hasRecordedRsp && "bg-muted/50"
-                    )}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="price-speed" className="text-xs font-semibold text-foreground">
-                    SPEED
-                  </Label>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300"
-                  >
-                    Speed
-                  </Badge>
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none">
-                    ₹
-                  </span>
-                  <Input
-                    id="price-speed"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={prices.speed}
-                    onChange={(e) =>
-                      setPrices((prev) => ({ ...prev, speed: e.target.value }))
-                    }
-                    readOnly={hasRecordedRsp}
-                    required
-                    className={cn(
-                      "h-10 pl-7 text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                      hasRecordedRsp && "bg-muted/50"
-                    )}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {!hasRecordedRsp ? (
-              <div className="pt-1 flex flex-wrap items-center gap-2.5">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={isSavingRsp || isLoadingDate}
-                  className="h-9 w-full sm:w-auto px-6 text-xs font-semibold"
-                >
-                  {isSavingRsp ? (
-                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="mr-1.5 size-3.5" />
-                  )}
-                  Save RSP
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={isSavingRsp || isLoadingDate}
-                  onClick={handleRspReset}
-                  className="h-9 w-full sm:w-auto px-5 text-xs font-semibold"
-                >
-                  <RotateCcw className="mr-1.5 size-3.5" />
-                  Reset
-                </Button>
-              </div>
-            ) : null}
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card className="border shadow-xs">
-        <CardHeader className="p-4 pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-sm font-semibold">6 AM Slip Entry</CardTitle>
-            <div className="flex items-center gap-2">
-              {hasRecordedSlips ? (
-                <Badge
-                  variant="outline"
-                  className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
-                >
-                  {existingSlipKeys.size} recorded
-                </Badge>
-              ) : null}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 pt-2">
+    <Card className="border shadow-xs">
+      <CardHeader className="p-4 pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold">6 AM Slip Entry</CardTitle>
           {hasRecordedSlips ? (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-              Some readings for {selectedDate} are already in the ledger and cannot
-              be changed here.{" "}
-              <Link
-                href="/shift-closing/ledger"
-                className={cn(
-                  buttonVariants({ variant: "link", size: "sm" }),
-                  "h-auto p-0 inline-flex items-center gap-1"
-                )}
-              >
-                Request edits from Ledger
-                <ExternalLink className="size-3.5" />
-              </Link>
-            </div>
+            <Badge
+              variant="outline"
+              className="border-emerald-300 bg-emerald-50 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+            >
+              {existingSlipKeys.size} recorded
+            </Badge>
           ) : null}
+        </div>
+      </CardHeader>
+      <CardContent className="p-4 pt-2">
+        {hasRecordedSlips ? (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            Some readings for {selectedDate} are already in the ledger and cannot
+            be changed here.{" "}
+            <Link
+              href="/shift-closing/ledger"
+              className={cn(
+                buttonVariants({ variant: "link", size: "sm" }),
+                "inline-flex h-auto items-center gap-1 p-0"
+              )}
+            >
+              Request edits from Ledger
+              <ExternalLink className="size-3.5" />
+            </Link>
+          </div>
+        ) : null}
 
-          <form onSubmit={handleSlipSubmit} className="space-y-4">
-            <div className="space-y-3">
-              {SLIP_GROUPS.map((group) => {
-                const isOpen = Boolean(openGroups[group.id]);
+        <form onSubmit={handleSlipSubmit} className="space-y-4">
+          <div className="space-y-3">
+            {SLIP_GROUPS.map((group) => (
+              <SlipGroupCard
+                key={group.id}
+                group={group}
+                isOpen={Boolean(openGroups[group.id])}
+                onToggle={toggleGroup}
+                initialReadings={initialReadings}
+                existingSlipKeys={existingSlipKeys}
+                readingsRef={readingsRef}
+              />
+            ))}
+          </div>
 
-                return (
-                  <div
-                    key={group.id}
-                    className="rounded-xl border bg-card transition-all shadow-2xs overflow-hidden"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(group.id)}
-                      className={cn(
-                        "w-full flex items-center justify-between px-4 py-3 text-left font-medium text-sm transition-colors cursor-pointer",
-                        isOpen
-                          ? "bg-muted/50 border-b text-foreground"
-                          : "hover:bg-muted/30 text-foreground"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        {isOpen ? (
-                          <ChevronDown className="size-4 text-muted-foreground transition-transform" />
-                        ) : (
-                          <ChevronRight className="size-4 text-muted-foreground transition-transform" />
-                        )}
-                        <span className="font-semibold text-sm">{group.title}</span>
-                      </div>
-                    </button>
-
-                    {isOpen && (
-                      <div className="p-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          {group.nozzles.map((nozzle) => {
-                            const key = slipKey(
-                              group.machineNumber,
-                              nozzle.nozzleNumber
-                            );
-                            const isLocked = existingSlipKeys.has(key);
-
-                            return (
-                              <div key={nozzle.id} className="space-y-1.5">
-                                <Label
-                                  htmlFor={nozzle.id}
-                                  className="text-xs font-medium text-foreground"
-                                >
-                                  {nozzle.label}
-                                  {isLocked ? (
-                                    <span className="ml-1 text-[10px] text-muted-foreground">
-                                      (recorded)
-                                    </span>
-                                  ) : null}
-                                </Label>
-                                <Input
-                                  id={nozzle.id}
-                                  type="number"
-                                  step="any"
-                                  value={slipReadings[nozzle.id] ?? ""}
-                                  onChange={(e) =>
-                                    handleSlipInputChange(nozzle.id, e.target.value)
-                                  }
-                                  readOnly={isLocked}
-                                  className={cn(
-                                    "h-10 text-center text-sm font-medium tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                                    isLocked && "bg-muted/50"
-                                  )}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="pt-2 flex flex-wrap items-center gap-2.5">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={
-                  isSavingSlips || isLoadingDate || newEntriesCount === 0
-                }
-                className="h-9 w-full sm:w-auto px-6 text-xs font-semibold"
-              >
-                {isSavingSlips ? (
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="mr-1.5 size-3.5" />
-                )}
-                Save new readings
-                {newEntriesCount > 0 ? ` (${newEntriesCount})` : ""}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+          <div className="flex flex-wrap items-center gap-2.5 pt-2">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSavingSlips || isLoadingDate}
+              className="h-9 w-full px-6 text-xs font-semibold sm:w-auto"
+            >
+              {isSavingSlips ? (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="mr-1.5 size-3.5" />
+              )}
+              Save new readings
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
+
+const SlipGroupCard = memo(function SlipGroupCard({
+  group,
+  isOpen,
+  onToggle,
+  initialReadings,
+  existingSlipKeys,
+  readingsRef,
+}: {
+  group: SlipEntryGroup;
+  isOpen: boolean;
+  onToggle: (id: string) => void;
+  initialReadings: Record<string, string>;
+  existingSlipKeys: Set<string>;
+  readingsRef: MutableRefObject<Record<string, string>>;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card shadow-2xs transition-all">
+      <button
+        type="button"
+        onClick={() => onToggle(group.id)}
+        className={cn(
+          "flex w-full cursor-pointer items-center justify-between px-4 py-3 text-left text-sm font-medium transition-colors",
+          isOpen
+            ? "border-b bg-muted/50 text-foreground"
+            : "text-foreground hover:bg-muted/30"
+        )}
+      >
+        <div className="flex items-center gap-2">
+          {isOpen ? (
+            <ChevronDown className="size-4 text-muted-foreground transition-transform" />
+          ) : (
+            <ChevronRight className="size-4 text-muted-foreground transition-transform" />
+          )}
+          <span className="text-sm font-semibold">{group.title}</span>
+        </div>
+      </button>
+
+      {isOpen ? (
+        <div className="p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {group.nozzles.map((nozzle) => {
+              const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
+              const isLocked = existingSlipKeys.has(key);
+
+              return (
+                <SlipNozzleField
+                  key={nozzle.id}
+                  id={nozzle.id}
+                  label={nozzle.label}
+                  defaultValue={initialReadings[nozzle.id] ?? ""}
+                  locked={isLocked}
+                  readingsRef={readingsRef}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+const SlipNozzleField = memo(function SlipNozzleField({
+  id,
+  label,
+  defaultValue,
+  locked,
+  readingsRef,
+}: {
+  id: string;
+  label: string;
+  defaultValue: string;
+  locked: boolean;
+  readingsRef: MutableRefObject<Record<string, string>>;
+}) {
+  const [value, setValue] = useState(defaultValue);
+
+  function handleChange(next: string) {
+    setValue(next);
+    readingsRef.current[id] = next;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-medium text-foreground">
+        {label}
+        {locked ? (
+          <span className="ml-1 text-[10px] text-muted-foreground">
+            (recorded)
+          </span>
+        ) : null}
+      </Label>
+      <Input
+        id={id}
+        type="number"
+        step="any"
+        value={value}
+        onChange={(e) => handleChange(e.target.value)}
+        readOnly={locked}
+        className={cn(
+          "h-10 text-center text-sm font-medium tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+          locked && "bg-muted/50"
+        )}
+      />
+    </div>
+  );
+});

@@ -59,46 +59,7 @@ export function RspLedger({
   isAdmin: boolean;
   currentUserId: string;
 }) {
-  const [rows] = useState(initialRows);
   const [editRow, setEditRow] = useState<RspRow | null>(null);
-  const [editPrices, setEditPrices] = useState({ hsd: "", ms: "", speed: "" });
-  const [editNote, setEditNote] = useState("");
-  const [isSubmittingEdit, startSubmittingEdit] = useTransition();
-
-  function openEdit(row: RspRow) {
-    setEditRow(row);
-    setEditPrices({
-      hsd: row.hsdPrice,
-      ms: row.msPrice,
-      speed: row.speedPrice,
-    });
-    setEditNote("");
-  }
-
-  function handleEditSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editRow) return;
-    startSubmittingEdit(async () => {
-      const res = await submitShiftClosingEditRequestAction({
-        entityType: "daily_rsp",
-        entityId: editRow.id,
-        proposedData: {
-          priceDate: editRow.priceDate,
-          hsdPrice: editPrices.hsd,
-          msPrice: editPrices.ms,
-          speedPrice: editPrices.speed,
-        },
-        note: editNote.trim() || undefined,
-      });
-      if (res.success) {
-        toast.success(res.message);
-        setEditRow(null);
-        window.location.reload();
-      } else {
-        toast.error(res.error || "Failed to submit edit request.");
-      }
-    });
-  }
 
   return (
     <div className="space-y-6">
@@ -121,7 +82,7 @@ export function RspLedger({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.length === 0 ? (
+                {initialRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-muted-foreground">
                       No RSP entries yet.{" "}
@@ -137,16 +98,22 @@ export function RspLedger({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  rows.map((row) => (
+                  initialRows.map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>{formatDate(row.priceDate)}</TableCell>
-                      <TableCell className="tabular-nums">₹{row.hsdPrice}</TableCell>
-                      <TableCell className="tabular-nums">₹{row.msPrice}</TableCell>
-                      <TableCell className="tabular-nums">₹{row.speedPrice}</TableCell>
+                      <TableCell className="tabular-nums">
+                        ₹{row.hsdPrice}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        ₹{row.msPrice}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        ₹{row.speedPrice}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">v{row.revision}</Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         {formatDateTime(row.updatedAt)}
                       </TableCell>
                       <TableCell className="text-right">
@@ -154,7 +121,7 @@ export function RspLedger({
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={() => openEdit(row)}
+                          onClick={() => setEditRow(row)}
                         >
                           <Pencil className="mr-1 size-3.5" />
                           Request edit
@@ -178,79 +145,123 @@ export function RspLedger({
         </div>
       </div>
 
-      <Dialog open={!!editRow} onOpenChange={(open) => !open && setEditRow(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Request RSP Edit</DialogTitle>
-          </DialogHeader>
-          {editRow ? (
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Changes for {formatDate(editRow.priceDate)} require admin approval.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-hsd">HSD</Label>
-                  <Input
-                    id="edit-hsd"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editPrices.hsd}
-                    onChange={(e) =>
-                      setEditPrices((p) => ({ ...p, hsd: e.target.value }))
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-ms">MS</Label>
-                  <Input
-                    id="edit-ms"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editPrices.ms}
-                    onChange={(e) =>
-                      setEditPrices((p) => ({ ...p, ms: e.target.value }))
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit-speed">SPEED</Label>
-                  <Input
-                    id="edit-speed"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editPrices.speed}
-                    onChange={(e) =>
-                      setEditPrices((p) => ({ ...p, speed: e.target.value }))
-                    }
-                    required
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="edit-note">Reason (optional)</Label>
-                <Textarea
-                  id="edit-note"
-                  value={editNote}
-                  onChange={(e) => setEditNote(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <Button type="submit" disabled={isSubmittingEdit}>
-                {isSubmittingEdit ? (
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                ) : null}
-                Submit for approval
-              </Button>
-            </form>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      {editRow ? (
+        <RspEditDialog row={editRow} onClose={() => setEditRow(null)} />
+      ) : null}
     </div>
+  );
+}
+
+function RspEditDialog({
+  row,
+  onClose,
+}: {
+  row: RspRow;
+  onClose: () => void;
+}) {
+  const [editPrices, setEditPrices] = useState({
+    hsd: row.hsdPrice,
+    ms: row.msPrice,
+    speed: row.speedPrice,
+  });
+  const [editNote, setEditNote] = useState("");
+  const [isSubmittingEdit, startSubmittingEdit] = useTransition();
+
+  function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    startSubmittingEdit(async () => {
+      const res = await submitShiftClosingEditRequestAction({
+        entityType: "daily_rsp",
+        entityId: row.id,
+        proposedData: {
+          priceDate: row.priceDate,
+          hsdPrice: editPrices.hsd,
+          msPrice: editPrices.ms,
+          speedPrice: editPrices.speed,
+        },
+        note: editNote.trim() || undefined,
+      });
+      if (res.success) {
+        toast.success(res.message);
+        onClose();
+        window.location.reload();
+      } else {
+        toast.error(res.error || "Failed to submit edit request.");
+      }
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Request RSP Edit</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Changes for {formatDate(row.priceDate)} require admin approval.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-hsd">HSD</Label>
+              <Input
+                id="edit-hsd"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editPrices.hsd}
+                onChange={(e) =>
+                  setEditPrices((p) => ({ ...p, hsd: e.target.value }))
+                }
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ms">MS</Label>
+              <Input
+                id="edit-ms"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editPrices.ms}
+                onChange={(e) =>
+                  setEditPrices((p) => ({ ...p, ms: e.target.value }))
+                }
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-speed">SPEED</Label>
+              <Input
+                id="edit-speed"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editPrices.speed}
+                onChange={(e) =>
+                  setEditPrices((p) => ({ ...p, speed: e.target.value }))
+                }
+                required
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-note">Reason (optional)</Label>
+            <Textarea
+              id="edit-note"
+              value={editNote}
+              onChange={(e) => setEditNote(e.target.value)}
+              rows={2}
+            />
+          </div>
+          <Button type="submit" disabled={isSubmittingEdit}>
+            {isSubmittingEdit ? (
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+            ) : null}
+            Submit for approval
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

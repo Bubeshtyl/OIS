@@ -1,9 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverContent,
@@ -15,6 +15,18 @@ import {
   istDateStringFromCalendarDate,
 } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
+
+const Calendar = dynamic(
+  () => import("@/components/ui/calendar").then((mod) => mod.Calendar),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[18.5rem] w-[17.5rem] items-center justify-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    ),
+  }
+);
 
 export function DatePicker({
   value,
@@ -84,28 +96,32 @@ export function DatePicker({
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger id={id} render={trigger} />
           <PopoverContent align="start" className="w-auto p-0">
-            <Calendar
-              mode="single"
-              selected={selected}
-              onSelect={handleSelect}
-              defaultMonth={selected}
-            />
-            {today && value !== today && (
-              <div className="border-t p-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    onChange(today);
-                    setOpen(false);
-                  }}
-                >
-                  Go to today
-                </Button>
-              </div>
-            )}
+            {open ? (
+              <>
+                <Calendar
+                  mode="single"
+                  selected={selected}
+                  onSelect={handleSelect}
+                  defaultMonth={selected}
+                />
+                {today && value !== today ? (
+                  <div className="border-t p-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        onChange(today);
+                        setOpen(false);
+                      }}
+                    >
+                      Go to today
+                    </Button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </PopoverContent>
         </Popover>
       )}

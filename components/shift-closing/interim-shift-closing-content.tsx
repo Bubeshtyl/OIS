@@ -32,10 +32,12 @@ export async function InterimShiftClosingContent() {
       : null;
 
   return (
-    <ShiftClosingCalculator
-      configuredPumps={layout.pumps}
-      rspPrices={rspPrices}
-      staffMembers={activeStaff}
-    />
+    <div className="min-h-[42rem]">
+      <ShiftClosingCalculator
+        configuredPumps={layout.pumps}
+        rspPrices={rspPrices}
+        staffMembers={activeStaff}
+      />
+    </div>
   );
 }

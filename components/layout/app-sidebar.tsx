@@ -157,15 +157,29 @@ function SidebarDivider() {
   );
 }
 
-function NavPendingBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
+function NavPendingBadge({
+  href,
+  count,
+}: {
+  href: string;
+  count: number;
+}) {
+  // Only RSP / ledger ever show counts — reserve their slot so late fetch doesn't CLS.
+  if (href !== "/shift-closing/rsp" && href !== "/shift-closing/ledger") {
+    return null;
+  }
 
   return (
     <Badge
       variant="destructive"
-      className="ml-auto h-5 min-w-5 shrink-0 justify-center px-1.5 text-[10px] tabular-nums"
+      aria-hidden={count <= 0}
+      className={
+        count <= 0
+          ? "ml-auto h-5 min-w-5 shrink-0 invisible justify-center px-1.5 text-[10px] tabular-nums"
+          : "ml-auto h-5 min-w-5 shrink-0 justify-center px-1.5 text-[10px] tabular-nums"
+      }
     >
-      {count > 99 ? "99+" : count}
+      {count > 99 ? "99+" : Math.max(count, 1)}
     </Badge>
   );
 }
@@ -195,7 +209,7 @@ function NavSubLink({
       >
         <SubNavBullet />
         <span className="min-w-0 truncate">{item.label}</span>
-        <NavPendingBadge count={badgeCount} />
+        <NavPendingBadge href={item.href} count={badgeCount} />
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
   );

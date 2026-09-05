@@ -68,7 +68,16 @@ async function AuthenticatedAppShell({
       isAdmin={isAdmin}
       canUsePush={canUsePush}
     >
-      <Suspense fallback={null}>{children}</Suspense>
+      <Suspense
+        fallback={
+          <div className="min-h-[28rem] space-y-4">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-72 w-full rounded-xl" />
+          </div>
+        }
+      >
+        {children}
+      </Suspense>
     </AppShell>
   );
 }
