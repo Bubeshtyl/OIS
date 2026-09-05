@@ -15,19 +15,6 @@ import { EditRequiresApprovalError } from "@/lib/shift-closing/types";
 
 export { EditRequiresApprovalError } from "@/lib/shift-closing/types";
 
-export interface SixAmStatus {
-  hasRsp: boolean;
-  hasSlipEntry: boolean;
-  isReady: boolean;
-  dateStr: string;
-  rspPrices: {
-    hsd: string;
-    ms: string;
-    speed: string;
-  } | null;
-  slipEntriesCount: number;
-}
-
 export async function getDailyRsp(
   tenantId: string,
   dateStr: string
@@ -168,35 +155,6 @@ export async function saveMachineSlipEntries(
   }
 
   return results;
-}
-
-export async function getSixAmStatus(
-  tenantId: string,
-  dateStr: string
-): Promise<SixAmStatus> {
-  const [rspRow, slipEntries] = await Promise.all([
-    getDailyRsp(tenantId, dateStr),
-    getMachineSlipEntries(tenantId, dateStr),
-  ]);
-
-  const hasRsp = !!rspRow && !!rspRow.hsdPrice && !!rspRow.msPrice && !!rspRow.speedPrice;
-  const hasSlipEntry = slipEntries.length > 0;
-  const isReady = hasRsp && hasSlipEntry;
-
-  return {
-    hasRsp,
-    hasSlipEntry,
-    isReady,
-    dateStr,
-    rspPrices: rspRow
-      ? {
-          hsd: rspRow.hsdPrice,
-          ms: rspRow.msPrice,
-          speed: rspRow.speedPrice,
-        }
-      : null,
-    slipEntriesCount: slipEntries.length,
-  };
 }
 
 export interface InterimPaymentInput {

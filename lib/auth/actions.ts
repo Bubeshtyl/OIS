@@ -6,13 +6,10 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { roles, tenants, users } from "@/lib/db/schema";
 import { getPermissionsForRoleId } from "@/lib/auth/permissions";
-import { getDefaultPath, getDefaultPathSync } from "@/lib/auth/rbac";
+import { getDefaultPathSync } from "@/lib/auth/rbac";
 import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
-import {
-  destroySession,
-  getSession,
-  saveSession,
-} from "@/lib/auth/session";
+import type { SessionData } from "@/lib/auth/session-config";
+import { destroySession, saveSession } from "@/lib/auth/session";
 
 export type AuthResult = { success: true } | { success: false; error: string };
 
@@ -28,6 +25,8 @@ export async function loginAction(
   if (!username || !password) {
     return { success: false, error: "Username and password are required." };
   }
+
+  let sessionPayload: SessionData;
 
   try {
     const db = getDb();
@@ -75,16 +74,18 @@ export async function loginAction(
       };
     }
 
-    await db
-      .update(users)
-      .set({ lastLoginAt: new Date() })
-      .where(eq(users.id, user.id));
+    // Permissions + last-login write in parallel after password check.
+    const [permissions] = await Promise.all([
+      user.isPlatformAdmin
+        ? Promise.resolve([] as Awaited<ReturnType<typeof getPermissionsForRoleId>>)
+        : getPermissionsForRoleId(user.roleId),
+      db
+        .update(users)
+        .set({ lastLoginAt: new Date() })
+        .where(eq(users.id, user.id)),
+    ]);
 
-    const permissions = user.isPlatformAdmin
-      ? []
-      : await getPermissionsForRoleId(user.roleId);
-
-    await saveSession({
+    sessionPayload = {
       userId: user.id,
       username: user.username,
       name: user.name,
@@ -99,7 +100,9 @@ export async function loginAction(
       isSystemAdmin: Boolean(
         user.roleIsSystem && user.roleName === SYSTEM_ADMIN_ROLE_NAME
       ),
-    });
+    };
+
+    await saveSession(sessionPayload);
   } catch {
     return {
       success: false,
@@ -107,8 +110,7 @@ export async function loginAction(
     };
   }
 
-  const session = await getSession();
-  redirect(getDefaultPathSync(session) ?? (await getDefaultPath(session)));
+  redirect(getDefaultPathSync(sessionPayload) ?? "/");
 }
 
 export async function logoutAction() {

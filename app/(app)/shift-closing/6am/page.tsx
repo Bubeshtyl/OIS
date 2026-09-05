@@ -1,41 +1,25 @@
-import { formatInTimeZone } from "date-fns-tz";
+import { Suspense } from "react";
 import { PageHeader } from "@/components/shared/page-blocks";
-import { SixAmShiftClosingForm } from "@/components/shift-closing/six-am-closing";
-import { requireTenantSession } from "@/lib/auth/permissions";
-import { IST_TIMEZONE } from "@/lib/timezone";
-import { getDailyRsp, getMachineSlipEntries } from "@/lib/shift-closing/service";
+import { SixAmClosingContent } from "@/components/shift-closing/six-am-closing-content";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export const dynamic = "force-dynamic";
+function SixAmContentSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-full max-w-sm rounded-lg" />
+      <Skeleton className="h-48 w-full rounded-xl" />
+      <Skeleton className="h-72 w-full rounded-xl" />
+    </div>
+  );
+}
 
-export default async function SixAmShiftClosingPage() {
-  const session = await requireTenantSession();
-  const todayIst = formatInTimeZone(new Date(), IST_TIMEZONE, "yyyy-MM-dd");
-
-  const [existingRsp, existingSlips] = await Promise.all([
-    getDailyRsp(session.tenantId, todayIst),
-    getMachineSlipEntries(session.tenantId, todayIst),
-  ]);
-
+export default function SixAmShiftClosingPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="6 AM" />
-      <SixAmShiftClosingForm
-        initialDate={todayIst}
-        initialRsp={
-          existingRsp
-            ? {
-                hsd: existingRsp.hsdPrice,
-                ms: existingRsp.msPrice,
-                speed: existingRsp.speedPrice,
-              }
-            : null
-        }
-        initialSlips={existingSlips.map((s) => ({
-          machineNumber: s.machineNumber,
-          nozzleNumber: s.nozzleNumber,
-          reading: s.reading,
-        }))}
-      />
+      <Suspense fallback={<SixAmContentSkeleton />}>
+        <SixAmClosingContent />
+      </Suspense>
     </div>
   );
 }

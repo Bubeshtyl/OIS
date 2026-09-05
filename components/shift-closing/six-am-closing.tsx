@@ -27,7 +27,7 @@ import {
   fetchSixAmDataForDateAction,
   saveDailyRspAction,
   saveMachineSlipEntriesAction,
-} from "@/lib/actions/shift-closing";
+} from "@/lib/actions/six-am";
 
 interface SlipEntryGroup {
   id: string;

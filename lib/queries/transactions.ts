@@ -144,38 +144,30 @@ export async function getDistinctCreatorsForType(
     .orderBy(users.name);
 }
 
-async function computeSummary(
+type SummarySourceRow = {
+  type: string;
+  quantity: string;
+  transactionDate: string;
+  referenceNote: string | null;
+  costPrice: string;
+  createdById: string;
+  packetsPerBox: string | null;
+  volumePerPacket: string | null;
+  taxableValue: string | null;
+  cgstAmount: string | null;
+  sgstAmount: string | null;
+  discountAmount: string | null;
+  landingPrice: string | null;
+};
+
+/** Build list summary from already-fetched rows — avoids a second full-table scan. */
+function computeSummaryFromRows(
   types: TransactionListType[],
-  whereClause: ReturnType<typeof and>,
+  rows: SummarySourceRow[],
   startDate: string,
   endDate: string
-): Promise<TransactionListSummary> {
-  const db = getDb();
+): TransactionListSummary {
   const type = types[0];
-
-  const rows = await db
-    .select({
-      type: inventoryTransactions.type,
-      quantity: inventoryTransactions.quantity,
-      transactionDate: inventoryTransactions.transactionDate,
-      referenceNote: inventoryTransactions.referenceNote,
-      costPrice: oilProducts.costPrice,
-      createdById: users.id,
-      packetsPerBox: oilProducts.packetsPerBox,
-      volumePerPacket: oilProducts.volumePerPacket,
-      taxableValue: inventoryTransactions.taxableValue,
-      cgstAmount: inventoryTransactions.cgstAmount,
-      sgstAmount: inventoryTransactions.sgstAmount,
-      discountAmount: inventoryTransactions.discountAmount,
-      landingPrice: inventoryTransactions.landingPrice,
-    })
-    .from(inventoryTransactions)
-    .innerJoin(
-      oilProducts,
-      eq(inventoryTransactions.productId, oilProducts.id)
-    )
-    .innerJoin(users, eq(inventoryTransactions.createdBy, users.id))
-    .where(whereClause);
 
   function rowPackets(
     litres: number,
@@ -283,9 +275,9 @@ export async function getAllTransactionRows(filters: {
       desc(inventoryTransactions.createdAt)
     );
 
-  const summary = await computeSummary(
+  const summary = computeSummaryFromRows(
     filters.types,
-    whereClause,
+    rows,
     filters.startDate,
     filters.endDate
   );

@@ -43,6 +43,8 @@ export function TransactionListShell({
   unit: initialUnit = "packets",
   openReturns = [],
   canWriteReturns = false,
+  /** When false, skip title / BPCL links (rendered by the page shell for faster FCP). */
+  showPageChrome = true,
 }: {
   pageKind: TransactionPageKind;
   products: OilProduct[];
@@ -57,6 +59,7 @@ export function TransactionListShell({
   unit?: StockDisplayUnit;
   openReturns?: OpenReturnedCaseRow[];
   canWriteReturns?: boolean;
+  showPageChrome?: boolean;
 }) {
   const config = PAGE_CONFIG[pageKind];
   const { unit: displayUnit, setDisplayUnit } = useStockDisplayUnit(initialUnit);
@@ -103,18 +106,20 @@ export function TransactionListShell({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <PageHeader title={config.title} subtitle={config.subtitle} />
-        {pageKind !== "receive" ? (
-          <NewTransactionDialog
-            pageKind={pageKind}
-            products={products}
-            buttonLabel={config.newButtonLabel}
-          />
-        ) : null}
-      </div>
+      {showPageChrome ? (
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <PageHeader title={config.title} subtitle={config.subtitle} />
+          {pageKind !== "receive" ? (
+            <NewTransactionDialog
+              pageKind={pageKind}
+              products={products}
+              buttonLabel={config.newButtonLabel}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
-      {pageKind === "receive" ? (
+      {showPageChrome && pageKind === "receive" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <Link
             href="/receive/bpcl"

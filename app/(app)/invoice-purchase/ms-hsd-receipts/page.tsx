@@ -1,33 +1,28 @@
 import Link from "next/link";
-import { MsHsdInvoiceTable } from "@/components/ms-hsd/ms-hsd-invoice-table";
+import { Suspense } from "react";
+import { MsHsdReceiptsContent } from "@/components/ms-hsd/ms-hsd-receipts-content";
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { buttonVariants } from "@/components/ui/button";
-import { requireTenantSession } from "@/lib/auth/permissions";
-import { hasPermission } from "@/lib/auth/rbac";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   defaultRangeEnd,
   defaultRangeStart,
   isValidDateString,
   normalizeDateRange,
 } from "@/lib/date-range";
-import { listMsHsdInvoices } from "@/lib/queries/ms-hsd-invoice";
 import { getIstTodayString } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
-import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
+function MsHsdTableSkeleton() {
+  return <Skeleton className="h-80 w-full rounded-xl" />;
+}
 
 export default async function MsHsdReceiptsPage({
   searchParams,
 }: {
   searchParams: Promise<{ start?: string; end?: string }>;
 }) {
-  const session = await requireTenantSession();
-  if (!(await hasPermission(session, "receive:write"))) {
-    redirect("/");
-  }
-
   const params = await searchParams;
   const today = getIstTodayString();
   const defaultStart = defaultRangeStart(today);
@@ -36,8 +31,6 @@ export default async function MsHsdReceiptsPage({
     isValidDateString(params.start) ? params.start : defaultStart,
     isValidDateString(params.end) ? params.end : defaultEnd
   );
-
-  const rows = await listMsHsdInvoices(session.tenantId, start, end);
 
   return (
     <div className="space-y-6">
@@ -59,7 +52,9 @@ export default async function MsHsdReceiptsPage({
         </div>
       </div>
 
-      <MsHsdInvoiceTable rows={rows} />
+      <Suspense fallback={<MsHsdTableSkeleton />}>
+        <MsHsdReceiptsContent start={start} end={end} />
+      </Suspense>
     </div>
   );
 }

@@ -1,26 +1,8 @@
 import Link from "next/link";
-import { Suspense } from "react";
 import { PageHeader } from "@/components/shared/page-blocks";
-import { ReceivePageContent } from "@/components/transactions/receive-page-content";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function ReceiveListSkeleton() {
-  return (
-    <div className="space-y-6">
-      <Skeleton className="h-24 w-full rounded-xl" />
-      <Skeleton className="h-80 w-full rounded-xl" />
-    </div>
-  );
-}
-
-export default function ReceivePage({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    start?: string;
-    end?: string;
-  }>;
-}) {
+export default function ReceiveLoading() {
   return (
     <div className="space-y-6">
       <PageHeader title="Stock Received" />
@@ -38,9 +20,8 @@ export default function ReceivePage({
           <p className="font-medium">Other dealers</p>
         </Link>
       </div>
-      <Suspense fallback={<ReceiveListSkeleton />}>
-        <ReceivePageContent searchParams={searchParams} />
-      </Suspense>
+      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-80 w-full rounded-xl" />
     </div>
   );
 }

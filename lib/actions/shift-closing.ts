@@ -24,7 +24,6 @@ import {
 import {
   getDailyRsp,
   getMachineSlipEntries,
-  getSixAmStatus,
   saveDailyRsp,
   saveMachineSlipEntries,
   saveInterimShiftClosing,
@@ -140,23 +139,6 @@ export async function saveMachineSlipEntriesAction(input: {
   }
 }
 
-export async function checkSixAmStatusAction(dateStr: string) {
-  try {
-    const session = await requireTenantSession();
-    return await getSixAmStatus(session.tenantId, dateStr);
-  } catch (err: unknown) {
-    console.error("checkSixAmStatusAction error:", err);
-    return {
-      hasRsp: false,
-      hasSlipEntry: false,
-      isReady: false,
-      dateStr,
-      rspPrices: null,
-      slipEntriesCount: 0,
-    };
-  }
-}
-
 export async function fetchSixAmDataForDateAction(dateStr: string) {
   try {
     const session = await requireTenantSession();
@@ -182,19 +164,6 @@ export async function closeInterimShiftAction(
     const session = await requireTenantSession();
     if (!(await hasPermission(session, "shift-closing:read"))) {
       return { success: false, error: "Permission denied." };
-    }
-
-    // Gating check: ensure 6 AM entries exist for shift date
-    const dateStr = (input.shiftDate || new Date()).toISOString().slice(0, 10);
-    const sixAmStatus = await getSixAmStatus(session.tenantId, dateStr);
-    if (!sixAmStatus.hasRsp || !sixAmStatus.hasSlipEntry) {
-      const missing = [];
-      if (!sixAmStatus.hasRsp) missing.push("RSP fuel prices");
-      if (!sixAmStatus.hasSlipEntry) missing.push("6 AM slip entry readings");
-      return {
-        success: false,
-        error: `Cannot close shift: Please complete the 6 AM entry first (${missing.join(" and ")} missing for ${dateStr}).`,
-      };
     }
 
     if (!input.staffId) {

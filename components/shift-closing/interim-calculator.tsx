@@ -1,10 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import {
   AlertCircle,
-  ArrowRight,
   Banknote,
   Calculator,
   Coins,
@@ -24,7 +22,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,9 +41,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { PumpWithNozzles } from "@/lib/station-config/service";
-import type { SixAmStatus } from "@/lib/shift-closing/service";
 import { closeInterimShiftAction } from "@/lib/actions/shift-closing";
 import { cn } from "@/lib/utils";
+
+type RspPrices = {
+  hsd: string;
+  ms: string;
+  speed: string;
+};
 
 export interface CashDenominations {
   d500: string;
@@ -296,11 +298,11 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
 
 export function ShiftClosingCalculator({
   configuredPumps,
-  sixAmStatus,
+  rspPrices = null,
   staffMembers = [],
 }: {
   configuredPumps?: PumpWithNozzles[];
-  sixAmStatus?: SixAmStatus | null;
+  rspPrices?: RspPrices | null;
   staffMembers?: Array<{ id: string; name: string }>;
 }) {
   const initialData = useMemo(
@@ -322,12 +324,9 @@ export function ShiftClosingCalculator({
     Record<number, PumpCalculationResult> | null
   >(null);
   const [isClosingShift, startClosingShift] = useTransition();
-  const [isGatedDialogOpen, setIsGatedDialogOpen] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isValidationDialogOpen, setIsValidationDialogOpen] = useState(false);
   const [isDenominationsOpen, setIsDenominationsOpen] = useState(false);
-
-  const isGated = sixAmStatus ? !sixAmStatus.isReady : false;
 
   const currentPumpData = pumpsData[selectedPump] || initialData[selectedPump] || {
     pumpNumber: selectedPump,
@@ -356,11 +355,6 @@ export function ShiftClosingCalculator({
     field: "open" | "close" | "test",
     value: string
   ) {
-    if (isGated) {
-      setIsGatedDialogOpen(true);
-      return;
-    }
-
     setPumpsData((prev) => {
       const currentPump = prev[selectedPump] || currentPumpData;
       const updatedNozzles = currentPump.nozzles.map((nozzle) => {
@@ -428,11 +422,6 @@ export function ShiftClosingCalculator({
   }
 
   function handleCalculate() {
-    if (isGated) {
-      setIsGatedDialogOpen(true);
-      return;
-    }
-
     const results: Record<number, PumpCalculationResult> = {
       ...(calculatedResults || {}),
     };
@@ -446,7 +435,7 @@ export function ShiftClosingCalculator({
     let pumpSalesAmount = 0;
     let pumpHasErrors = false;
 
-    const rsp = sixAmStatus?.rspPrices;
+    const rsp = rspPrices;
 
     for (const nozzle of currentPumpData.nozzles) {
       const hasNozzleInput =
@@ -580,7 +569,7 @@ export function ShiftClosingCalculator({
   const collectionsEnabled = Boolean(
     currentCalculation && !currentCalculation.hasErrors
   );
-  const collectionsDisabled = isGated || !collectionsEnabled;
+  const collectionsDisabled = !collectionsEnabled;
 
   // Totals for current pump payments
   const pumpCash = calculateDenominationCash(currentPumpData.payment.cash);
@@ -654,61 +643,6 @@ export function ShiftClosingCalculator({
 
   return (
     <div className="space-y-6">
-      {/* 6 AM Gating Modal Dialog */}
-      <Dialog open={isGatedDialogOpen} onOpenChange={setIsGatedDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
-              <AlertCircle className="size-5 text-destructive shrink-0" />
-              6 AM Entry Required
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-foreground">
-              You must complete the 6 AM entry for today (
-              <span className="font-semibold">{sixAmStatus?.dateStr}</span>)
-              before entering or calculating interim shift readings.
-            </p>
-
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1.5 text-xs">
-              <p className="font-semibold text-foreground">Missing items:</p>
-              {!sixAmStatus?.hasRsp && (
-                <p className="text-destructive font-medium">
-                  • Daily RSP fuel prices not saved
-                </p>
-              )}
-              {!sixAmStatus?.hasSlipEntry && (
-                <p className="text-destructive font-medium">
-                  • 6 AM Machine Slip readings not recorded
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <DialogClose
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "h-9 px-4 text-xs font-semibold cursor-pointer"
-                )}
-              >
-                Cancel
-              </DialogClose>
-              <Link
-                href="/shift-closing/6am"
-                className={cn(
-                  buttonVariants({ variant: "destructive", size: "sm" }),
-                  "h-9 px-4 text-xs font-semibold gap-1.5 inline-flex items-center"
-                )}
-              >
-                Go to 6 AM Entry
-                <ArrowRight className="size-3.5" />
-              </Link>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Calculation Errors Modal Dialog */}
       <Dialog open={isValidationDialogOpen} onOpenChange={setIsValidationDialogOpen}>
         <DialogContent className="max-w-md">
@@ -894,19 +828,7 @@ export function ShiftClosingCalculator({
             </div>
           </div>
 
-          <div
-            className={cn(
-              "rounded-xl border bg-card p-2 sm:p-3 shadow-sm transition-colors",
-              isGated && "cursor-pointer hover:border-destructive/40"
-            )}
-            onClickCapture={(e) => {
-              if (isGated) {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsGatedDialogOpen(true);
-              }
-            }}
-          >
+          <div className="rounded-xl border bg-card p-2 sm:p-3 shadow-sm">
             <div className="overflow-x-auto">
               <Table className="min-w-[580px]">
                 <TableHeader>
@@ -935,15 +857,10 @@ export function ShiftClosingCalculator({
                           <Input
                             type="number"
                             step="any"
-                            readOnly={isGated}
                             value={nozzle.open}
                             onChange={(e) => updateNozzleField(nozzle.id, "open", e.target.value)}
-                            onClick={() => {
-                              if (isGated) setIsGatedDialogOpen(true);
-                            }}
                             className={cn(
                               "h-10 text-center text-sm font-medium tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                              isGated && "cursor-pointer bg-muted/20",
                               nozzleCalc?.error && "border-red-500 focus-visible:ring-red-500/30"
                             )}
                           />
@@ -952,15 +869,10 @@ export function ShiftClosingCalculator({
                           <Input
                             type="number"
                             step="any"
-                            readOnly={isGated}
                             value={nozzle.close}
                             onChange={(e) => updateNozzleField(nozzle.id, "close", e.target.value)}
-                            onClick={() => {
-                              if (isGated) setIsGatedDialogOpen(true);
-                            }}
                             className={cn(
                               "h-10 text-center text-sm font-medium tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                              isGated && "cursor-pointer bg-muted/20",
                               nozzleCalc?.error && "border-red-500 focus-visible:ring-red-500/30"
                             )}
                           />
@@ -969,15 +881,10 @@ export function ShiftClosingCalculator({
                           <Input
                             type="number"
                             step="any"
-                            readOnly={isGated}
                             value={nozzle.test}
                             onChange={(e) => updateNozzleField(nozzle.id, "test", e.target.value)}
-                            onClick={() => {
-                              if (isGated) setIsGatedDialogOpen(true);
-                            }}
                             className={cn(
                               "h-10 text-center text-sm font-medium tracking-wider tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-                              isGated && "cursor-pointer bg-muted/20",
                               nozzleCalc?.error && "border-red-500 focus-visible:ring-red-500/30"
                             )}
                           />
@@ -1010,7 +917,6 @@ export function ShiftClosingCalculator({
             <div className="flex w-full">
               <Button
                 type="button"
-                disabled={isGated}
                 onClick={handleCalculate}
                 className="h-10 w-full text-sm font-semibold shadow-xs gap-2"
               >
@@ -1355,7 +1261,6 @@ export function ShiftClosingCalculator({
         <Button
           type="button"
           disabled={
-            isGated ||
             !selectedStaffId ||
             !currentCalculation ||
             currentCalculation.hasErrors ||

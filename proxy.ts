@@ -8,17 +8,27 @@ import {
 
 const PUBLIC_PATHS = ["/login", "/api/telegram/webhook"];
 
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isPublic = isPublicPath(pathname);
+  const hasSessionCookie = request.cookies.has(sessionOptions.cookieName);
+
+  // Public routes with no session cookie: skip iron-session decrypt entirely.
+  if (isPublic && !hasSessionCookie) {
+    return NextResponse.next();
+  }
+
   const response = NextResponse.next();
   const session = await getIronSession<SessionData>(
     request,
     response,
     sessionOptions
-  );
-
-  const isPublic = PUBLIC_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 
   if (!session.isLoggedIn && !isPublic) {

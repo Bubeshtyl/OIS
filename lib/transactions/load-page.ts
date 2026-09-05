@@ -41,10 +41,12 @@ export async function loadTransactionPage(
   const recordedBy = searchParams.recordedBy || undefined;
   const unit = parseStockDisplayUnit(searchParams.unit);
 
-  const needsCreators = pageKind === "receive";
+  // Receive has no staff filter and no "new transaction" dialog — skip those queries.
+  const needsProducts = pageKind !== "receive";
+  const needsCreators = pageKind !== "receive" && pageKind !== "issued";
 
   const [products, creators, list] = await Promise.all([
-    getActiveProducts(tenantId),
+    needsProducts ? getActiveProducts(tenantId) : Promise.resolve([]),
     needsCreators
       ? getDistinctCreatorsForType(tenantId, types[0], start, end)
       : Promise.resolve([]),
