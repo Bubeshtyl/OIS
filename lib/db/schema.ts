@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   date,
+  index,
   integer,
   jsonb,
   numeric,
@@ -383,6 +384,10 @@ export const msHsdInvoices = pgTable(
     unique("ms_hsd_invoices_tenant_invoice_unique").on(
       table.tenantId,
       table.invoiceNo
+    ),
+    index("ms_hsd_invoices_tenant_date_idx").on(
+      table.tenantId,
+      table.invoiceDate
     ),
   ]
 );
