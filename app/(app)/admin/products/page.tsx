@@ -5,11 +5,13 @@ import {
 } from "@/components/admin/products-admin";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { requireTenantSession } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { getAllProducts } from "@/lib/queries/inventory";
 
 
 export default async function AdminProductsPage() {
   const session = await requireTenantSession();
+  await requirePermission(session, "products:manage");
   const products = await getAllProducts(session.tenantId);
 
   return (

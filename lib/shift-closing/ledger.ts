@@ -92,13 +92,9 @@ export async function listDailyRspPrices(
       msPrice: dailyRspPrices.msPrice,
       speedPrice: dailyRspPrices.speedPrice,
       revision: dailyRspPrices.revision,
-      recordedBy: dailyRspPrices.recordedBy,
-      recorderName: users.name,
-      createdAt: dailyRspPrices.createdAt,
       updatedAt: dailyRspPrices.updatedAt,
     })
     .from(dailyRspPrices)
-    .leftJoin(users, eq(dailyRspPrices.recordedBy, users.id))
     .where(and(...conditions))
     .orderBy(desc(dailyRspPrices.priceDate));
 
@@ -129,13 +125,8 @@ export async function listMachineSlipEntriesRange(
       nozzleNumber: machineSlipEntries.nozzleNumber,
       reading: machineSlipEntries.reading,
       revision: machineSlipEntries.revision,
-      recordedBy: machineSlipEntries.recordedBy,
-      recorderName: users.name,
-      createdAt: machineSlipEntries.createdAt,
-      updatedAt: machineSlipEntries.updatedAt,
     })
     .from(machineSlipEntries)
-    .leftJoin(users, eq(machineSlipEntries.recordedBy, users.id))
     .where(and(...conditions))
     .orderBy(
       desc(machineSlipEntries.entryDate),
@@ -172,9 +163,6 @@ export async function listInterimShiftClosings(
     conditions.push(eq(interimShiftClosings.pumpNumber, filters.pumpNumber));
   }
 
-  const staffUser = alias(users, "interim_staff");
-  const creatorUser = alias(users, "interim_creator");
-
   const rows = await db
     .select({
       id: interimShiftClosings.id,
@@ -185,13 +173,8 @@ export async function listInterimShiftClosings(
       totalCollected: interimShiftClosings.totalCollected,
       difference: interimShiftClosings.difference,
       revision: interimShiftClosings.revision,
-      staffName: staffUser.name,
-      createdByName: creatorUser.name,
-      createdAt: interimShiftClosings.createdAt,
     })
     .from(interimShiftClosings)
-    .leftJoin(staffUser, eq(interimShiftClosings.staffId, staffUser.id))
-    .leftJoin(creatorUser, eq(interimShiftClosings.createdBy, creatorUser.id))
     .where(and(...conditions))
     .orderBy(desc(interimShiftClosings.shiftDate));
 

@@ -1,19 +1,14 @@
 import { and, desc, eq, gte, lte, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { lfrInvoices, users } from "@/lib/db/schema";
+import { lfrInvoices } from "@/lib/db/schema";
 
 export type LfrInvoiceListItem = {
   id: string;
   invoiceNo: string;
   invoiceDate: string;
   description: string;
-  hsnSac: string;
   taxableAmount: number;
-  cgstAmount: number;
-  sgstAmount: number;
   totalAmount: number;
-  createdByName: string;
-  createdAt: Date;
 };
 
 export type LfrInvoiceDetail = {
@@ -70,16 +65,10 @@ export async function listLfrInvoices(
       invoiceNo: lfrInvoices.invoiceNo,
       invoiceDate: lfrInvoices.invoiceDate,
       description: lfrInvoices.description,
-      hsnSac: lfrInvoices.hsnSac,
       taxableAmount: lfrInvoices.taxableAmount,
-      cgstAmount: lfrInvoices.cgstAmount,
-      sgstAmount: lfrInvoices.sgstAmount,
       totalAmount: lfrInvoices.totalAmount,
-      createdAt: lfrInvoices.createdAt,
-      createdByName: users.name,
     })
     .from(lfrInvoices)
-    .innerJoin(users, eq(lfrInvoices.createdBy, users.id))
     .where(
       and(
         eq(lfrInvoices.tenantId, tenantId),
@@ -94,13 +83,8 @@ export async function listLfrInvoices(
     invoiceNo: row.invoiceNo,
     invoiceDate: row.invoiceDate,
     description: row.description,
-    hsnSac: row.hsnSac,
     taxableAmount: Number(row.taxableAmount),
-    cgstAmount: Number(row.cgstAmount),
-    sgstAmount: Number(row.sgstAmount),
     totalAmount: Number(row.totalAmount),
-    createdByName: row.createdByName,
-    createdAt: row.createdAt,
   }));
 }
 

@@ -2,6 +2,7 @@ import { TransactionListShell } from "@/components/transactions/transaction-list
 import { hasCachedPermission } from "@/lib/auth/session-access";
 import { hasPermission } from "@/lib/auth/rbac";
 import { requireTenantSession } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { getOpenReturnedCases } from "@/lib/queries/returned-cases";
 import { loadTransactionPage } from "@/lib/transactions/load-page";
 
@@ -15,6 +16,7 @@ export async function ReceivePageContent({
 }) {
   const params = await searchParams;
   const session = await requireTenantSession();
+  await requirePermission(session, "receive:write");
   const cachedWrite = hasCachedPermission(session, "receive:write");
 
   const [canWriteReturns, data, openReturns] = await Promise.all([

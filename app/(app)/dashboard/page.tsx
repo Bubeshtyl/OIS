@@ -4,6 +4,7 @@ import { PageToolbar } from "@/components/layout/page-toolbar";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { canWriteInventory } from "@/lib/auth/rbac";
 import { requireTenantSession } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { parseStockDisplayUnit } from "@/lib/format";
 import {
   defaultRangeEnd,
@@ -47,6 +48,7 @@ export default async function DashboardPage({
   }>;
 }) {
   const session = await requireTenantSession();
+  await requirePermission(session, "dashboard:read");
   const params = await searchParams;
   const today = getIstTodayString();
   const defaultStart = defaultRangeStart(today);

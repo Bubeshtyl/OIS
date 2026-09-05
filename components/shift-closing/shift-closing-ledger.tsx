@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Eye, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApprovalQueue } from "@/components/shift-closing/approval-queue";
@@ -49,8 +50,6 @@ type SlipRow = {
   nozzleNumber: number;
   reading: string;
   revision: number;
-  recorderName: string | null;
-  updatedAt: Date;
 };
 
 type InterimRow = {
@@ -62,8 +61,6 @@ type InterimRow = {
   totalCollected: string;
   difference: string;
   revision: number;
-  staffName: string | null;
-  createdAt: Date;
 };
 
 export function ShiftClosingLedger({
@@ -73,6 +70,10 @@ export function ShiftClosingLedger({
   requestHistory,
   isAdmin,
   currentUserId,
+  initialFrom,
+  initialTo,
+  defaultStart,
+  defaultEnd,
 }: {
   slipRows: SlipRow[];
   interimRows: InterimRow[];
@@ -80,10 +81,24 @@ export function ShiftClosingLedger({
   requestHistory: EditRequestListItem[];
   isAdmin: boolean;
   currentUserId: string;
+  initialFrom: string;
+  initialTo: string;
+  defaultStart: string;
+  defaultEnd: string;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [tab, setTab] = useState<"slips" | "interim">("slips");
-  const [slipFilter, setSlipFilter] = useState({ machine: "", from: "", to: "" });
-  const [interimFilter, setInterimFilter] = useState({ pump: "", from: "", to: "" });
+  const [slipMachine, setSlipMachine] = useState("");
+  const [interimPump, setInterimPump] = useState("");
+
+  function pushDateRange(start: string, end: string) {
+    const params = new URLSearchParams();
+    if (start !== defaultStart) params.set("start", start);
+    if (end !== defaultEnd) params.set("end", end);
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
 
   const [slipEdit, setSlipEdit] = useState<SlipRow | null>(null);
   const [slipReading, setSlipReading] = useState("");
@@ -102,26 +117,21 @@ export function ShiftClosingLedger({
 
   const filteredSlips = useMemo(() => {
     return slipRows.filter((row) => {
-      if (slipFilter.machine && row.machineNumber !== slipFilter.machine) {
+      if (slipMachine && row.machineNumber !== slipMachine) {
         return false;
       }
-      if (slipFilter.from && row.entryDate < slipFilter.from) return false;
-      if (slipFilter.to && row.entryDate > slipFilter.to) return false;
       return true;
     });
-  }, [slipRows, slipFilter]);
+  }, [slipRows, slipMachine]);
 
   const filteredInterim = useMemo(() => {
     return interimRows.filter((row) => {
-      if (interimFilter.pump && String(row.pumpNumber) !== interimFilter.pump) {
+      if (interimPump && String(row.pumpNumber) !== interimPump) {
         return false;
       }
-      const dateStr = row.shiftDate.toISOString().slice(0, 10);
-      if (interimFilter.from && dateStr < interimFilter.from) return false;
-      if (interimFilter.to && dateStr > interimFilter.to) return false;
       return true;
     });
-  }, [interimRows, interimFilter]);
+  }, [interimRows, interimPump]);
 
   function openSlipEdit(row: SlipRow) {
     setSlipEdit(row);
@@ -210,17 +220,13 @@ export function ShiftClosingLedger({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Input
                     aria-label="Machine number"
-                    value={slipFilter.machine}
-                    onChange={(e) =>
-                      setSlipFilter((f) => ({ ...f, machine: e.target.value }))
-                    }
+                    value={slipMachine}
+                    onChange={(e) => setSlipMachine(e.target.value)}
                   />
                   <DateRangePicker
-                    startDate={slipFilter.from}
-                    endDate={slipFilter.to}
-                    onChange={({ start, end }) =>
-                      setSlipFilter((f) => ({ ...f, from: start, to: end }))
-                    }
+                    startDate={initialFrom}
+                    endDate={initialTo}
+                    onChange={({ start, end }) => pushDateRange(start, end)}
                   />
                 </div>
                 <Table>
@@ -273,17 +279,13 @@ export function ShiftClosingLedger({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Input
                     aria-label="Pump number"
-                    value={interimFilter.pump}
-                    onChange={(e) =>
-                      setInterimFilter((f) => ({ ...f, pump: e.target.value }))
-                    }
+                    value={interimPump}
+                    onChange={(e) => setInterimPump(e.target.value)}
                   />
                   <DateRangePicker
-                    startDate={interimFilter.from}
-                    endDate={interimFilter.to}
-                    onChange={({ start, end }) =>
-                      setInterimFilter((f) => ({ ...f, from: start, to: end }))
-                    }
+                    startDate={initialFrom}
+                    endDate={initialTo}
+                    onChange={({ start, end }) => pushDateRange(start, end)}
                   />
                 </div>
                 <Table>

@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { requireTenantSession } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/require-permission";
 import {
   parseAnalyticsGranularity,
   parseAnalyticsMetric,
@@ -58,6 +59,7 @@ export default async function SalesDataAnalyticsPage({
   }>;
 }) {
   const session = await requireTenantSession();
+  await requirePermission(session, "sales-data-analytics:read");
   const params = await searchParams;
   const metric = parseAnalyticsMetric(params.metric);
 

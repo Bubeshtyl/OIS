@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getIronSession } from "iron-session";
-import { getDefaultPathSync } from "@/lib/auth/rbac";
+import {
+  canAccessRouteSync,
+  getDefaultPathSync,
+} from "@/lib/auth/rbac";
+import { sessionHasCachedPermissions } from "@/lib/auth/session-access";
 import {
   sessionOptions,
   type SessionData,
@@ -41,6 +45,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(
       new URL(getDefaultPathSync(session) ?? "/", request.url)
     );
+  }
+
+  // Sync route ACL when permissions are already in the session cookie (no DB).
+  if (
+    session.isLoggedIn &&
+    !isPublic &&
+    (session.isPlatformAdmin || sessionHasCachedPermissions(session))
+  ) {
+    const allowed = canAccessRouteSync(session, pathname);
+    if (allowed === false) {
+      return NextResponse.redirect(
+        new URL(getDefaultPathSync(session) ?? "/", request.url)
+      );
+    }
   }
 
   return response;

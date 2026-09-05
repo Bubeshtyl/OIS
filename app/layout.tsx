@@ -12,6 +12,9 @@ const roboto = Roboto({
   weight: ["400", "600"],
   variable: "--font-sans",
   display: "swap",
+  preload: true,
+  adjustFontFallback: true,
+  fallback: ["system-ui", "Segoe UI", "Arial", "sans-serif"],
 });
 
 const appUrl =

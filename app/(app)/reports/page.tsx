@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { ReportsView } from "@/components/reports/reports-view";
 import { canWriteInventory } from "@/lib/auth/rbac";
 import { requireTenantSession } from "@/lib/auth/permissions";
+import { requirePermission } from "@/lib/auth/require-permission";
 import {
   defaultRangeEnd,
   defaultRangeStart,
@@ -62,6 +63,7 @@ export default async function ReportsPage({
   const params = await searchParams;
   const unit = parseStockDisplayUnit(params.unit);
   const session = await requireTenantSession();
+  await requirePermission(session, "reports:read");
   const canWrite = await canWriteInventory(session);
   const today = getIstTodayString();
   const defaultStart = defaultRangeStart(today);

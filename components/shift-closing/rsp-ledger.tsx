@@ -43,7 +43,6 @@ type RspRow = {
   msPrice: string;
   speedPrice: string;
   revision: number;
-  recorderName: string | null;
   updatedAt: Date;
 };
 

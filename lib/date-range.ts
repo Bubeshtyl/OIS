@@ -48,8 +48,9 @@ export function defaultRangeEnd(today: string) {
   return today;
 }
 
+/** Inclusive last 7 IST calendar days (today and the previous 6). */
 export function defaultRangeStart(today: string) {
-  return `${today.slice(0, 8)}01`;
+  return addIstDays(today, -6);
 }
 
 export function normalizeDateRange(start: string, end: string) {
