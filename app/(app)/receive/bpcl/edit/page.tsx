@@ -12,7 +12,6 @@ import { getActiveProducts } from "@/lib/queries/inventory";
 import { cn } from "@/lib/utils";
 import { and, eq, inArray } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
 
 export default async function EditBpclInvoicePage({
   searchParams,

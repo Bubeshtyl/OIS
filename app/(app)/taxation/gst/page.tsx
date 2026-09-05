@@ -14,7 +14,6 @@ import { getGstReport } from "@/lib/taxation/queries";
 import { getIstTodayString } from "@/lib/timezone";
 import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
 
 export default async function GstPage({
   searchParams,

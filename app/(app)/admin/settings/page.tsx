@@ -3,7 +3,6 @@ import { PageHeader } from "@/components/shared/page-blocks";
 import { getTicketSettings } from "@/lib/actions/settings";
 import { requireTenantSession } from "@/lib/auth/permissions";
 
-export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage() {
   const session = await requireTenantSession();

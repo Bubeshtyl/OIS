@@ -7,7 +7,6 @@ import { PageHeader } from "@/components/shared/page-blocks";
 import { requireTenantSession } from "@/lib/auth/permissions";
 import { getAllProducts } from "@/lib/queries/inventory";
 
-export const dynamic = "force-dynamic";
 
 export default async function AdminProductsPage() {
   const session = await requireTenantSession();

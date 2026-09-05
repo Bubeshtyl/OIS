@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/shared/page-blocks";
 import { getPlatformTenants } from "@/lib/actions/platform";
 import { getSession } from "@/lib/auth/session";
 
-export const dynamic = "force-dynamic";
 
 export default async function PlatformPage() {
   const session = await getSession();

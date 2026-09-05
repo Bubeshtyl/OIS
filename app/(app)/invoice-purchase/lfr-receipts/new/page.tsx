@@ -7,7 +7,6 @@ import { hasPermission } from "@/lib/auth/rbac";
 import { cn } from "@/lib/utils";
 import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
 
 export default async function NewLfrReceiptPage() {
   const session = await requireTenantSession();

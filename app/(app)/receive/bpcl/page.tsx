@@ -8,7 +8,6 @@ import { getActiveProducts } from "@/lib/queries/inventory";
 import { cn } from "@/lib/utils";
 import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
 
 export default async function ReceiveBpclPage() {
   const session = await requireTenantSession();

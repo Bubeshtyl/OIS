@@ -8,7 +8,6 @@ import { hasPermission } from "@/lib/auth/rbac";
 import { getLfrInvoiceById } from "@/lib/queries/lfr-invoice";
 import { cn } from "@/lib/utils";
 
-export const dynamic = "force-dynamic";
 
 export default async function EditLfrReceiptPage({
   params,

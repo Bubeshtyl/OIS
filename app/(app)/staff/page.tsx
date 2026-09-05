@@ -5,7 +5,6 @@ import { hasPermission } from "@/lib/auth/rbac";
 import { getStaffMembers } from "@/lib/actions/staff";
 import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
 
 export default async function StaffPage() {
   const session = await requireTenantSession();

@@ -8,7 +8,6 @@ import { hasPermission } from "@/lib/auth/rbac";
 import { getMsHsdInvoiceById } from "@/lib/queries/ms-hsd-invoice";
 import { cn } from "@/lib/utils";
 
-export const dynamic = "force-dynamic";
 
 export default async function EditMsHsdReceiptPage({
   params,

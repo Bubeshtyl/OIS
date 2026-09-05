@@ -2,7 +2,6 @@ import { TeamsAdmin } from "@/components/admin/teams-admin";
 import { PageHeader } from "@/components/shared/page-blocks";
 import { getTeamConfiguration } from "@/lib/actions/teams";
 
-export const dynamic = "force-dynamic";
 
 export default async function AdminTeamsPage() {
   const { teams, systemUsers, roleOptions } = await getTeamConfiguration();

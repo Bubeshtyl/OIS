@@ -8,7 +8,6 @@ import { requireTenantSession } from "@/lib/auth/permissions";
 import { getActiveTeams } from "@/lib/teams/service";
 import { listTickets } from "@/lib/tickets/service";
 
-export const dynamic = "force-dynamic";
 
 export default async function TicketsPage() {
   const session = await requireTenantSession();

@@ -21,7 +21,6 @@ import {
 } from "@/lib/reports/config";
 import { getIstTodayString } from "@/lib/timezone";
 
-export const dynamic = "force-dynamic";
 
 async function loadReportData(
   tenantId: string,

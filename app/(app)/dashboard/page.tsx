@@ -22,7 +22,6 @@ import {
 } from "@/lib/queries/inventory";
 import { getIstTodayString } from "@/lib/timezone";
 
-export const dynamic = "force-dynamic";
 
 function buildSparkline(
   daily: Array<{ received: number; transferred: number; sold: number }>,

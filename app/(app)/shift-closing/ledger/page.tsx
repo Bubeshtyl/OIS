@@ -10,7 +10,6 @@ import {
   listMachineSlipEntriesRange,
 } from "@/lib/shift-closing/ledger";
 
-export const dynamic = "force-dynamic";
 
 export default async function ShiftClosingLedgerPage() {
   const session = await requireTenantSession();

@@ -2,7 +2,6 @@ import { TransactionListShell } from "@/components/transactions/transaction-list
 import { requireTenantSession } from "@/lib/auth/permissions";
 import { loadTransactionPage } from "@/lib/transactions/load-page";
 
-export const dynamic = "force-dynamic";
 
 export default async function SalesPage({
   searchParams,

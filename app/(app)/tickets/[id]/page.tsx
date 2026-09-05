@@ -8,7 +8,6 @@ import { getTicketById } from "@/lib/tickets/service";
 import { formatTicketNumberWithSettings } from "@/lib/tickets/format";
 import { formatDateTime } from "@/lib/format";
 
-export const dynamic = "force-dynamic";
 
 export default async function TicketDetailPage({
   params,

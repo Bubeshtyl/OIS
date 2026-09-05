@@ -4,7 +4,6 @@ import { requireTenantSession } from "@/lib/auth/permissions";
 import { getActiveQuestionsOrdered } from "@/lib/questions/service";
 import { getActiveTeams } from "@/lib/teams/service";
 
-export const dynamic = "force-dynamic";
 
 export default async function NewTicketPage() {
   const session = await requireTenantSession();

@@ -38,7 +38,6 @@ import {
   getFootfallByHourOfDay,
 } from "@/lib/queries/daily-sales";
 
-export const dynamic = "force-dynamic";
 
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
