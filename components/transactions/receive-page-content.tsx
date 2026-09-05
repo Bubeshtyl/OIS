@@ -12,6 +12,7 @@ export async function ReceivePageContent({
   searchParams: Promise<{
     start?: string;
     end?: string;
+    page?: string;
   }>;
 }) {
   const params = await searchParams;

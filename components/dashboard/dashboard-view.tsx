@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { Suspense, use } from "react";
 import { Container, Droplet, Scale, SquareArrowUp } from "lucide-react";
 import {
   DashboardLocationTabs,
@@ -61,6 +62,133 @@ type PeriodRow = {
   damagedPackets: number;
 };
 
+type RecentRow = {
+  id: string;
+  type:
+    | "RECEIVE"
+    | "TRANSFER"
+    | "SALE"
+    | "RETURNED"
+    | "DAMAGED"
+    | "REVERSAL";
+  productName: string;
+  quantity: string;
+  unit: string;
+  transactionDate: string;
+  createdAt: Date;
+  referenceNote?: string | null;
+  packetsPerBox?: string | null;
+  volumePerPacket?: string | null;
+};
+
+type ChartRow = { label: string; quantity: number; litres?: number };
+
+function RecentPanel({
+  promise,
+  unit,
+}: {
+  promise: Promise<RecentRow[]>;
+  unit: StockDisplayUnit;
+}) {
+  const recent = use(promise);
+  return <RecentTransactions rows={recent} unit={unit} />;
+}
+
+function ChartPanel({
+  promise,
+  unit,
+}: {
+  promise: Promise<
+    Array<{ label: string; quantity: number; litres?: number; packets?: number }>
+  >;
+  unit: StockDisplayUnit;
+}) {
+  const chartData = use(promise);
+  const data: ChartRow[] = chartData.map((d) => ({
+    label: d.label,
+    quantity: d.quantity,
+    litres: d.litres,
+  }));
+  return <SalesChart data={data} unit={unit} />;
+}
+
+function LowStockPanel({
+  promise,
+  location,
+  unit,
+}: {
+  promise: Promise<ProductRow[]>;
+  location: DashboardLocation;
+  unit: StockDisplayUnit;
+}) {
+  const lowStock = use(promise);
+
+  if (location === "depot") {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Low stock alerts apply to manager balances. Switch to Manager or All to
+        view.
+      </p>
+    );
+  }
+
+  if (lowStock.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        All products are above threshold.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {lowStock.map((item) => (
+        <div
+          key={item.name}
+          className="flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-orange-50">
+              <Container className="size-4 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">{item.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatStockQuantity(
+                  unit,
+                  item.managerPackets,
+                  item.manager
+                )}{" "}
+                at Manager
+                {item.lowStockThreshold != null
+                  ? ` · alert at ${formatStockQuantity(
+                      unit,
+                      item.lowStockThreshold,
+                      item.lowStockThreshold *
+                        Number(item.volumePerPacket ?? 0)
+                    )}`
+                  : ""}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {item.depot > 0
+                  ? `${formatStockQuantity(
+                      unit,
+                      item.depotPackets,
+                      item.depot
+                    )} pending at Depot`
+                  : "No stock pending at Depot"}
+              </p>
+            </div>
+          </div>
+          <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
+            Low
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function DashboardView({
   location,
   unit: initialUnit = "packets",
@@ -75,9 +203,9 @@ export function DashboardView({
   stockSummaryDescription,
   products,
   productActivity,
-  recent,
-  chartData,
-  lowStock,
+  recentPromise,
+  chartPromise,
+  lowStockPromise,
   receivedSparkline,
   issuedSparkline,
   consumptionSparkline,
@@ -101,26 +229,11 @@ export function DashboardView({
   stockSummaryDescription: string;
   products: ProductRow[];
   productActivity: Record<string, PeriodRow>;
-  recent: Array<{
-    id: string;
-    type:
-      | "RECEIVE"
-      | "TRANSFER"
-      | "SALE"
-      | "RETURNED"
-      | "DAMAGED"
-      | "REVERSAL";
-    productName: string;
-    quantity: string;
-    unit: string;
-    transactionDate: string;
-    createdAt: Date;
-    referenceNote?: string | null;
-    packetsPerBox?: string | null;
-    volumePerPacket?: string | null;
-  }>;
-  chartData: Array<{ label: string; quantity: number; litres?: number }>;
-  lowStock: ProductRow[];
+  recentPromise: Promise<RecentRow[]>;
+  chartPromise: Promise<
+    Array<{ label: string; quantity: number; litres?: number; packets?: number }>
+  >;
+  lowStockPromise: Promise<ProductRow[]>;
   receivedSparkline?: number[];
   issuedSparkline?: number[];
   consumptionSparkline?: number[];
@@ -235,7 +348,9 @@ export function DashboardView({
             <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <RecentTransactions rows={recent} unit={displayUnit} />
+            <Suspense fallback={<Skeleton className="h-48 w-full" />}>
+              <RecentPanel promise={recentPromise} unit={displayUnit} />
+            </Suspense>
           </CardContent>
         </Card>
       </div>
@@ -255,7 +370,9 @@ export function DashboardView({
             </Link>
           </CardHeader>
           <CardContent>
-            <SalesChart data={chartData} unit={displayUnit} />
+            <Suspense fallback={<Skeleton className="h-72 w-full rounded-xl" />}>
+              <ChartPanel promise={chartPromise} unit={displayUnit} />
+            </Suspense>
           </CardContent>
         </Card>
 
@@ -263,61 +380,14 @@ export function DashboardView({
           <CardHeader>
             <CardTitle>Low Stock Alert</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {location === "depot" ? (
-              <p className="text-sm text-muted-foreground">
-                Low stock alerts apply to manager balances. Switch to Manager or
-                All to view.
-              </p>
-            ) : lowStock.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                All products are above threshold.
-              </p>
-            ) : (
-              lowStock.map((item) => (
-                <div
-                  key={item.name}
-                  className="flex items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-9 items-center justify-center rounded-lg bg-orange-50">
-                      <Container className="size-4 text-orange-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatStockQuantity(
-                          displayUnit,
-                          item.managerPackets,
-                          item.manager
-                        )}{" "}
-                        at Manager
-                        {item.lowStockThreshold != null
-                          ? ` · alert at ${formatStockQuantity(
-                              displayUnit,
-                              item.lowStockThreshold,
-                              item.lowStockThreshold *
-                                Number(item.volumePerPacket ?? 0)
-                            )}`
-                          : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.depot > 0
-                          ? `${formatStockQuantity(
-                              displayUnit,
-                              item.depotPackets,
-                              item.depot
-                            )} pending at Depot`
-                          : "No stock pending at Depot"}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                    Low
-                  </Badge>
-                </div>
-              ))
-            )}
+          <CardContent>
+            <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+              <LowStockPanel
+                promise={lowStockPromise}
+                location={location}
+                unit={displayUnit}
+              />
+            </Suspense>
           </CardContent>
         </Card>
       </div>

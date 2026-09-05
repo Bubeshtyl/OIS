@@ -375,13 +375,18 @@ async function getProductIdsIssuedToManager(tenantId: string) {
   return new Set(rows.map((row) => row.productId));
 }
 
-export async function getLowStockAlerts(tenantId: string) {
-  const [summary, issuedToManager] = await Promise.all([
-    getStockSummary(tenantId),
+export async function getLowStockAlerts(
+  tenantId: string,
+  products?: Awaited<ReturnType<typeof getStockSummary>>["products"]
+) {
+  const [productRows, issuedToManager] = await Promise.all([
+    products
+      ? Promise.resolve(products)
+      : getStockSummary(tenantId).then((s) => s.products),
     getProductIdsIssuedToManager(tenantId),
   ]);
 
-  return summary.products.filter(
+  return productRows.filter(
     (p) =>
       p.lowStockThreshold !== null &&
       p.volumePerPacket != null &&

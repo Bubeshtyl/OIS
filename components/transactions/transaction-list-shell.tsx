@@ -1,13 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { OilProduct } from "@/lib/db/schema";
-import {
-  TRANSACTION_LIST_PAGE_SIZE,
-  type TransactionListRow,
-  type TransactionListSummary,
-} from "@/lib/transactions/types";
+import type { TransactionListRow, TransactionListSummary } from "@/lib/transactions/types";
 import type { TransactionPageKind } from "@/lib/transactions/page-config";
 import { PAGE_CONFIG } from "@/lib/transactions/page-config";
 import { aggregateTransactionRowsByDateAndProduct } from "@/lib/transactions/aggregate-rows";
@@ -45,8 +41,9 @@ export function TransactionListShell({
   canWriteReturns = false,
   /** When false, skip title / BPCL links (rendered by the page shell for faster FCP). */
   showPageChrome = true,
-  truncated = false,
-  fetchLimit,
+  page = 1,
+  pageSize,
+  totalCount,
 }: {
   pageKind: TransactionPageKind;
   products: OilProduct[];
@@ -62,13 +59,13 @@ export function TransactionListShell({
   openReturns?: OpenReturnedCaseRow[];
   canWriteReturns?: boolean;
   showPageChrome?: boolean;
-  truncated?: boolean;
-  fetchLimit?: number;
+  page?: number;
+  pageSize: number;
+  totalCount: number;
 }) {
   const config = PAGE_CONFIG[pageKind];
   const { unit: displayUnit, setDisplayUnit } = useStockDisplayUnit(initialUnit);
   const [searchDraft, setSearchDraft] = useState("");
-  const [page, setPage] = useState(1);
 
   const filteredRows = useMemo(
     () => filterTransactionRows(rows, searchDraft),
@@ -87,22 +84,12 @@ export function TransactionListShell({
     return aggregateTransactionRowsByDateAndProduct(filteredRows, groupBy);
   }, [filteredRows, pageKind]);
 
-  const pageRows = useMemo(() => {
-    const start = (page - 1) * TRANSACTION_LIST_PAGE_SIZE;
-    return displayRows.slice(start, start + TRANSACTION_LIST_PAGE_SIZE);
-  }, [displayRows, page]);
-
-  const pageReceiveGroups = useMemo(() => {
-    const start = (page - 1) * TRANSACTION_LIST_PAGE_SIZE;
-    return receiveGroups.slice(start, start + TRANSACTION_LIST_PAGE_SIZE);
-  }, [receiveGroups, page]);
-
-  const pageTotal =
-    pageKind === "receive" ? receiveGroups.length : displayRows.length;
-
-  useEffect(() => {
-    setPage(1);
-  }, [searchDraft, rows, startDate, endDate, recordedBy]);
+  const searching = searchDraft.trim().length > 0;
+  const paginationTotal = searching
+    ? pageKind === "receive"
+      ? receiveGroups.length
+      : displayRows.length
+    : totalCount;
 
   const extraParams = buildFilterExtraParams({
     recordedBy,
@@ -164,34 +151,42 @@ export function TransactionListShell({
             onUnitChange={setDisplayUnit}
           />
 
-          {truncated ? (
+          {searching ? (
             <p className="text-sm text-muted-foreground">
-              Showing the latest {fetchLimit ?? rows.length} transactions in
-              this range. Narrow the dates to see older entries.
+              Search filters this page only. Clear search to browse all pages.
             </p>
           ) : null}
 
           <div className="overflow-x-auto rounded-lg border [scrollbar-gutter:stable]">
             {pageKind === "receive" && (
               <ReceiveTransactionTable
-                groups={pageReceiveGroups}
+                groups={receiveGroups}
                 unit={displayUnit}
               />
             )}
             {pageKind === "issued" && (
-              <IssuedTransactionTable rows={pageRows} unit={displayUnit} />
+              <IssuedTransactionTable rows={displayRows} unit={displayUnit} />
             )}
             {pageKind === "consumption" && (
-              <ConsumptionTransactionTable rows={pageRows} unit={displayUnit} />
+              <ConsumptionTransactionTable
+                rows={displayRows}
+                unit={displayUnit}
+              />
             )}
           </div>
 
-          <TransactionPagination
-            page={page}
-            pageSize={TRANSACTION_LIST_PAGE_SIZE}
-            total={pageTotal}
-            onPageChange={setPage}
-          />
+          {!searching ? (
+            <TransactionPagination
+              page={page}
+              pageSize={pageSize}
+              total={paginationTotal}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Showing {paginationTotal} match
+              {paginationTotal === 1 ? "" : "es"} on this page
+            </p>
+          )}
         </CardContent>
       </Card>
 

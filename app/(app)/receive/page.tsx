@@ -19,6 +19,7 @@ export default function ReceivePage({
   searchParams: Promise<{
     start?: string;
     end?: string;
+    page?: string;
   }>;
 }) {
   return (

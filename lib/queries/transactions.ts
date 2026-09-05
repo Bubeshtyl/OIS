@@ -1,5 +1,6 @@
 import {
   and,
+  count,
   desc,
   eq,
   gte,
@@ -28,10 +29,7 @@ import type {
   TransactionListSummary,
   TransactionListType,
 } from "@/lib/transactions/types";
-import {
-  TRANSACTION_LIST_FETCH_LIMIT,
-  TRANSACTION_LIST_PAGE_SIZE,
-} from "@/lib/transactions/types";
+import { TRANSACTION_LIST_PAGE_SIZE } from "@/lib/transactions/types";
 
 export type {
   ConsumptionSummary,
@@ -41,7 +39,7 @@ export type {
   TransactionListSummary,
   TransactionListType,
 } from "@/lib/transactions/types";
-export { TRANSACTION_LIST_FETCH_LIMIT, TRANSACTION_LIST_PAGE_SIZE };
+export { TRANSACTION_LIST_PAGE_SIZE };
 
 function buildConditions(filters: {
   tenantId: string;
@@ -263,31 +261,86 @@ function computeSummaryFromRows(
   };
 }
 
+function summaryQuery() {
+  const db = getDb();
+  return db
+    .select({
+      type: inventoryTransactions.type,
+      quantity: inventoryTransactions.quantity,
+      transactionDate: inventoryTransactions.transactionDate,
+      referenceNote: inventoryTransactions.referenceNote,
+      costPrice: oilProducts.costPrice,
+      createdById: users.id,
+      packetsPerBox: oilProducts.packetsPerBox,
+      volumePerPacket: oilProducts.volumePerPacket,
+      taxableValue: inventoryTransactions.taxableValue,
+      cgstAmount: inventoryTransactions.cgstAmount,
+      sgstAmount: inventoryTransactions.sgstAmount,
+      discountAmount: inventoryTransactions.discountAmount,
+      landingPrice: inventoryTransactions.landingPrice,
+    })
+    .from(inventoryTransactions)
+    .innerJoin(
+      oilProducts,
+      eq(inventoryTransactions.productId, oilProducts.id)
+    )
+    .innerJoin(users, eq(inventoryTransactions.createdBy, users.id));
+}
+
+function countConditions(filters: {
+  tenantId: string;
+  types: TransactionListType[];
+  startDate: string;
+  endDate: string;
+  recordedBy?: string;
+}) {
+  const conditions = [
+    eq(inventoryTransactions.tenantId, filters.tenantId),
+    inArray(inventoryTransactions.type, filters.types),
+    gte(inventoryTransactions.transactionDate, filters.startDate),
+    lte(inventoryTransactions.transactionDate, filters.endDate),
+  ];
+  if (filters.recordedBy) {
+    conditions.push(eq(inventoryTransactions.createdBy, filters.recordedBy));
+  }
+  return and(...conditions);
+}
+
 export async function getAllTransactionRows(filters: {
   tenantId: string;
   types: TransactionListType[];
   startDate: string;
   endDate: string;
   recordedBy?: string;
-  limit?: number;
+  page?: number;
+  pageSize?: number;
 }) {
   const whereClause = buildConditions(filters);
-  const limit = filters.limit ?? TRANSACTION_LIST_FETCH_LIMIT;
+  const pageSize = filters.pageSize ?? TRANSACTION_LIST_PAGE_SIZE;
+  const page = Math.max(1, filters.page ?? 1);
+  const offset = (page - 1) * pageSize;
+  const db = getDb();
 
-  const rows = await baseQuery()
-    .where(whereClause)
-    .orderBy(
-      desc(inventoryTransactions.transactionDate),
-      desc(inventoryTransactions.createdAt)
-    )
-    .limit(limit + 1);
+  const [countResult, pageRows, summarySource] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(inventoryTransactions)
+      .where(countConditions(filters)),
+    baseQuery()
+      .where(whereClause)
+      .orderBy(
+        desc(inventoryTransactions.transactionDate),
+        desc(inventoryTransactions.createdAt)
+      )
+      .limit(pageSize)
+      .offset(offset),
+    summaryQuery().where(whereClause),
+  ]);
 
-  const truncated = rows.length > limit;
-  const pageRows = truncated ? rows.slice(0, limit) : rows;
-
+  const totalCount = countResult[0]?.value ?? 0;
   const summary = computeSummaryFromRows(
     filters.types,
-    pageRows,
+    summarySource,
     filters.startDate,
     filters.endDate
   );
@@ -305,7 +358,8 @@ export async function getAllTransactionRows(filters: {
       };
     }) as TransactionListRow[],
     summary,
-    truncated,
-    fetchLimit: limit,
+    totalCount,
+    page,
+    pageSize,
   };
 }

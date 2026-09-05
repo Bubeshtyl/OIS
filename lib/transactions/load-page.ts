@@ -15,6 +15,11 @@ import type { TransactionPageKind } from "@/lib/transactions/page-config";
 import { PAGE_KIND_TO_TYPE } from "@/lib/transactions/page-config";
 import { getIstTodayString } from "@/lib/timezone";
 
+function parsePage(value?: string): number {
+  const n = Number.parseInt(value ?? "1", 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 export async function loadTransactionPage(
   tenantId: string,
   pageKind: TransactionPageKind,
@@ -23,6 +28,7 @@ export async function loadTransactionPage(
     end?: string;
     recordedBy?: string;
     unit?: string;
+    page?: string;
   }
 ) {
   const today = getIstTodayString();
@@ -40,6 +46,7 @@ export async function loadTransactionPage(
 
   const recordedBy = searchParams.recordedBy || undefined;
   const unit = parseStockDisplayUnit(searchParams.unit);
+  const page = parsePage(searchParams.page);
 
   // Receive has no staff filter and no "new transaction" dialog — skip those queries.
   const needsProducts = pageKind !== "receive";
@@ -56,6 +63,7 @@ export async function loadTransactionPage(
       startDate: start,
       endDate: end,
       recordedBy,
+      page,
     }),
   ]);
 
@@ -64,8 +72,9 @@ export async function loadTransactionPage(
     creators,
     rows: list.rows,
     summary: list.summary,
-    truncated: list.truncated,
-    fetchLimit: list.fetchLimit,
+    totalCount: list.totalCount,
+    page: list.page,
+    pageSize: list.pageSize,
     startDate: start,
     endDate: end,
     defaultStart,

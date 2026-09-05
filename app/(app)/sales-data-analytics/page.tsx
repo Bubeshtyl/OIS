@@ -1,21 +1,10 @@
 import { Suspense } from "react";
 import {
-  FootfallMetricsChart,
-  SalesBreakdownPieChart,
-  SalesMetricsChart,
-  SalesMetricsLineChart,
-} from "@/components/sales-data-analytics/analytics-charts-dynamic";
-import { FootfallMetricsTable } from "@/components/sales-data-analytics/footfall-metrics-table";
-import { FootfallProductTabs } from "@/components/sales-data-analytics/footfall-product-tabs";
+  AnalyticsChartsContent,
+  AnalyticsChartsSkeleton,
+} from "@/components/sales-data-analytics/analytics-charts-content";
 import { SalesAnalyticsFilters } from "@/components/sales-data-analytics/sales-analytics-filters";
-import { SalesGranularityTabs } from "@/components/sales-data-analytics/sales-granularity-tabs";
 import { PageHeader } from "@/components/shared/page-blocks";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { requireTenantSession } from "@/lib/auth/permissions";
 import { requirePermission } from "@/lib/auth/require-permission";
 import {
@@ -30,19 +19,10 @@ import {
   parseTimeParam,
   parseDateParam,
 } from "@/lib/daily-sales/footfall-filters";
-import {
-  getDailySalesFilterOptions,
-  getDailySalesMetricsByMopType,
-  getDailySalesMetricsByPeriod,
-  getDailySalesMetricsByProduct,
-  getFootfallByAmountRanges,
-  getFootfallByHourOfDay,
-} from "@/lib/queries/daily-sales";
-
 
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
-export default async function SalesDataAnalyticsPage({
+async function AnalyticsChartsGate({
   searchParams,
 }: {
   searchParams: Promise<{
@@ -100,77 +80,52 @@ export default async function SalesDataAnalyticsPage({
       : null;
 
   const salesApplied = metric === "sales" && Boolean(start && end);
-  const footfallApplied = Boolean(footfallBounds);
-  const footfallByPriceApplied = Boolean(footfallByPriceBounds);
   const applied =
     metric === "footfall"
-      ? footfallApplied
+      ? Boolean(footfallBounds)
       : metric === "footfall-by-price"
-        ? footfallByPriceApplied
+        ? Boolean(footfallByPriceBounds)
         : salesApplied;
 
-  const needsProducts =
-    (metric === "footfall" && footfallApplied) ||
-    (metric === "footfall-by-price" && footfallByPriceApplied);
-
-  const filterOptions = needsProducts
-    ? await getDailySalesFilterOptions(session.tenantId)
-    : { products: [] as string[], mopTypes: [] as string[] };
-
-  const selectedProduct =
-    product && filterOptions.products.includes(product) ? product : undefined;
-
-  const [
-    footfallMetrics,
-    footfallByPriceMetrics,
-    salesMetrics,
-    productBreakdown,
-    mopBreakdown,
-  ] = applied
-    ? await Promise.all([
-        footfallBounds
-          ? getFootfallByHourOfDay(session.tenantId, {
-              ...footfallBounds,
-              product: selectedProduct,
-            })
-          : Promise.resolve([]),
-        footfallByPriceBounds
-          ? getFootfallByAmountRanges(session.tenantId, {
-              ...footfallByPriceBounds,
-              product: selectedProduct,
-            })
-          : Promise.resolve([]),
-        salesApplied
-          ? getDailySalesMetricsByPeriod(
-              session.tenantId,
-              start!,
-              end!,
-              granularity
-            )
-          : Promise.resolve([]),
-        salesApplied
-          ? getDailySalesMetricsByProduct(session.tenantId, start!, end!)
-          : Promise.resolve([]),
-        salesApplied
-          ? getDailySalesMetricsByMopType(session.tenantId, start!, end!)
-          : Promise.resolve([]),
-      ])
-    : [[], [], [], [], []];
-
-  const footfallChartData = footfallMetrics.map(({ label, count }) => ({
-    label,
-    count,
-  }));
-  const footfallByPriceChartData = footfallByPriceMetrics.map(
-    ({ label, count }) => ({
-      label,
-      count,
-    })
+  return (
+    <AnalyticsChartsContent
+      tenantId={session.tenantId}
+      metric={metric}
+      start={start}
+      end={end}
+      granularity={granularity}
+      footfallBounds={footfallBounds}
+      footfallByPriceBounds={footfallByPriceBounds}
+      selectedProduct={product}
+      applied={applied}
+    />
   );
-  const salesChartData = salesMetrics.map(({ label, amount }) => ({
-    label,
-    amount,
-  }));
+}
+
+export default async function SalesDataAnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    start?: string;
+    end?: string;
+    metric?: string;
+    granularity?: string;
+    startDate?: string;
+    endDate?: string;
+    startTime?: string;
+    endTime?: string;
+    product?: string;
+    ranges?: string;
+  }>;
+}) {
+  const params = await searchParams;
+  const metric = parseAnalyticsMetric(params.metric);
+  const start =
+    params.start && DATETIME_RE.test(params.start) ? params.start : undefined;
+  const end =
+    params.end && DATETIME_RE.test(params.end) ? params.end : undefined;
+  const startDate = parseDateParam(params.startDate);
+  const endDate = parseDateParam(params.endDate);
 
   return (
     <div className="space-y-6">
@@ -193,97 +148,9 @@ export default async function SalesDataAnalyticsPage({
         />
       </Suspense>
 
-      {applied ? (
-        metric === "footfall" ? (
-          <>
-            <Suspense fallback={null}>
-              <FootfallProductTabs
-                products={filterOptions.products}
-                product={selectedProduct}
-              />
-            </Suspense>
-
-            <Card className="border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Footfall</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <FootfallMetricsChart data={footfallChartData} />
-                <FootfallMetricsTable
-                  data={footfallChartData}
-                  labelHeader="Hour"
-                />
-              </CardContent>
-            </Card>
-          </>
-        ) : metric === "footfall-by-price" ? (
-          <>
-            <Suspense fallback={null}>
-              <FootfallProductTabs
-                products={filterOptions.products}
-                product={selectedProduct}
-              />
-            </Suspense>
-
-            <Card className="border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Footfall by price</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <FootfallMetricsChart data={footfallByPriceChartData} />
-                <FootfallMetricsTable
-                  data={footfallByPriceChartData}
-                  labelHeader="Price range"
-                />
-              </CardContent>
-            </Card>
-          </>
-        ) : (
-          <>
-            <Suspense fallback={null}>
-              <SalesGranularityTabs granularity={granularity} />
-            </Suspense>
-
-            <Card className="border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Sales</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SalesMetricsChart data={salesChartData} />
-              </CardContent>
-            </Card>
-
-            <Card className="border-0 shadow-sm">
-              <CardHeader>
-                <CardTitle>Sales trend</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SalesMetricsLineChart data={salesChartData} />
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="border-0 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Product sales</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <SalesBreakdownPieChart data={productBreakdown} />
-                </CardContent>
-              </Card>
-
-              <Card className="border-0 shadow-sm">
-                <CardHeader>
-                  <CardTitle>MOP type</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <SalesBreakdownPieChart data={mopBreakdown} />
-                </CardContent>
-              </Card>
-            </div>
-          </>
-        )
-      ) : null}
+      <Suspense fallback={<AnalyticsChartsSkeleton />}>
+        <AnalyticsChartsGate searchParams={searchParams} />
+      </Suspense>
     </div>
   );
 }

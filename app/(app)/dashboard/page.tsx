@@ -1,10 +1,9 @@
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { Suspense } from "react";
 import type { DashboardLocation } from "@/components/dashboard/dashboard-location-tabs";
+import { DashboardPageContent } from "@/components/dashboard/dashboard-page-content";
 import { PageToolbar } from "@/components/layout/page-toolbar";
 import { PageHeader } from "@/components/shared/page-blocks";
-import { canWriteInventory } from "@/lib/auth/rbac";
-import { requireTenantSession } from "@/lib/auth/permissions";
-import { requirePermission } from "@/lib/auth/require-permission";
+import { Skeleton } from "@/components/ui/skeleton";
 import { parseStockDisplayUnit } from "@/lib/format";
 import {
   defaultRangeEnd,
@@ -12,29 +11,26 @@ import {
   isValidDateString,
   normalizeDateRange,
 } from "@/lib/date-range";
-import {
-  getActivityForRange,
-  getDailySummary,
-  getLowStockAlerts,
-  getProductActivityForRange,
-  getRecentTransactions,
-  getSalesForDateRange,
-  getStockSummary,
-} from "@/lib/queries/inventory";
 import { getIstTodayString } from "@/lib/timezone";
-
-
-function buildSparkline(
-  daily: Array<{ received: number; transferred: number; sold: number }>,
-  pick: (row: { received: number; transferred: number; sold: number }) => number
-) {
-  const points = daily.map(pick);
-  return points.length > 1 ? points : undefined;
-}
 
 function parseDashboardLocation(value?: string): DashboardLocation {
   if (value === "depot" || value === "manager") return value;
   return "all";
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-full max-w-md rounded-lg" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Skeleton className="h-28 rounded-xl" />
+        <Skeleton className="h-28 rounded-xl" />
+        <Skeleton className="h-28 rounded-xl" />
+        <Skeleton className="h-28 rounded-xl" />
+      </div>
+      <Skeleton className="h-72 w-full rounded-xl" />
+    </div>
+  );
 }
 
 export default async function DashboardPage({
@@ -47,8 +43,6 @@ export default async function DashboardPage({
     unit?: string;
   }>;
 }) {
-  const session = await requireTenantSession();
-  await requirePermission(session, "dashboard:read");
   const params = await searchParams;
   const today = getIstTodayString();
   const defaultStart = defaultRangeStart(today);
@@ -59,140 +53,6 @@ export default async function DashboardPage({
   );
   const location = parseDashboardLocation(params.location);
   const unit = parseStockDisplayUnit(params.unit);
-  const [stock, activity, chartData, recent, productActivity, daily, lowStock] =
-    await Promise.all([
-      getStockSummary(session.tenantId),
-      getActivityForRange(session.tenantId, start, end),
-      getSalesForDateRange(session.tenantId, start, end),
-      getRecentTransactions(session.tenantId, undefined, 6, {
-        startDate: start,
-        endDate: end,
-      }),
-      getProductActivityForRange(session.tenantId, start, end),
-      getDailySummary(session.tenantId, start, end),
-      getLowStockAlerts(session.tenantId),
-    ]);
-
-  const dailyAsc = [...daily].sort((a, b) => a.date.localeCompare(b.date));
-  const consumptionSparkline = chartData.map((d) => d.quantity);
-  const issuedSparkline = buildSparkline(dailyAsc, (d) => d.transferred);
-  const receivedSparkline = buildSparkline(dailyAsc, (d) => d.received);
-  const varianceSparkline = buildSparkline(
-    dailyAsc,
-    (d) => d.received - d.transferred
-  );
-
-  const depotOpeningPackets =
-    stock.depotPackets -
-    activity.receivePackets +
-    activity.transferPackets -
-    activity.returnedPackets;
-  const depotOpeningLitres =
-    stock.depotQty -
-    activity.receiveQty +
-    activity.transferQty -
-    activity.returnedQty;
-  const managerOpeningPackets =
-    stock.managerPackets -
-    activity.transferPackets +
-    activity.salePackets +
-    activity.damagedPackets +
-    activity.returnedPackets;
-  const managerOpeningLitres =
-    stock.managerQty -
-    activity.transferQty +
-    activity.saleQty +
-    activity.damagedQty +
-    activity.returnedQty;
-
-  const depotVariancePackets =
-    depotOpeningPackets +
-    activity.receivePackets -
-    activity.transferPackets +
-    activity.returnedPackets -
-    stock.depotPackets;
-  const managerVariancePackets =
-    managerOpeningPackets +
-    activity.transferPackets -
-    activity.salePackets -
-    activity.damagedPackets -
-    activity.returnedPackets -
-    stock.managerPackets;
-  const systemVariancePackets = depotVariancePackets + managerVariancePackets;
-
-  const depotVarianceLitres =
-    depotOpeningLitres +
-    activity.receiveQty -
-    activity.transferQty +
-    activity.returnedQty -
-    stock.depotQty;
-  const managerVarianceLitres =
-    managerOpeningLitres +
-    activity.transferQty -
-    activity.saleQty -
-    activity.damagedQty -
-    activity.returnedQty -
-    stock.managerQty;
-  const systemVarianceLitres = depotVarianceLitres + managerVarianceLitres;
-
-  const stockKpi =
-    location === "manager"
-      ? {
-          label: "Total Manager Stock",
-          packets: stock.managerPackets,
-          litres: stock.managerQty,
-        }
-      : location === "depot"
-        ? {
-            label: "Total Depot Stock",
-            packets: stock.depotPackets,
-            litres: stock.depotQty,
-          }
-        : {
-            label: "Total Stock",
-            packets: stock.depotPackets + stock.managerPackets,
-            litres: stock.depotQty + stock.managerQty,
-          };
-
-  const varianceKpi =
-    location === "manager"
-      ? {
-          label: "Variance (Manager)",
-          packets: managerVariancePackets,
-          litres: managerVarianceLitres,
-        }
-      : location === "depot"
-        ? {
-            label: "Variance (Depot)",
-            packets: depotVariancePackets,
-            litres: depotVarianceLitres,
-          }
-        : {
-            label: "Variance (System)",
-            packets: systemVariancePackets,
-            litres: systemVarianceLitres,
-          };
-
-  const stockCountHref =
-    location === "all"
-      ? "/stock-count"
-      : `/stock-count?location=${location}`;
-
-  const stockSummaryTitle =
-    location === "manager"
-      ? "Manager Stock Summary"
-      : location === "depot"
-        ? "Depot Stock Summary"
-        : "Stock Summary";
-
-  const stockSummaryDescription =
-    location === "manager"
-      ? "Opening + issued − sold − damaged − returned = balance (selected range)."
-      : location === "depot"
-        ? "Opening + received − issued + returned = balance (selected range). Damaged is shown for manager activity."
-        : "Current balances across depot and manager locations.";
-
-  const productActivityRecord = Object.fromEntries(productActivity);
 
   return (
     <div className="space-y-6">
@@ -208,39 +68,18 @@ export default async function DashboardPage({
           endDate={end}
           defaultStart={defaultStart}
           defaultEnd={defaultEnd}
-          extraParams={
-            location !== "all" ? { location } : undefined
-          }
+          extraParams={location !== "all" ? { location } : undefined}
         />
       </div>
 
-      <DashboardView
-        location={location}
-        unit={unit}
-        canWrite={await canWriteInventory(session)}
-        stockKpi={stockKpi}
-        varianceKpi={varianceKpi}
-        activity={{
-          transferPackets: activity.transferPackets,
-          transferQty: activity.transferQty,
-          salePackets: activity.salePackets,
-          saleQty: activity.saleQty,
-        }}
-        oilTypeCount={stock.products.length}
-        rangeSubtitle="In selected range"
-        stockCountHref={stockCountHref}
-        stockSummaryTitle={stockSummaryTitle}
-        stockSummaryDescription={stockSummaryDescription}
-        products={stock.products}
-        productActivity={productActivityRecord}
-        recent={recent}
-        chartData={chartData}
-        lowStock={lowStock}
-        receivedSparkline={receivedSparkline}
-        issuedSparkline={issuedSparkline}
-        consumptionSparkline={consumptionSparkline}
-        varianceSparkline={varianceSparkline}
-      />
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardPageContent
+          start={start}
+          end={end}
+          location={location}
+          unit={unit}
+        />
+      </Suspense>
     </div>
   );
 }
