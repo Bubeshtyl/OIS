@@ -64,6 +64,8 @@ export async function loadTransactionPage(
     creators,
     rows: list.rows,
     summary: list.summary,
+    truncated: list.truncated,
+    fetchLimit: list.fetchLimit,
     startDate: start,
     endDate: end,
     defaultStart,

@@ -69,3 +69,6 @@ export type TransactionListSummary =
   | ConsumptionSummary;
 
 export const TRANSACTION_LIST_PAGE_SIZE = 10;
+
+/** Cap heavy joined list queries; newer rows first. Client paginates within this window. */
+export const TRANSACTION_LIST_FETCH_LIMIT = 50;

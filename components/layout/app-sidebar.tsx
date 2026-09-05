@@ -4,35 +4,19 @@ import { useEffect, useState, type ComponentProps } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  BarChart3,
   Building2,
-  ChartColumn,
   ChevronRight,
   Clock,
-  Container,
   Droplet,
-  FileText,
-  Gauge,
   Home,
-  IndianRupee,
-  KeyRound,
   LayoutDashboard,
-  ListChecks,
   LogOut,
-  MapPin,
   Percent,
   Receipt,
-  ScrollText,
   Settings,
-  SquareArrowDown,
-  SquareArrowUp,
-  Table2,
   Ticket,
-  Upload,
-  User,
   UserRound,
   Users,
-  Users2,
   type LucideIcon,
 } from "lucide-react";
 import { AppLogo } from "@/components/brand/app-logo";
@@ -108,38 +92,41 @@ function SidebarNavLink({
     </Link>
   );
 }
-const iconMap: Record<NavIcon, LucideIcon> = {
+
+/** Icons only for top-level + group headers (sub-links use bullets). */
+const iconMap: Partial<Record<NavIcon, LucideIcon>> = {
   home: Home,
   dashboard: LayoutDashboard,
   "shift-closing": Clock,
-  clock: Clock,
-  ledger: ScrollText,
-  "rsp-ledger": IndianRupee,
-  gauge: Gauge,
-  receive: SquareArrowDown,
-  transfer: SquareArrowUp,
   sales: Droplet,
-  reports: BarChart3,
-  "file-upload": Upload,
-  "daily-sales": Table2,
-  "sales-data-analytics": ChartColumn,
-  products: Container,
   "purchase-invoice": Receipt,
-  "ms-hsd-receipts": Droplet,
-  "lfr-invoice": FileText,
   tds: Percent,
-  gst: Percent,
   staff: Users,
   customers: UserRound,
-  users: User,
   tickets: Ticket,
-  teams: Users2,
-  questions: ListChecks,
   settings: Settings,
-  access: KeyRound,
-  station: MapPin,
   platform: Building2,
 };
+
+function NavIconView({
+  icon,
+  className,
+}: {
+  icon: NavIcon;
+  className?: string;
+}) {
+  const Icon = iconMap[icon] ?? Home;
+  return <Icon className={className} />;
+}
+
+function SubNavBullet() {
+  return (
+    <span
+      aria-hidden
+      className="mt-0.5 size-1.5 shrink-0 rounded-full bg-sidebar-foreground/45"
+    />
+  );
+}
 
 const groupMeta: Record<NavGroup, { label: string; icon: NavIcon }> = {
   "shift-closing": { label: "Shift Closing", icon: "shift-closing" },
@@ -196,7 +183,6 @@ function NavSubLink({
   className?: string;
   pendingBadges: ShiftClosingPendingBadgeCounts;
 }) {
-  const SubIcon = iconMap[item.icon];
   const active = isItemActive(pathname, item.href);
   const badgeCount = pendingBadgeCountForHref(item.href, pendingBadges);
 
@@ -207,7 +193,7 @@ function NavSubLink({
         className={className}
         render={<SidebarNavLink href={item.href} onClick={onNavigate} />}
       >
-        <SubIcon className="size-4" />
+        <SubNavBullet />
         <span className="min-w-0 truncate">{item.label}</span>
         <NavPendingBadge count={badgeCount} />
       </SidebarMenuSubButton>
@@ -228,7 +214,6 @@ function NestedCollapsibleSubgroup({
   onNavigate: () => void;
   pendingBadges: ShiftClosingPendingBadgeCounts;
 }) {
-  const SubIcon = iconMap[parent.icon];
   const parentActive = pathname === parent.href;
   const childActive = nestedItems.some((child) =>
     isItemActive(pathname, child.href)
@@ -253,7 +238,7 @@ function NestedCollapsibleSubgroup({
             className="min-w-0 flex-1"
             render={<SidebarNavLink href={parent.href} onClick={onNavigate} />}
           >
-            <SubIcon className="size-4" />
+            <SubNavBullet />
             <span>{parent.label}</span>
           </SidebarMenuSubButton>
           <CollapsibleTrigger
@@ -296,7 +281,6 @@ function CollapsibleNavGroup({
   onNavigate: () => void;
   pendingBadges: ShiftClosingPendingBadgeCounts;
 }) {
-  const Icon = iconMap[icon];
   const isActive = items.some((item) => isItemActive(pathname, item.href));
   const [open, setOpen] = useState(isActive);
 
@@ -326,7 +310,7 @@ function CollapsibleNavGroup({
             <SidebarMenuButton tooltip={label} className="h-10 rounded-xl" />
           }
         >
-          <Icon className="size-[1.125rem]" />
+          <NavIconView icon={icon} className="size-[1.125rem]" />
           <span>{label}</span>
           <ChevronRight className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
         </CollapsibleTrigger>
@@ -435,7 +419,6 @@ export function AppSidebar({
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               {topItems.map((item) => {
-                const Icon = iconMap[item.icon];
                 const active = isItemActive(pathname, item.href);
 
                 return (
@@ -448,7 +431,7 @@ export function AppSidebar({
                         <SidebarNavLink href={item.href} onClick={closeMobileSidebar} />
                       }
                     >
-                      <Icon className="size-[1.125rem]" />
+                      <NavIconView icon={item.icon} className="size-[1.125rem]" />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

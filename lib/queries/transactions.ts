@@ -28,6 +28,10 @@ import type {
   TransactionListSummary,
   TransactionListType,
 } from "@/lib/transactions/types";
+import {
+  TRANSACTION_LIST_FETCH_LIMIT,
+  TRANSACTION_LIST_PAGE_SIZE,
+} from "@/lib/transactions/types";
 
 export type {
   ConsumptionSummary,
@@ -37,7 +41,7 @@ export type {
   TransactionListSummary,
   TransactionListType,
 } from "@/lib/transactions/types";
-export { TRANSACTION_LIST_PAGE_SIZE } from "@/lib/transactions/types";
+export { TRANSACTION_LIST_FETCH_LIMIT, TRANSACTION_LIST_PAGE_SIZE };
 
 function buildConditions(filters: {
   tenantId: string;
@@ -265,25 +269,31 @@ export async function getAllTransactionRows(filters: {
   startDate: string;
   endDate: string;
   recordedBy?: string;
+  limit?: number;
 }) {
   const whereClause = buildConditions(filters);
+  const limit = filters.limit ?? TRANSACTION_LIST_FETCH_LIMIT;
 
   const rows = await baseQuery()
     .where(whereClause)
     .orderBy(
       desc(inventoryTransactions.transactionDate),
       desc(inventoryTransactions.createdAt)
-    );
+    )
+    .limit(limit + 1);
+
+  const truncated = rows.length > limit;
+  const pageRows = truncated ? rows.slice(0, limit) : rows;
 
   const summary = computeSummaryFromRows(
     filters.types,
-    rows,
+    pageRows,
     filters.startDate,
     filters.endDate
   );
 
   return {
-    rows: rows.map((row) => {
+    rows: pageRows.map((row) => {
       const casesReturned = row.casesReturned ?? 0;
       const casesReplaced = row.casesReplaced ?? 0;
       const openReturned = Math.max(0, casesReturned - casesReplaced);
@@ -295,5 +305,7 @@ export async function getAllTransactionRows(filters: {
       };
     }) as TransactionListRow[],
     summary,
+    truncated,
+    fetchLimit: limit,
   };
 }
