@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Eye, Loader2, Pencil } from "lucide-react";
+import { ChevronDown, Eye, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApprovalQueue } from "@/components/shift-closing/approval-queue";
 import { MyEditRequests } from "@/components/shift-closing/my-edit-requests";
@@ -41,7 +41,9 @@ import type {
   InterimShiftClosingProposedData,
 } from "@/lib/shift-closing/types";
 import { interimDetailToProposed } from "@/lib/shift-closing/types";
+import { toIstDateString } from "@/lib/date-range";
 import { formatDate, formatDateTime, formatInr, formatLitres } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 type SlipRow = {
   id: string;
@@ -132,6 +134,65 @@ export function ShiftClosingLedger({
       return true;
     });
   }, [interimRows, interimPump]);
+
+  const slipsByDay = useMemo(() => {
+    const map = new Map<string, SlipRow[]>();
+    for (const row of filteredSlips) {
+      const list = map.get(row.entryDate) ?? [];
+      list.push(row);
+      map.set(row.entryDate, list);
+    }
+    return Array.from(map.entries()).map(([date, rows]) => ({
+      date,
+      rows,
+    }));
+  }, [filteredSlips]);
+
+  const interimByDay = useMemo(() => {
+    const map = new Map<string, InterimRow[]>();
+    for (const row of filteredInterim) {
+      const date = toIstDateString(row.shiftDate);
+      const list = map.get(date) ?? [];
+      list.push(row);
+      map.set(date, list);
+    }
+    return Array.from(map.entries()).map(([date, rows]) => {
+      let sales = 0;
+      let collected = 0;
+      let difference = 0;
+      for (const row of rows) {
+        sales += Number(row.totalSalesAmount);
+        collected += Number(row.totalCollected);
+        difference += Number(row.difference);
+      }
+      return { date, rows, sales, collected, difference };
+    });
+  }, [filteredInterim]);
+
+  const [expandedSlipDays, setExpandedSlipDays] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [expandedInterimDays, setExpandedInterimDays] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  function toggleSlipDay(date: string) {
+    setExpandedSlipDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
+
+  function toggleInterimDay(date: string) {
+    setExpandedInterimDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
 
   function openSlipEdit(row: SlipRow) {
     setSlipEdit(row);
@@ -241,35 +302,26 @@ export function ShiftClosingLedger({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSlips.length === 0 ? (
+                    {slipsByDay.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-muted-foreground">
                           No slip entries found.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredSlips.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell>{formatDate(row.entryDate)}</TableCell>
-                          <TableCell>{row.machineNumber}</TableCell>
-                          <TableCell>{row.nozzleNumber}</TableCell>
-                          <TableCell className="tabular-nums">{row.reading}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">v{row.revision}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openSlipEdit(row)}
-                            >
-                              <Pencil className="mr-1 size-3.5" />
-                              Request edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      slipsByDay.map((group) => {
+                        const expanded = expandedSlipDays.has(group.date);
+                        return (
+                          <SlipDayGroup
+                            key={group.date}
+                            date={group.date}
+                            rows={group.rows}
+                            expanded={expanded}
+                            onToggle={() => toggleSlipDay(group.date)}
+                            onRequestEdit={openSlipEdit}
+                          />
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -301,56 +353,31 @@ export function ShiftClosingLedger({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredInterim.length === 0 ? (
+                    {interimByDay.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-muted-foreground">
                           No interim closings found.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredInterim.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell>
-                            {formatDateTime(row.shiftDate)}
-                          </TableCell>
-                          <TableCell>
-                            {row.pumpName} (#{row.pumpNumber})
-                          </TableCell>
-                          <TableCell className="tabular-nums">
-                            {formatInr(row.totalSalesAmount)}
-                          </TableCell>
-                          <TableCell className="tabular-nums">
-                            {formatInr(row.totalCollected)}
-                          </TableCell>
-                          <TableCell className="tabular-nums">
-                            {formatInr(row.difference)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">v{row.revision}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right space-x-1">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={isLoadingDetail}
-                              onClick={() => openInterim(row.id, "view")}
-                            >
-                              <Eye className="size-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={isLoadingDetail}
-                              onClick={() => openInterim(row.id, "edit")}
-                            >
-                              <Pencil className="mr-1 size-3.5" />
-                              Request edit
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      interimByDay.map((group) => {
+                        const expanded = expandedInterimDays.has(group.date);
+                        return (
+                          <InterimDayGroup
+                            key={group.date}
+                            date={group.date}
+                            rows={group.rows}
+                            sales={group.sales}
+                            collected={group.collected}
+                            difference={group.difference}
+                            expanded={expanded}
+                            onToggle={() => toggleInterimDay(group.date)}
+                            isLoadingDetail={isLoadingDetail}
+                            onView={(id) => openInterim(id, "view")}
+                            onRequestEdit={(id) => openInterim(id, "edit")}
+                          />
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -640,5 +667,174 @@ export function ShiftClosingLedger({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function SlipDayGroup({
+  date,
+  rows,
+  expanded,
+  onToggle,
+  onRequestEdit,
+}: {
+  date: string;
+  rows: SlipRow[];
+  expanded: boolean;
+  onToggle: () => void;
+  onRequestEdit: (row: SlipRow) => void;
+}) {
+  return (
+    <>
+      <TableRow className="bg-muted/30 hover:bg-muted/40">
+        <TableCell className="whitespace-nowrap">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="inline-flex items-center gap-1.5 text-left font-medium"
+            aria-expanded={expanded}
+          >
+            <ChevronDown
+              className={cn(
+                "size-4 shrink-0 transition-transform",
+                expanded ? "rotate-0" : "-rotate-90"
+              )}
+            />
+            {formatDate(date)}
+          </button>
+        </TableCell>
+        <TableCell colSpan={4} />
+        <TableCell />
+      </TableRow>
+      {expanded
+        ? rows.map((row) => (
+            <TableRow key={row.id} className="bg-background">
+              <TableCell className="pl-9 text-muted-foreground">
+                {formatDate(row.entryDate)}
+              </TableCell>
+              <TableCell>{row.machineNumber}</TableCell>
+              <TableCell>{row.nozzleNumber}</TableCell>
+              <TableCell className="tabular-nums">{row.reading}</TableCell>
+              <TableCell>
+                <Badge variant="outline">v{row.revision}</Badge>
+              </TableCell>
+              <TableCell className="text-right">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onRequestEdit(row)}
+                >
+                  <Pencil className="mr-1 size-3.5" />
+                  Request edit
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))
+        : null}
+    </>
+  );
+}
+
+function InterimDayGroup({
+  date,
+  rows,
+  sales,
+  collected,
+  difference,
+  expanded,
+  onToggle,
+  isLoadingDetail,
+  onView,
+  onRequestEdit,
+}: {
+  date: string;
+  rows: InterimRow[];
+  sales: number;
+  collected: number;
+  difference: number;
+  expanded: boolean;
+  onToggle: () => void;
+  isLoadingDetail: boolean;
+  onView: (id: string) => void;
+  onRequestEdit: (id: string) => void;
+}) {
+  return (
+    <>
+      <TableRow className="bg-muted/30 hover:bg-muted/40">
+        <TableCell className="whitespace-nowrap">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="inline-flex items-center gap-1.5 text-left font-medium"
+            aria-expanded={expanded}
+          >
+            <ChevronDown
+              className={cn(
+                "size-4 shrink-0 transition-transform",
+                expanded ? "rotate-0" : "-rotate-90"
+              )}
+            />
+            {formatDate(date)}
+          </button>
+        </TableCell>
+        <TableCell />
+        <TableCell className="tabular-nums font-medium">
+          {formatInr(sales)}
+        </TableCell>
+        <TableCell className="tabular-nums font-medium">
+          {formatInr(collected)}
+        </TableCell>
+        <TableCell className="tabular-nums font-medium">
+          {formatInr(difference)}
+        </TableCell>
+        <TableCell />
+        <TableCell />
+      </TableRow>
+      {expanded
+        ? rows.map((row) => (
+            <TableRow key={row.id} className="bg-background">
+              <TableCell className="pl-9 text-muted-foreground">
+                {formatDateTime(row.shiftDate)}
+              </TableCell>
+              <TableCell>
+                {row.pumpName} (#{row.pumpNumber})
+              </TableCell>
+              <TableCell className="tabular-nums">
+                {formatInr(row.totalSalesAmount)}
+              </TableCell>
+              <TableCell className="tabular-nums">
+                {formatInr(row.totalCollected)}
+              </TableCell>
+              <TableCell className="tabular-nums">
+                {formatInr(row.difference)}
+              </TableCell>
+              <TableCell>
+                <Badge variant="outline">v{row.revision}</Badge>
+              </TableCell>
+              <TableCell className="space-x-1 text-right">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={isLoadingDetail}
+                  onClick={() => onView(row.id)}
+                >
+                  <Eye className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isLoadingDetail}
+                  onClick={() => onRequestEdit(row.id)}
+                >
+                  <Pencil className="mr-1 size-3.5" />
+                  Request edit
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))
+        : null}
+    </>
   );
 }
