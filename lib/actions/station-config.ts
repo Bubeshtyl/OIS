@@ -16,6 +16,7 @@ import {
   getStationLayout,
   seedStationDefaultLayout,
 } from "@/lib/station-config/service";
+import { ensureStationPumpSerialSchema } from "@/lib/station-config/ensure-schema";
 import type { ActionState } from "@/lib/actions/inventory";
 
 // ---------------- Fuel Products Actions ---------------- //
@@ -49,6 +50,8 @@ export async function createFuelProductAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: `Fuel product "${name}" created.` };
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to create product.";
@@ -92,6 +95,8 @@ export async function updateFuelProductAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: `Fuel product "${name}" updated.` };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Update failed." };
@@ -114,6 +119,8 @@ export async function deleteFuelProductAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: "Fuel product deleted." };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Delete failed." };
@@ -132,8 +139,11 @@ export async function createPumpAction(
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
+    await ensureStationPumpSerialSchema();
+
     const pumpNumber = Number(formData.get("pumpNumber"));
     const name = String(formData.get("name") || "").trim() || `Pump ${pumpNumber}`;
+    const serialNumber = String(formData.get("serialNumber") || "").trim() || null;
 
     if (!pumpNumber || isNaN(pumpNumber) || pumpNumber <= 0) {
       return { success: false, error: "Valid pump number is required (e.g. 1, 2, 3...)." };
@@ -144,12 +154,15 @@ export async function createPumpAction(
       tenantId: session.tenantId,
       pumpNumber,
       name,
+      serialNumber,
       sortOrder: pumpNumber,
       isActive: true,
     });
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: `${name} created.` };
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to create pump.";
@@ -170,9 +183,12 @@ export async function updatePumpAction(
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
+    await ensureStationPumpSerialSchema();
+
     const id = String(formData.get("id") || "").trim();
     const pumpNumber = Number(formData.get("pumpNumber"));
     const name = String(formData.get("name") || "").trim() || `Pump ${pumpNumber}`;
+    const serialNumber = String(formData.get("serialNumber") || "").trim() || null;
     const isActive = formData.get("isActive") !== "false";
 
     if (!id || !pumpNumber || isNaN(pumpNumber)) {
@@ -185,6 +201,7 @@ export async function updatePumpAction(
       .set({
         pumpNumber,
         name,
+        serialNumber,
         isActive,
         sortOrder: pumpNumber,
       })
@@ -192,6 +209,8 @@ export async function updatePumpAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: `${name} updated.` };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Update failed." };
@@ -214,6 +233,8 @@ export async function deletePumpAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: "Pump and its associated nozzles deleted." };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Delete failed." };
@@ -254,6 +275,8 @@ export async function createNozzleAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: `${name} created.` };
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to create nozzle.";
@@ -300,6 +323,8 @@ export async function updateNozzleAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: `${name} updated.` };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Update failed." };
@@ -322,6 +347,8 @@ export async function deleteNozzleAction(
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: "Nozzle deleted." };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Delete failed." };
@@ -341,6 +368,8 @@ export async function resetDefaultStationLayoutAction(): Promise<ActionState> {
 
     revalidatePath("/admin/station");
     revalidatePath("/shift-closing/interim");
+    revalidatePath("/shift-closing/upcoming");
+    revalidatePath("/shift-closing/6am");
     return { success: true, message: "Default pump, nozzle & fuel product layout restored." };
   } catch (error) {
     return {

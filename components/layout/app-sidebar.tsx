@@ -57,6 +57,7 @@ const HOVER_PREFETCH_PATHS = new Set([
   "/",
   "/shift-closing/6am",
   "/shift-closing/interim",
+  "/shift-closing/upcoming",
   "/receive",
 ]);
 

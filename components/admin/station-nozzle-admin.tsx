@@ -125,6 +125,18 @@ function PumpDialog({
               />
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="pump-serial">Serial Number</Label>
+            <Input
+              id="pump-serial"
+              name="serialNumber"
+              placeholder="e.g. 202206000654"
+              defaultValue={pump?.serialNumber || ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              Machine ID for 6AM slip accordion. Pumps that share a serial are grouped together.
+            </p>
+          </div>
           {pump && (
             <div className="flex items-center justify-between pt-1">
               <Label htmlFor="pump-active" className="cursor-pointer">Active Status</Label>
@@ -374,7 +386,14 @@ export function StationNozzleAdmin({ layout }: { layout: StationLayout }) {
                   <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 font-bold text-primary text-sm">
                     P{pump.pumpNumber}
                   </span>
-                  <span className="font-semibold text-sm text-foreground">{pump.name}</span>
+                  <div className="min-w-0">
+                    <span className="font-semibold text-sm text-foreground">{pump.name}</span>
+                    {pump.serialNumber ? (
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        S/N {pump.serialNumber}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 {/* Nozzles under this pump */}

@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { addDays } from "date-fns";
+import Link from "next/link";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   AlertCircle,
+  ArrowRight,
   Banknote,
   Calculator,
   Coins,
@@ -42,13 +45,30 @@ import {
 } from "@/components/ui/table";
 import type { PumpWithNozzles } from "@/lib/station-config/service";
 import { closeInterimShiftAction } from "@/lib/actions/shift-closing";
+import { parseIstDate, toIstDateString } from "@/lib/date-range";
+import type { SixAmStatus } from "@/lib/shift-closing/service";
+import { getIstTodayString } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
+
+type ShiftOpenedOn = "today" | "yesterday";
 
 type RspPrices = {
   hsd: string;
   ms: string;
   speed: string;
 };
+
+function rateForProduct(
+  rsp: RspPrices | null | undefined,
+  productCode?: string | null
+): number {
+  if (!rsp || !productCode) return 0;
+  const code = productCode.toUpperCase();
+  if (code === "HSD") return Number(rsp.hsd) || 0;
+  if (code === "MS") return Number(rsp.ms) || 0;
+  if (code === "SPEED") return Number(rsp.speed) || 0;
+  return 0;
+}
 
 export interface CashDenominations {
   d500: string;
@@ -233,8 +253,12 @@ const DEFAULT_PUMP_LAYOUT: Record<
   },
 };
 
-function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<number, PumpData> {
+function buildInitialPumpsData(
+  configuredPumps?: PumpWithNozzles[],
+  previousClosingByNozzleId: Record<string, string> = {}
+): Record<number, PumpData> {
   const result: Record<number, PumpData> = {};
+  const defaultOpen = (nozzleId: string) => previousClosingByNozzleId[nozzleId] ?? "";
 
   if (configuredPumps && configuredPumps.length > 0) {
     for (const p of configuredPumps) {
@@ -254,21 +278,24 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
                   productName: nz.product?.name ?? fb?.productName ?? null,
                   productCode: nz.product?.code ?? fb?.productCode ?? null,
                   productColor: nz.product?.color ?? null,
-                  open: "",
+                  open: defaultOpen(nz.id),
                   close: "",
                   test: "",
                 };
               })
-            : fallbackNozzles.map((fb) => ({
-                id: `${p.id}-${fb.id}`,
-                name: fb.name,
-                productName: fb.productName,
-                productCode: fb.productCode,
-                productColor: null,
-                open: "",
-                close: "",
-                test: "",
-              })),
+            : fallbackNozzles.map((fb) => {
+                const id = `${p.id}-${fb.id}`;
+                return {
+                  id,
+                  name: fb.name,
+                  productName: fb.productName,
+                  productCode: fb.productCode,
+                  productColor: null,
+                  open: defaultOpen(id),
+                  close: "",
+                  test: "",
+                };
+              }),
         payment: { ...DEFAULT_PAYMENT, cash: { ...DEFAULT_DENOMINATIONS } },
       };
     }
@@ -286,7 +313,7 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
         name: n.name,
         productName: n.productName,
         productCode: n.productCode,
-        open: "",
+        open: defaultOpen(n.id),
         close: "",
         test: "",
       })),
@@ -298,16 +325,29 @@ function buildInitialPumpsData(configuredPumps?: PumpWithNozzles[]): Record<numb
 
 export function ShiftClosingCalculator({
   configuredPumps,
-  rspPrices = null,
+  sixAmStatus = null,
   staffMembers = [],
+  closingSource = "interim",
+  sixAmGateActive = true,
+  yesterdayRsp = null,
+  todaySixAmReadingsByNozzleId = {},
+  previousClosingByNozzleId = {},
 }: {
   configuredPumps?: PumpWithNozzles[];
-  rspPrices?: RspPrices | null;
+  sixAmStatus?: SixAmStatus | null;
   staffMembers?: Array<{ id: string; name: string }>;
+  closingSource?: "interim" | "upcoming";
+  /** When false (Upcoming before 10:00 IST), skip the 6AM/RSP gate. */
+  sixAmGateActive?: boolean;
+  yesterdayRsp?: RspPrices | null;
+  /** Today's 6AM slip readings keyed by station nozzle id. */
+  todaySixAmReadingsByNozzleId?: Record<string, number>;
+  /** Previous shift close per nozzle — prefilled as Open (editable). */
+  previousClosingByNozzleId?: Record<string, string>;
 }) {
   const initialData = useMemo(
-    () => buildInitialPumpsData(configuredPumps),
-    [configuredPumps]
+    () => buildInitialPumpsData(configuredPumps, previousClosingByNozzleId),
+    [configuredPumps, previousClosingByNozzleId]
   );
 
   const pumpOptions = useMemo(() => {
@@ -319,14 +359,39 @@ export function ShiftClosingCalculator({
   const [selectedStaffId, setSelectedStaffId] = useState<string>(
     () => staffMembers[0]?.id ?? ""
   );
+  const [shiftOpenedOn, setShiftOpenedOn] = useState<ShiftOpenedOn>("today");
   const [pumpsData, setPumpsData] = useState<Record<number, PumpData>>(initialData);
+
+  // Apply server defaults (previous close / 6AM slip) once they arrive or refresh.
+  useEffect(() => {
+    setPumpsData(initialData);
+  }, [initialData]);
+
   const [calculatedResults, setCalculatedResults] = useState<
     Record<number, PumpCalculationResult> | null
   >(null);
   const [isClosingShift, startClosingShift] = useTransition();
+  const [isGatedDialogOpen, setIsGatedDialogOpen] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [isValidationDialogOpen, setIsValidationDialogOpen] = useState(false);
   const [isDenominationsOpen, setIsDenominationsOpen] = useState(false);
+
+  const isUpcoming = closingSource === "upcoming";
+  // Interim: always gate when 6AM/RSP missing.
+  // Upcoming: only when after 10:00 IST AND shift opened yesterday.
+  const isGated =
+    Boolean(sixAmGateActive && sixAmStatus && !sixAmStatus.isReady) &&
+    (!isUpcoming || shiftOpenedOn === "yesterday");
+  const rspPrices = sixAmStatus?.rspPrices ?? null;
+  const useSplitRsp =
+    isUpcoming && shiftOpenedOn === "yesterday" && sixAmGateActive;
+
+  function resolveShiftDate(): Date | undefined {
+    if (!isUpcoming) return undefined;
+    const today = getIstTodayString();
+    if (shiftOpenedOn === "today") return parseIstDate(today);
+    return parseIstDate(toIstDateString(addDays(parseIstDate(today), -1)));
+  }
 
   const currentPumpData = pumpsData[selectedPump] || initialData[selectedPump] || {
     pumpNumber: selectedPump,
@@ -355,6 +420,11 @@ export function ShiftClosingCalculator({
     field: "open" | "close" | "test",
     value: string
   ) {
+    if (isGated) {
+      setIsGatedDialogOpen(true);
+      return;
+    }
+
     setPumpsData((prev) => {
       const currentPump = prev[selectedPump] || currentPumpData;
       const updatedNozzles = currentPump.nozzles.map((nozzle) => {
@@ -422,6 +492,11 @@ export function ShiftClosingCalculator({
   }
 
   function handleCalculate() {
+    if (isGated) {
+      setIsGatedDialogOpen(true);
+      return;
+    }
+
     const results: Record<number, PumpCalculationResult> = {
       ...(calculatedResults || {}),
     };
@@ -468,23 +543,43 @@ export function ShiftClosingCalculator({
       }
 
       const gross = hasNozzleInput ? Math.max(0, closeVal - openVal) : 0;
-      const netSale = hasNozzleInput ? Math.max(0, gross - testVal) : 0;
+      let netSale = hasNozzleInput ? Math.max(0, gross - testVal) : 0;
 
       if (hasNozzleInput && testVal > gross && gross > 0) {
         error = "Testing exceeds gross sales volume";
         pumpHasErrors = true;
       }
 
-      // Calculate sales amount from RSP if rate is available
       let rate = 0;
-      if (rsp && nozzle.productCode) {
-        const code = nozzle.productCode.toUpperCase();
-        if (code === "HSD") rate = Number(rsp.hsd) || 0;
-        else if (code === "MS") rate = Number(rsp.ms) || 0;
-        else if (code === "SPEED") rate = Number(rsp.speed) || 0;
-      }
+      let salesAmount = 0;
 
-      const salesAmount = rate > 0 ? Number((netSale * rate).toFixed(2)) : 0;
+      if (hasNozzleInput && !error && useSplitRsp) {
+        const sixAmReading = todaySixAmReadingsByNozzleId[nozzle.id];
+        if (sixAmReading == null || !Number.isFinite(sixAmReading)) {
+          error = "Missing today's 6AM slip reading for split RSP";
+          pumpHasErrors = true;
+        } else if (openVal > sixAmReading || sixAmReading > closeVal) {
+          error = "6AM reading must be between opening and closing";
+          pumpHasErrors = true;
+        } else if (!yesterdayRsp) {
+          error = "Yesterday's RSP is required for overnight sales";
+          pumpHasErrors = true;
+        } else {
+          const yesterdayRate = rateForProduct(yesterdayRsp, nozzle.productCode);
+          const todayRate = rateForProduct(rsp, nozzle.productCode);
+          const preGross = Math.max(0, sixAmReading - openVal);
+          const preNet = Math.max(0, preGross - testVal);
+          const postGross = Math.max(0, closeVal - sixAmReading);
+          netSale = preNet + postGross;
+          salesAmount = Number(
+            (preNet * yesterdayRate + postGross * todayRate).toFixed(2)
+          );
+          rate = netSale > 0 ? Number((salesAmount / netSale).toFixed(4)) : 0;
+        }
+      } else if (hasNozzleInput && !error) {
+        rate = rateForProduct(rsp, nozzle.productCode);
+        salesAmount = rate > 0 ? Number((netSale * rate).toFixed(2)) : 0;
+      }
 
       nozzleResults.push({
         id: nozzle.id,
@@ -569,13 +664,18 @@ export function ShiftClosingCalculator({
   const collectionsEnabled = Boolean(
     currentCalculation && !currentCalculation.hasErrors
   );
-  const collectionsDisabled = !collectionsEnabled;
+  const collectionsDisabled = isGated || !collectionsEnabled;
 
   // Totals for current pump payments
   const pumpCash = calculateDenominationCash(currentPumpData.payment.cash);
   const pumpTotalPayment = calculatePumpTotalPayment(currentPumpData.payment);
 
   function handleCloseShift() {
+    if (isGated) {
+      setIsGatedDialogOpen(true);
+      return;
+    }
+
     if (!selectedStaffId) {
       toast.error("Please select a staff member.");
       return;
@@ -591,10 +691,12 @@ export function ShiftClosingCalculator({
       const difference = pumpTotalPayment - totalSales;
 
       const res = await closeInterimShiftAction({
+        source: closingSource,
         pumpId: currentPumpData.pumpId,
         pumpNumber: selectedPump,
         pumpName: currentPumpData.name,
         staffId: selectedStaffId,
+        shiftDate: resolveShiftDate(),
         totalGross: currentCalculation.totalGross,
         totalTest: currentCalculation.totalTest,
         totalNetLitres: currentCalculation.totalNetSale,
@@ -635,6 +737,34 @@ export function ShiftClosingCalculator({
             },
           },
         });
+
+        // Next open for this pump = the close just saved (still editable).
+        const closeByNozzleId = new Map(
+          currentCalculation.nozzleResults.map((nz) => [nz.id, String(nz.close)])
+        );
+        setPumpsData((prev) => {
+          const pump = prev[selectedPump];
+          if (!pump) return prev;
+          return {
+            ...prev,
+            [selectedPump]: {
+              ...pump,
+              nozzles: pump.nozzles.map((n) => ({
+                ...n,
+                open: closeByNozzleId.get(n.id) ?? n.open,
+                close: "",
+                test: "",
+              })),
+              payment: { ...DEFAULT_PAYMENT, cash: { ...DEFAULT_DENOMINATIONS } },
+            },
+          };
+        });
+        setCalculatedResults((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev };
+          delete next[selectedPump];
+          return next;
+        });
       } else {
         toast.error(res.error || "Failed to close shift.");
       }
@@ -643,6 +773,72 @@ export function ShiftClosingCalculator({
 
   return (
     <div className="space-y-6">
+      {/* 6 AM Gating Modal Dialog */}
+      <Dialog open={isGatedDialogOpen} onOpenChange={setIsGatedDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-destructive">
+              <AlertCircle className="size-5 text-destructive shrink-0" />
+              6 AM Entry Required
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-foreground">
+              {isUpcoming ? (
+                <>
+                  Because this shift opened yesterday, complete the 6 AM entry for
+                  today (<span className="font-semibold">{sixAmStatus?.dateStr}</span>
+                  ) after 10:00 AM before entering or calculating upcoming
+                  readings.
+                </>
+              ) : (
+                <>
+                  You must complete the 6 AM entry for today (
+                  <span className="font-semibold">{sixAmStatus?.dateStr}</span>)
+                  before entering or calculating interim shift readings.
+                </>
+              )}
+            </p>
+
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1.5 text-xs">
+              <p className="font-semibold text-foreground">Missing items:</p>
+              {!sixAmStatus?.hasRsp && (
+                <p className="text-destructive font-medium">
+                  • Daily RSP fuel prices not saved
+                </p>
+              )}
+              {!sixAmStatus?.hasSlipEntry && (
+                <p className="text-destructive font-medium">
+                  • 6 AM Machine Slip readings not recorded
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <DialogClose
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "h-9 px-4 text-xs font-semibold cursor-pointer"
+                )}
+              >
+                Cancel
+              </DialogClose>
+              <Link
+                href="/shift-closing/6am"
+                className={cn(
+                  buttonVariants({ variant: "destructive", size: "sm" }),
+                  "h-9 px-4 text-xs font-semibold gap-1.5 inline-flex items-center"
+                )}
+              >
+                Go to 6 AM Entry
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Calculation Errors Modal Dialog */}
       <Dialog open={isValidationDialogOpen} onOpenChange={setIsValidationDialogOpen}>
         <DialogContent className="max-w-md">
@@ -826,9 +1022,60 @@ export function ShiftClosingCalculator({
                 </SelectContent>
               </Select>
             </div>
+
+            {isUpcoming ? (
+              <div className="space-y-2 sm:col-span-2">
+                <Label
+                  htmlFor="shift-opened-select"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Shift opened
+                </Label>
+                <Select
+                  value={shiftOpenedOn}
+                  onValueChange={(val) => {
+                    if (val === "today" || val === "yesterday") {
+                      setShiftOpenedOn(val);
+                      if (val === "today") setIsGatedDialogOpen(false);
+                    }
+                  }}
+                  items={[
+                    { value: "today", label: "Today" },
+                    { value: "yesterday", label: "Yesterday" },
+                  ]}
+                >
+                  <SelectTrigger
+                    id="shift-opened-select"
+                    className="h-11 w-full bg-background text-base font-medium"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today" className="text-sm">
+                      Today
+                    </SelectItem>
+                    <SelectItem value="yesterday" className="text-sm">
+                      Yesterday
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
 
-          <div className="rounded-xl border bg-card p-2 sm:p-3 shadow-sm">
+          <div
+            className={cn(
+              "rounded-xl border bg-card p-2 sm:p-3 shadow-sm transition-colors",
+              isGated && "cursor-pointer hover:border-destructive/40"
+            )}
+            onClickCapture={(e) => {
+              if (isGated) {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsGatedDialogOpen(true);
+              }
+            }}
+          >
             <div className="overflow-x-auto">
               <Table className="min-w-[580px]">
                 <TableHeader>
@@ -924,6 +1171,14 @@ export function ShiftClosingCalculator({
                 Calculate
               </Button>
             </div>
+
+            {useSplitRsp ? (
+              <p className="text-xs text-muted-foreground text-center">
+                Overnight shift: litres until today&apos;s 6AM use yesterday&apos;s
+                RSP; litres after 6AM use today&apos;s RSP. Test litres are deducted
+                from the pre-6AM segment.
+              </p>
+            ) : null}
           </div>
         </CardContent>
       </Card>

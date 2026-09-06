@@ -24,6 +24,7 @@ import {
 import {
   getDailyRsp,
   getMachineSlipEntries,
+  getSixAmStatus,
   saveDailyRsp,
   saveMachineSlipEntries,
   saveInterimShiftClosing,
@@ -32,19 +33,33 @@ import {
 } from "@/lib/shift-closing/service";
 import type { ShiftClosingProposedData } from "@/lib/shift-closing/types";
 import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
+import {
+  getUpcomingPrerequisites,
+  upcomingPrerequisitesErrorMessage,
+} from "@/lib/shift-closing/upcoming-prerequisites";
 import { getStaffById } from "@/lib/staff/service";
+import { getIstTodayString, IST_TIMEZONE } from "@/lib/timezone";
+import { formatInTimeZone } from "date-fns-tz";
 
 const LEDGER_PATHS = [
   "/shift-closing/rsp",
   "/shift-closing/ledger",
   "/shift-closing/6am",
   "/shift-closing/interim",
+  "/shift-closing/upcoming",
 ] as const;
 
 function revalidateShiftClosingPaths() {
   for (const path of LEDGER_PATHS) {
     revalidatePath(path);
   }
+}
+
+function resolveShiftClosingGateDate(shiftDate?: Date): string {
+  if (shiftDate) {
+    return formatInTimeZone(shiftDate, IST_TIMEZONE, "yyyy-MM-dd");
+  }
+  return getIstTodayString();
 }
 
 export type ShiftClosingActionState = {
@@ -158,7 +173,9 @@ export async function fetchSixAmDataForDateAction(dateStr: string) {
 }
 
 export async function closeInterimShiftAction(
-  input: SaveInterimShiftClosingInput
+  input: SaveInterimShiftClosingInput & {
+    source?: "interim" | "upcoming";
+  }
 ): Promise<ShiftClosingActionState> {
   try {
     const session = await requireTenantSession();
@@ -178,10 +195,41 @@ export async function closeInterimShiftAction(
       return { success: false, error: "Selected staff member is inactive." };
     }
 
+    const { source = "interim", ...saveInput } = input;
+    const shiftDateStr = resolveShiftClosingGateDate(saveInput.shiftDate);
+    const todayIst = getIstTodayString();
+
+    if (source === "upcoming") {
+      // Gate only for shifts opened yesterday, after 10:00 IST — check today's RSP + 6AM.
+      const openedYesterday = shiftDateStr !== todayIst;
+      if (openedYesterday) {
+        const prerequisites = await getUpcomingPrerequisites(session.tenantId, {
+          dateStr: todayIst,
+        });
+        if (!prerequisites.ok) {
+          return {
+            success: false,
+            error: upcomingPrerequisitesErrorMessage(prerequisites),
+          };
+        }
+      }
+    } else {
+      const sixAmStatus = await getSixAmStatus(session.tenantId, todayIst);
+      if (!sixAmStatus.hasRsp || !sixAmStatus.hasSlipEntry) {
+        const missing: string[] = [];
+        if (!sixAmStatus.hasRsp) missing.push("RSP fuel prices");
+        if (!sixAmStatus.hasSlipEntry) missing.push("6 AM slip entry readings");
+        return {
+          success: false,
+          error: `Cannot close shift: Please complete the 6 AM entry first (${missing.join(" and ")} missing for ${todayIst}).`,
+        };
+      }
+    }
+
     const saved = await saveInterimShiftClosing(
       session.tenantId,
       session.userId,
-      input
+      saveInput
     );
 
     revalidateShiftClosingPaths();
@@ -196,7 +244,7 @@ export async function closeInterimShiftAction(
     return {
       success: false,
       error:
-        err instanceof Error ? err.message : "Failed to record interim shift closing.",
+        err instanceof Error ? err.message : "Failed to record shift closing.",
     };
   }
 }

@@ -17,6 +17,7 @@ const LEDGER_PATHS = [
   "/shift-closing/ledger",
   "/shift-closing/6am",
   "/shift-closing/interim",
+  "/shift-closing/upcoming",
 ] as const;
 
 function revalidateShiftClosingPaths() {

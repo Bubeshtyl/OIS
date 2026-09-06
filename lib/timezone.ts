@@ -10,6 +10,15 @@ export function getIstTodayString(): string {
   return formatInTimeZone(new Date(), IST_TIMEZONE, "yyyy-MM-dd");
 }
 
+/** 24h hour in IST (0–23). */
+export function getIstHour(date = new Date()): number {
+  return Number(formatInTimeZone(date, IST_TIMEZONE, "H"));
+}
+
+export function isAtOrAfterIstHour(hour: number, date = new Date()): boolean {
+  return getIstHour(date) >= hour;
+}
+
 export function getIstDateLabel(date = new Date()): string {
   return formatInTimeZone(date, IST_TIMEZONE, "EEE d MMM");
 }

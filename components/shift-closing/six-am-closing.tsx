@@ -29,63 +29,22 @@ import {
   saveDailyRspAction,
   saveMachineSlipEntriesAction,
 } from "@/lib/actions/six-am";
+import type { MachineSlipGroup } from "@/lib/station-config/service";
 
-interface SlipEntryGroup {
-  id: string;
-  title: string;
-  machineNumber: string;
-  nozzles: Array<{ id: string; label: string; nozzleNumber: number }>;
-}
-
-const SLIP_GROUPS: SlipEntryGroup[] = [
-  {
-    id: "group-1",
-    title: "202206000654",
-    machineNumber: "202206000654",
-    nozzles: [
-      { id: "g1-n1", label: "Nozzle 1", nozzleNumber: 1 },
-      { id: "g1-n2", label: "Nozzle 2", nozzleNumber: 2 },
-      { id: "g1-n3", label: "Nozzle 3", nozzleNumber: 3 },
-      { id: "g1-n4", label: "Nozzle 4", nozzleNumber: 4 },
-    ],
-  },
-  {
-    id: "group-2",
-    title: "M2446157",
-    machineNumber: "M2446157",
-    nozzles: [
-      { id: "g2-n1", label: "Nozzle 1", nozzleNumber: 1 },
-      { id: "g2-n2", label: "Nozzle 2", nozzleNumber: 2 },
-      { id: "g2-n3", label: "Nozzle 3", nozzleNumber: 3 },
-      { id: "g2-n4", label: "Nozzle 4", nozzleNumber: 4 },
-      { id: "g2-n5", label: "Nozzle 5", nozzleNumber: 5 },
-      { id: "g2-n6", label: "Nozzle 6", nozzleNumber: 6 },
-    ],
-  },
-  {
-    id: "group-3",
-    title: "202206000650",
-    machineNumber: "202206000650",
-    nozzles: [
-      { id: "g3-n1", label: "Nozzle 1", nozzleNumber: 1 },
-      { id: "g3-n2", label: "Nozzle 2", nozzleNumber: 2 },
-      { id: "g3-n3", label: "Nozzle 3", nozzleNumber: 3 },
-      { id: "g3-n4", label: "Nozzle 4", nozzleNumber: 4 },
-    ],
-  },
-];
+type SlipEntryGroup = MachineSlipGroup;
 
 function slipKey(machineNumber: string, nozzleNumber: number) {
   return `${machineNumber}:${nozzleNumber}`;
 }
 
 function buildSlipReadingsMap(
+  groups: SlipEntryGroup[],
   slips?: Array<{ machineNumber: string; nozzleNumber: number; reading: string }>
 ): Record<string, string> {
   const map: Record<string, string> = {};
   if (!slips) return map;
 
-  for (const group of SLIP_GROUPS) {
+  for (const group of groups) {
     for (const nozzle of group.nozzles) {
       const match = slips.find(
         (s) =>
@@ -123,6 +82,7 @@ export function SixAmShiftClosingForm({
   initialDate,
   initialRsp,
   initialSlips,
+  slipGroups,
 }: {
   initialDate: string;
   initialRsp?: { hsd: string; ms: string; speed: string } | null;
@@ -131,6 +91,7 @@ export function SixAmShiftClosingForm({
     nozzleNumber: number;
     reading: string;
   }>;
+  slipGroups: SlipEntryGroup[];
 }) {
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [day, setDay] = useState<DayPayload>({
@@ -208,6 +169,7 @@ export function SixAmShiftClosingForm({
         key={`${selectedDate}-${slipEpoch}-slips`}
         selectedDate={selectedDate}
         initialSlips={day.slips}
+        slipGroups={slipGroups}
         isLoadingDate={isLoadingDate}
         onSaved={refreshSlips}
       />
@@ -484,6 +446,7 @@ const PriceField = memo(function PriceField({
 function SlipSection({
   selectedDate,
   initialSlips,
+  slipGroups,
   isLoadingDate,
   onSaved,
 }: {
@@ -493,6 +456,7 @@ function SlipSection({
     nozzleNumber: number;
     reading: string;
   }>;
+  slipGroups: SlipEntryGroup[];
   isLoadingDate: boolean;
   onSaved: () => void;
 }) {
@@ -501,14 +465,16 @@ function SlipSection({
     [initialSlips]
   );
   const initialReadings = useMemo(
-    () => buildSlipReadingsMap(initialSlips),
-    [initialSlips]
+    () => buildSlipReadingsMap(slipGroups, initialSlips),
+    [slipGroups, initialSlips]
   );
   const readingsRef = useRef<Record<string, string>>({ ...initialReadings });
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    "group-1": true,
-    "group-2": false,
-    "group-3": false,
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    slipGroups.forEach((group, index) => {
+      initial[group.id] = index === 0;
+    });
+    return initial;
   });
   const [isSavingSlips, startSavingSlips] = useTransition();
 
@@ -530,7 +496,7 @@ function SlipSection({
       reading: string;
     }> = [];
 
-    for (const group of SLIP_GROUPS) {
+    for (const group of slipGroups) {
       for (const nozzle of group.nozzles) {
         const key = slipKey(group.machineNumber, nozzle.nozzleNumber);
         const val = readingsRef.current[nozzle.id];
@@ -548,7 +514,9 @@ function SlipSection({
       toast.error(
         hasRecordedSlips
           ? "Recorded readings are locked. Request edits from the Ledger."
-          : "Please enter at least one slip reading before saving."
+          : slipGroups.length === 0
+            ? "Configure pump serial numbers under Station settings first."
+            : "Please enter at least one slip reading before saving."
       );
       return;
     }
@@ -603,17 +571,25 @@ function SlipSection({
 
         <form onSubmit={handleSlipSubmit} className="space-y-4">
           <div className="space-y-3">
-            {SLIP_GROUPS.map((group) => (
-              <SlipGroupCard
-                key={group.id}
-                group={group}
-                isOpen={Boolean(openGroups[group.id])}
-                onToggle={toggleGroup}
-                initialReadings={initialReadings}
-                existingSlipKeys={existingSlipKeys}
-                readingsRef={readingsRef}
-              />
-            ))}
+            {slipGroups.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                No machine serials configured. Add a{" "}
+                <span className="font-medium text-foreground">Serial Number</span> on
+                each pump under Station settings to build the 6AM slip accordion.
+              </div>
+            ) : (
+              slipGroups.map((group) => (
+                <SlipGroupCard
+                  key={group.id}
+                  group={group}
+                  isOpen={Boolean(openGroups[group.id])}
+                  onToggle={toggleGroup}
+                  initialReadings={initialReadings}
+                  existingSlipKeys={existingSlipKeys}
+                  readingsRef={readingsRef}
+                />
+              ))
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 pt-2">

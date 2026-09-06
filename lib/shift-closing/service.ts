@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   dailyRspPrices,
@@ -7,13 +7,119 @@ import {
   interimNozzleReadings,
   interimPaymentCollections,
   shiftClosingLedgerEvents,
+  stationNozzles,
+  stationPumps,
   type DailyRspPrice,
   type MachineSlipEntry,
 } from "@/lib/db/schema";
 import { logShiftClosingCreated } from "@/lib/shift-closing/ledger";
 import { EditRequiresApprovalError } from "@/lib/shift-closing/types";
+import { ensureStationPumpSerialSchema } from "@/lib/station-config/ensure-schema";
 
 export { EditRequiresApprovalError } from "@/lib/shift-closing/types";
+
+/**
+ * Default Open per station nozzle (editable in the UI):
+ * 1. Latest Interim/Upcoming close for that nozzle, else
+ * 2. Latest 6AM slip reading for that pump serial + nozzle number.
+ */
+export async function getLatestNozzleClosingReadings(
+  tenantId: string
+): Promise<Record<string, string>> {
+  await ensureStationPumpSerialSchema();
+  const db = getDb();
+  const byNozzleId: Record<string, string> = {};
+
+  const interimRows = await db
+    .select({
+      nozzleId: interimNozzleReadings.nozzleId,
+      closingReading: interimNozzleReadings.closingReading,
+    })
+    .from(interimNozzleReadings)
+    .innerJoin(
+      interimShiftClosings,
+      eq(interimNozzleReadings.shiftClosingId, interimShiftClosings.id)
+    )
+    .where(
+      and(
+        eq(interimShiftClosings.tenantId, tenantId),
+        isNotNull(interimNozzleReadings.nozzleId)
+      )
+    )
+    .orderBy(
+      desc(interimShiftClosings.shiftDate),
+      desc(interimShiftClosings.createdAt)
+    );
+
+  for (const row of interimRows) {
+    if (!row.nozzleId || byNozzleId[row.nozzleId] != null) continue;
+    byNozzleId[row.nozzleId] = String(row.closingReading);
+  }
+
+  // Fall back to latest 6AM slip when no prior shift close exists yet.
+  const [nozzles, pumps, slips] = await Promise.all([
+    db
+      .select({
+        id: stationNozzles.id,
+        pumpId: stationNozzles.pumpId,
+        nozzleNumber: stationNozzles.nozzleNumber,
+      })
+      .from(stationNozzles)
+      .where(eq(stationNozzles.tenantId, tenantId)),
+    db
+      .select({
+        id: stationPumps.id,
+        serialNumber: stationPumps.serialNumber,
+      })
+      .from(stationPumps)
+      .where(eq(stationPumps.tenantId, tenantId)),
+    db
+      .select({
+        machineNumber: machineSlipEntries.machineNumber,
+        nozzleNumber: machineSlipEntries.nozzleNumber,
+        reading: machineSlipEntries.reading,
+      })
+      .from(machineSlipEntries)
+      .where(eq(machineSlipEntries.tenantId, tenantId))
+      .orderBy(
+        desc(machineSlipEntries.entryDate),
+        desc(machineSlipEntries.createdAt)
+      ),
+  ]);
+
+  const serialByPumpId = new Map(
+    pumps.map((p) => [p.id, p.serialNumber?.trim() || ""])
+  );
+  const latestSlipByKey = new Map<string, string>();
+  for (const slip of slips) {
+    const key = `${slip.machineNumber}:${slip.nozzleNumber}`;
+    if (latestSlipByKey.has(key)) continue;
+    latestSlipByKey.set(key, String(slip.reading));
+  }
+
+  for (const nozzle of nozzles) {
+    if (byNozzleId[nozzle.id] != null) continue;
+    const serial = serialByPumpId.get(nozzle.pumpId);
+    if (!serial) continue;
+    const reading = latestSlipByKey.get(`${serial}:${nozzle.nozzleNumber}`);
+    if (reading != null) byNozzleId[nozzle.id] = reading;
+  }
+
+  return byNozzleId;
+}
+
+export interface SixAmStatus {
+  hasRsp: boolean;
+  hasSlipEntry: boolean;
+  isReady: boolean;
+  dateStr: string;
+  rspPrices: {
+    hsd: string;
+    ms: string;
+    speed: string;
+  } | null;
+  slipEntriesCount: number;
+}
 
 export async function getDailyRsp(
   tenantId: string,
@@ -90,6 +196,36 @@ export async function getMachineSlipEntries(
         eq(machineSlipEntries.entryDate, dateStr)
       )
     );
+}
+
+export async function getSixAmStatus(
+  tenantId: string,
+  dateStr: string
+): Promise<SixAmStatus> {
+  const [rspRow, slipEntries] = await Promise.all([
+    getDailyRsp(tenantId, dateStr),
+    getMachineSlipEntries(tenantId, dateStr),
+  ]);
+
+  const hasRsp =
+    !!rspRow && !!rspRow.hsdPrice && !!rspRow.msPrice && !!rspRow.speedPrice;
+  const hasSlipEntry = slipEntries.length > 0;
+  const isReady = hasRsp && hasSlipEntry;
+
+  return {
+    hasRsp,
+    hasSlipEntry,
+    isReady,
+    dateStr,
+    rspPrices: rspRow
+      ? {
+          hsd: rspRow.hsdPrice,
+          ms: rspRow.msPrice,
+          speed: rspRow.speedPrice,
+        }
+      : null,
+    slipEntriesCount: slipEntries.length,
+  };
 }
 
 export interface MachineSlipItem {

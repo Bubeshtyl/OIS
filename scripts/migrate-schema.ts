@@ -1225,11 +1225,31 @@ async function migrateToMultiTenant(db: Db) {
       tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       pump_number integer NOT NULL,
       name text NOT NULL,
+      serial_number text,
       is_active boolean NOT NULL DEFAULT true,
       sort_order integer NOT NULL DEFAULT 0,
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT station_pumps_tenant_pump_number_unique UNIQUE (tenant_id, pump_number)
     )
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE station_pumps
+    ADD COLUMN IF NOT EXISTS serial_number text
+  `);
+
+  // Default machine serial mapping for existing pumps (6AM slip accordion groups).
+  await db.execute(sql`
+    UPDATE station_pumps SET serial_number = '202206000654'
+    WHERE pump_number IN (1, 2) AND (serial_number IS NULL OR serial_number = '')
+  `);
+  await db.execute(sql`
+    UPDATE station_pumps SET serial_number = 'M2446157'
+    WHERE pump_number IN (3, 4) AND (serial_number IS NULL OR serial_number = '')
+  `);
+  await db.execute(sql`
+    UPDATE station_pumps SET serial_number = '202206000650'
+    WHERE pump_number IN (5, 6) AND (serial_number IS NULL OR serial_number = '')
   `);
 
   await db.execute(sql`

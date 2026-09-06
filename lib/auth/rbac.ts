@@ -111,12 +111,20 @@ const BASE_NAV_CATALOG: NavCatalogItem[] = [
     permission: "shift-closing:read",
   },
   {
+    href: "/shift-closing/upcoming",
+    label: "Upcoming",
+    icon: "gauge",
+    group: "shift-closing",
+    permission: "shift-closing:read",
+  },
+  {
     href: "/dashboard",
     label: "Dashboard",
     icon: "dashboard",
     group: "oil",
     permission: "dashboard:read",
   },
+
   {
     href: "/admin/products",
     label: "Add Oil / Lubes",

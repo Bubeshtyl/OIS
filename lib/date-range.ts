@@ -76,3 +76,31 @@ export function formatRangeLabel(start: string, end: string) {
   );
   return `${startLabel} – ${endLabel}`;
 }
+
+const MONTH_RE = /^\d{4}-\d{2}$/;
+
+export function isValidMonthString(value?: string): value is string {
+  if (!value || !MONTH_RE.test(value)) return false;
+  const month = Number(value.slice(5, 7));
+  return month >= 1 && month <= 12;
+}
+
+/** Current IST calendar month as `yyyy-MM`. */
+export function defaultMonth(today: string) {
+  return today.slice(0, 7);
+}
+
+/** Inclusive first/last IST day for a `yyyy-MM` month. */
+export function monthBounds(month: string): { start: string; end: string } {
+  const year = Number(month.slice(0, 4));
+  const monthIndex = Number(month.slice(5, 7)) - 1;
+  const start = `${month}-01`;
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  const end = `${month}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end };
+}
+
+/** Display label like `June 2026`. */
+export function formatMonthLabel(month: string) {
+  return formatInTimeZone(parseIstDate(`${month}-01`), IST_TIMEZONE, "MMMM yyyy");
+}

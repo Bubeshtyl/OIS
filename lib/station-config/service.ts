@@ -8,6 +8,7 @@ import {
   type StationNozzle,
   type StationPump,
 } from "@/lib/db/schema";
+import { ensureStationPumpSerialSchema } from "@/lib/station-config/ensure-schema";
 
 export interface NozzleWithProduct extends StationNozzle {
   product?: FuelProduct | null;
@@ -33,11 +34,17 @@ const DEFAULT_PRODUCTS = [
  * HSD:   P1N2, P2N4, P3N1, P4N2
  * MS:    P1N1, P2N3, P3N5, P4N6, P5N3, P6N1
  * SPEED: P3N3, P4N4, P5N4, P6N2
+ *
+ * Machine serials (6AM slip accordion):
+ * 202206000654 → P1, P2
+ * M2446157     → P3, P4
+ * 202206000650 → P5, P6
  */
 const DEFAULT_PUMP_NOZZLE_CONFIG = [
   {
     pumpNumber: 1,
     name: "Pump 1",
+    serialNumber: "202206000654",
     nozzles: [
       { nozzleNumber: 1, name: "Nozzle 1", productCode: "MS" },
       { nozzleNumber: 2, name: "Nozzle 2", productCode: "HSD" },
@@ -46,6 +53,7 @@ const DEFAULT_PUMP_NOZZLE_CONFIG = [
   {
     pumpNumber: 2,
     name: "Pump 2",
+    serialNumber: "202206000654",
     nozzles: [
       { nozzleNumber: 3, name: "Nozzle 3", productCode: "MS" },
       { nozzleNumber: 4, name: "Nozzle 4", productCode: "HSD" },
@@ -54,6 +62,7 @@ const DEFAULT_PUMP_NOZZLE_CONFIG = [
   {
     pumpNumber: 3,
     name: "Pump 3",
+    serialNumber: "M2446157",
     nozzles: [
       { nozzleNumber: 1, name: "Nozzle 1", productCode: "HSD" },
       { nozzleNumber: 3, name: "Nozzle 3", productCode: "SPEED" },
@@ -63,6 +72,7 @@ const DEFAULT_PUMP_NOZZLE_CONFIG = [
   {
     pumpNumber: 4,
     name: "Pump 4",
+    serialNumber: "M2446157",
     nozzles: [
       { nozzleNumber: 2, name: "Nozzle 2", productCode: "HSD" },
       { nozzleNumber: 4, name: "Nozzle 4", productCode: "SPEED" },
@@ -72,6 +82,7 @@ const DEFAULT_PUMP_NOZZLE_CONFIG = [
   {
     pumpNumber: 5,
     name: "Pump 5",
+    serialNumber: "202206000650",
     nozzles: [
       { nozzleNumber: 3, name: "Nozzle 3", productCode: "MS" },
       { nozzleNumber: 4, name: "Nozzle 4", productCode: "SPEED" },
@@ -80,6 +91,7 @@ const DEFAULT_PUMP_NOZZLE_CONFIG = [
   {
     pumpNumber: 6,
     name: "Pump 6",
+    serialNumber: "202206000650",
     nozzles: [
       { nozzleNumber: 1, name: "Nozzle 1", productCode: "MS" },
       { nozzleNumber: 2, name: "Nozzle 2", productCode: "SPEED" },
@@ -90,6 +102,7 @@ const DEFAULT_PUMP_NOZZLE_CONFIG = [
 export async function seedStationDefaultLayout(
   tenantId: string
 ): Promise<StationLayout> {
+  await ensureStationPumpSerialSchema();
   const db = getDb();
 
   return await db.transaction(async (tx) => {
@@ -126,6 +139,7 @@ export async function seedStationDefaultLayout(
           tenantId,
           pumpNumber: pumpCfg.pumpNumber,
           name: pumpCfg.name,
+          serialNumber: pumpCfg.serialNumber,
           sortOrder: pumpCfg.pumpNumber,
           isActive: true,
         })
@@ -167,6 +181,7 @@ export async function seedStationDefaultLayout(
 }
 
 export async function getStationLayout(tenantId: string): Promise<StationLayout> {
+  await ensureStationPumpSerialSchema();
   const db = getDb();
 
   const [productsList, pumpsList, nozzlesList] = await Promise.all([
@@ -217,4 +232,55 @@ export async function getStationLayout(tenantId: string): Promise<StationLayout>
     products: productsList,
     pumps: pumpsWithNozzles,
   };
+}
+
+export type MachineSlipGroup = {
+  id: string;
+  title: string;
+  machineNumber: string;
+  nozzles: Array<{ id: string; label: string; nozzleNumber: number }>;
+};
+
+/** Group active pumps by serial number for the 6AM slip accordion. */
+export function buildMachineSlipGroups(
+  pumps: PumpWithNozzles[]
+): MachineSlipGroup[] {
+  const bySerial = new Map<string, PumpWithNozzles[]>();
+
+  for (const pump of pumps) {
+    if (!pump.isActive) continue;
+    const serial = pump.serialNumber?.trim();
+    if (!serial) continue;
+    const list = bySerial.get(serial) ?? [];
+    list.push(pump);
+    bySerial.set(serial, list);
+  }
+
+  return [...bySerial.entries()]
+    .sort((a, b) => {
+      const aMin = Math.min(...a[1].map((p) => p.pumpNumber));
+      const bMin = Math.min(...b[1].map((p) => p.pumpNumber));
+      return aMin - bMin;
+    })
+    .map(([serial, groupPumps]) => {
+      const nozzles = groupPumps
+        .flatMap((pump) =>
+          pump.nozzles
+            .filter((n) => n.isActive)
+            .map((n) => ({
+              id: `${serial}-p${pump.pumpNumber}-n${n.nozzleNumber}`,
+              label: `P${pump.pumpNumber} · N${n.nozzleNumber}`,
+              nozzleNumber: n.nozzleNumber,
+            }))
+        )
+        .sort((a, b) => a.nozzleNumber - b.nozzleNumber);
+
+      return {
+        id: `serial-${serial}`,
+        title: serial,
+        machineNumber: serial,
+        nozzles,
+      };
+    })
+    .filter((group) => group.nozzles.length > 0);
 }

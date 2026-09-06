@@ -616,6 +616,8 @@ export const stationPumps = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     pumpNumber: integer("pump_number").notNull(),
     name: text("name").notNull(),
+    /** Machine serial shown on 6AM slip accordion (shared across pumps on the same machine). */
+    serialNumber: text("serial_number"),
     isActive: boolean("is_active").default(true).notNull(),
     sortOrder: integer("sort_order").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
