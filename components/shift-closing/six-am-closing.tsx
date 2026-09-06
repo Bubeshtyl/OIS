@@ -138,7 +138,8 @@ export function SixAmShiftClosingForm({
     slips: initialSlips ?? [],
   });
   const [isLoadingDate, startLoadingDate] = useTransition();
-  const [dataEpoch, setDataEpoch] = useState(0);
+  const [rspEpoch, setRspEpoch] = useState(0);
+  const [slipEpoch, setSlipEpoch] = useState(0);
 
   function handleDateChange(newDate: string) {
     setSelectedDate(newDate);
@@ -159,30 +160,56 @@ export function SixAmShiftClosingForm({
             reading: s.reading,
           })) ?? [],
       });
-      setDataEpoch((n) => n + 1);
+      setRspEpoch((n) => n + 1);
+      setSlipEpoch((n) => n + 1);
     });
   }
 
-  function refreshDay() {
-    handleDateChange(selectedDate);
+  function handleRspSaved(rsp: { hsd: string; ms: string; speed: string }) {
+    setDay((prev) => ({ ...prev, rsp }));
+    setRspEpoch((n) => n + 1);
+  }
+
+  function refreshSlips() {
+    startLoadingDate(async () => {
+      const data = await fetchSixAmDataForDateAction(selectedDate);
+      setDay((prev) => ({
+        ...prev,
+        slips:
+          data.slips?.map((s) => ({
+            machineNumber: s.machineNumber,
+            nozzleNumber: s.nozzleNumber,
+            reading: s.reading,
+          })) ?? [],
+        rsp: data.rsp
+          ? {
+              hsd: data.rsp.hsdPrice,
+              ms: data.rsp.msPrice,
+              speed: data.rsp.speedPrice,
+            }
+          : prev.rsp,
+      }));
+      setSlipEpoch((n) => n + 1);
+    });
   }
 
   return (
     <div className="space-y-6">
       <RspSection
-        key={`${selectedDate}-${dataEpoch}-rsp`}
+        key={`${selectedDate}-${rspEpoch}-rsp`}
         selectedDate={selectedDate}
         today={initialDate}
         initialRsp={day.rsp}
         isLoadingDate={isLoadingDate}
         onDateChange={handleDateChange}
+        onRspSaved={handleRspSaved}
       />
       <SlipSection
-        key={`${selectedDate}-${dataEpoch}-slips`}
+        key={`${selectedDate}-${slipEpoch}-slips`}
         selectedDate={selectedDate}
         initialSlips={day.slips}
         isLoadingDate={isLoadingDate}
-        onSaved={refreshDay}
+        onSaved={refreshSlips}
       />
     </div>
   );
@@ -194,20 +221,27 @@ function RspSection({
   initialRsp,
   isLoadingDate,
   onDateChange,
+  onRspSaved,
 }: {
   selectedDate: string;
   today: string;
   initialRsp: { hsd: string; ms: string; speed: string } | null;
   isLoadingDate: boolean;
   onDateChange: (date: string) => void;
+  onRspSaved: (rsp: { hsd: string; ms: string; speed: string }) => void;
 }) {
   const hasRecordedRsp = Boolean(initialRsp);
-  const [prices, setPrices] = useState({
+  const pricesRef = useRef({
     ms: initialRsp?.ms || "",
     hsd: initialRsp?.hsd || "",
     speed: initialRsp?.speed || "",
   });
+  const [priceResetKey, setPriceResetKey] = useState(0);
   const [isSavingRsp, startSavingRsp] = useTransition();
+  const dateChange = useCallback(
+    (date: string) => onDateChange(date),
+    [onDateChange]
+  );
 
   function handleRspSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -217,6 +251,7 @@ function RspSection({
       );
       return;
     }
+    const prices = pricesRef.current;
     if (!prices.ms || !prices.hsd || !prices.speed) {
       toast.error("Please enter daily prices for HSD, MS, and SPEED.");
       return;
@@ -232,7 +267,11 @@ function RspSection({
 
       if (res.success) {
         toast.success(res.message || "RSP fuel prices saved successfully!");
-        onDateChange(selectedDate);
+        onRspSaved({
+          hsd: prices.hsd,
+          ms: prices.ms,
+          speed: prices.speed,
+        });
       } else {
         toast.error(res.error || "Failed to save RSP prices.");
       }
@@ -241,7 +280,8 @@ function RspSection({
 
   function handleRspReset() {
     if (hasRecordedRsp) return;
-    setPrices({ ms: "", hsd: "", speed: "" });
+    pricesRef.current = { ms: "", hsd: "", speed: "" };
+    setPriceResetKey((n) => n + 1);
     toast.info("Reset fuel price inputs.");
   }
 
@@ -284,38 +324,17 @@ function RspSection({
               <Label className="text-xs font-semibold text-foreground">Date</Label>
               <DatePicker
                 value={selectedDate}
-                onChange={onDateChange}
+                onChange={dateChange}
                 today={today}
                 className="h-10 text-xs font-medium"
               />
             </div>
 
-            <PriceField
-              id="price-hsd"
-              label="HSD"
-              badge="Diesel"
-              badgeClassName="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
-              value={prices.hsd}
+            <RspPriceFields
+              key={priceResetKey}
+              initial={pricesRef.current}
               readOnly={hasRecordedRsp}
-              onChange={(hsd) => setPrices((prev) => ({ ...prev, hsd }))}
-            />
-            <PriceField
-              id="price-ms"
-              label="MS"
-              badge="Petrol"
-              badgeClassName="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
-              value={prices.ms}
-              readOnly={hasRecordedRsp}
-              onChange={(ms) => setPrices((prev) => ({ ...prev, ms }))}
-            />
-            <PriceField
-              id="price-speed"
-              label="SPEED"
-              badge="Speed"
-              badgeClassName="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300"
-              value={prices.speed}
-              readOnly={hasRecordedRsp}
-              onChange={(speed) => setPrices((prev) => ({ ...prev, speed }))}
+              pricesRef={pricesRef}
             />
           </div>
 
@@ -354,12 +373,60 @@ function RspSection({
   );
 }
 
+function RspPriceFields({
+  initial,
+  readOnly,
+  pricesRef,
+}: {
+  initial: { hsd: string; ms: string; speed: string };
+  readOnly: boolean;
+  pricesRef: MutableRefObject<{ hsd: string; ms: string; speed: string }>;
+}) {
+  return (
+    <>
+      <PriceField
+        id="price-hsd"
+        label="HSD"
+        badge="Diesel"
+        badgeClassName="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
+        defaultValue={initial.hsd}
+        readOnly={readOnly}
+        onChange={(hsd) => {
+          pricesRef.current = { ...pricesRef.current, hsd };
+        }}
+      />
+      <PriceField
+        id="price-ms"
+        label="MS"
+        badge="Petrol"
+        badgeClassName="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+        defaultValue={initial.ms}
+        readOnly={readOnly}
+        onChange={(ms) => {
+          pricesRef.current = { ...pricesRef.current, ms };
+        }}
+      />
+      <PriceField
+        id="price-speed"
+        label="SPEED"
+        badge="Speed"
+        badgeClassName="bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300"
+        defaultValue={initial.speed}
+        readOnly={readOnly}
+        onChange={(speed) => {
+          pricesRef.current = { ...pricesRef.current, speed };
+        }}
+      />
+    </>
+  );
+}
+
 const PriceField = memo(function PriceField({
   id,
   label,
   badge,
   badgeClassName,
-  value,
+  defaultValue,
   readOnly,
   onChange,
 }: {
@@ -367,10 +434,17 @@ const PriceField = memo(function PriceField({
   label: string;
   badge: string;
   badgeClassName: string;
-  value: string;
+  defaultValue: string;
   readOnly: boolean;
   onChange: (value: string) => void;
 }) {
+  const [value, setValue] = useState(defaultValue);
+
+  function handleChange(next: string) {
+    setValue(next);
+    onChange(next);
+  }
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -395,7 +469,7 @@ const PriceField = memo(function PriceField({
           min="0"
           placeholder="0.00"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           readOnly={readOnly}
           required
           className={cn(
@@ -407,7 +481,6 @@ const PriceField = memo(function PriceField({
     </div>
   );
 });
-
 function SlipSection({
   selectedDate,
   initialSlips,

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,19 +16,23 @@ import {
 } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 
-const Calendar = dynamic(
-  () => import("@/components/ui/calendar").then((mod) => mod.Calendar),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[18.5rem] w-[17.5rem] items-center justify-center text-sm text-muted-foreground">
-        Loading…
-      </div>
-    ),
-  }
-);
+const loadCalendar = () =>
+  import("@/components/ui/calendar").then((mod) => mod.Calendar);
 
-export function DatePicker({
+const Calendar = dynamic(loadCalendar, {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[18.5rem] w-[17.5rem] items-center justify-center text-sm text-muted-foreground">
+      Loading…
+    </div>
+  ),
+});
+
+function prefetchCalendar() {
+  void loadCalendar();
+}
+
+export const DatePicker = memo(function DatePicker({
   value,
   onChange,
   today,
@@ -51,7 +55,14 @@ export function DatePicker({
 }) {
   const [open, setOpen] = useState(false);
   const hasValue = Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
-  const selected = hasValue ? calendarDateFromIstString(value!) : undefined;
+  const selected = useMemo(
+    () => (hasValue ? calendarDateFromIstString(value!) : undefined),
+    [hasValue, value]
+  );
+  const label = useMemo(
+    () => (hasValue ? formatRangeLabel(value!, value!) : placeholder),
+    [hasValue, value, placeholder]
+  );
 
   function handleSelect(date: Date | undefined) {
     if (!date || disabled) return;
@@ -64,6 +75,8 @@ export function DatePicker({
       type="button"
       variant="outline"
       disabled={disabled}
+      onPointerEnter={prefetchCalendar}
+      onFocus={prefetchCalendar}
       className={cn(
         "h-11 w-full justify-start gap-2 bg-card font-normal shadow-sm",
         !hasValue && "text-muted-foreground",
@@ -72,9 +85,7 @@ export function DatePicker({
     >
       <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
       {hasValue || placeholder ? (
-        <span className="truncate">
-          {hasValue ? formatRangeLabel(value!, value!) : placeholder}
-        </span>
+        <span className="truncate">{label}</span>
       ) : null}
     </Button>
   );
@@ -127,4 +138,4 @@ export function DatePicker({
       )}
     </>
   );
-}
+});

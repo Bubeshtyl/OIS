@@ -256,22 +256,11 @@ function Sidebar({
           className
         )}
         {...props}
-        onPointerEnter={(event) => {
-          props.onPointerEnter?.(event)
-          if (event.defaultPrevented) return
-          if (collapsible !== "icon") return
-          if (event.pointerType === "mouse") setOpen(true)
-        }}
-        onPointerLeave={(event) => {
-          props.onPointerLeave?.(event)
-          if (event.defaultPrevented) return
-          if (collapsible !== "icon") return
-          if (event.pointerType === "mouse") setOpen(false)
-        }}
         onPointerDown={(event) => {
           props.onPointerDown?.(event)
           if (event.defaultPrevented) return
           if (collapsible !== "icon") return
+          // Touch/pen only — mouse hover must not call setOpen (re-renders whole app = bad INP).
           if (event.pointerType === "mouse") return
           setOpen(true)
         }}
@@ -304,7 +293,10 @@ function SidebarTrigger({
       className={cn(className)}
       onClick={(event) => {
         onClick?.(event)
-        toggleSidebar()
+        // Keep click paint snappy — sidebar tree update is non-urgent for INP.
+        React.startTransition(() => {
+          toggleSidebar()
+        })
       }}
       {...props}
     >

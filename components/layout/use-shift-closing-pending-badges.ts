@@ -17,7 +17,12 @@ export function useShiftClosingPendingBadges(
   const refresh = useCallback(async () => {
     const res = await getPendingEditRequestBadgeCountsAction();
     if (res.success && res.data) {
-      setCounts(res.data);
+      setCounts((prev) => {
+        if (prev.rsp === res.data!.rsp && prev.ledger === res.data!.ledger) {
+          return prev;
+        }
+        return res.data!;
+      });
     }
   }, []);
 
@@ -28,9 +33,10 @@ export function useShiftClosingPendingBadges(
   useEffect(() => {
     if (!isAdmin) return;
 
+    // Defer first poll so it does not compete with first paint / interactions.
     const timeoutId = window.setTimeout(() => {
       void refresh();
-    }, 0);
+    }, 2_500);
 
     const intervalId = window.setInterval(refresh, POLL_INTERVAL_MS);
     return () => {
