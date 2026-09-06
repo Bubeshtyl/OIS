@@ -78,6 +78,11 @@ export function formatHourLabel(hour: number): string {
   return `${h12} ${period}`;
 }
 
+export function formatPumpLabel(bayNo: number | null): string {
+  if (bayNo == null) return "Unknown";
+  return `Pump ${bayNo}`;
+}
+
 export const MAX_AMOUNT_RANGES = 10;
 
 export type AmountRange = {

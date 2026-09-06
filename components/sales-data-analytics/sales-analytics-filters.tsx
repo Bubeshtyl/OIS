@@ -35,6 +35,7 @@ const TIME_RE = /^\d{2}:\d{2}$/;
 const METRIC_ITEMS = [
   { value: "footfall", label: "Footfall" },
   { value: "footfall-by-price", label: "Footfall by price" },
+  { value: "footfall-by-pump", label: "Footfall by pump" },
   { value: "sales", label: "Sales" },
 ] as const;
 
@@ -144,7 +145,7 @@ export function SalesAnalyticsFilters({
   );
 
   const canApply =
-    metric === "footfall"
+    metric === "footfall" || metric === "footfall-by-pump"
       ? canApplyFootfall
       : metric === "footfall-by-price"
         ? canApplyFootfallByPrice
@@ -162,7 +163,7 @@ export function SalesAnalyticsFilters({
     params: URLSearchParams,
     nextMetric: AnalyticsMetric
   ) {
-    if (nextMetric === "footfall") {
+    if (nextMetric === "footfall" || nextMetric === "footfall-by-pump") {
       params.delete("start");
       params.delete("end");
       params.delete("granularity");
@@ -223,6 +224,23 @@ export function SalesAnalyticsFilters({
     router.push(`${pathname}?${params.toString()}`);
   }
 
+  function pushFootfallByPumpApply() {
+    const params = new URLSearchParams();
+    setMetricParam(params, "footfall-by-pump");
+    clearCrossMetricParams(params, "footfall-by-pump");
+    params.set("startDate", startDate!);
+    params.set("endDate", endDate!);
+    if (startTime !== DEFAULT_FOOTFALL_START_TIME) {
+      params.set("startTime", startTime);
+    }
+    if (endTime !== DEFAULT_FOOTFALL_END_TIME) {
+      params.set("endTime", endTime);
+    }
+    const product = searchParams.get("product");
+    if (product) params.set("product", product);
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
   function pushSalesApply() {
     const params = new URLSearchParams();
     setMetricParam(params, "sales");
@@ -249,6 +267,8 @@ export function SalesAnalyticsFilters({
     setPending(true);
     if (metric === "footfall") {
       pushFootfallApply();
+    } else if (metric === "footfall-by-pump") {
+      pushFootfallByPumpApply();
     } else if (metric === "footfall-by-price") {
       pushFootfallByPriceApply();
     } else {
@@ -389,7 +409,7 @@ export function SalesAnalyticsFilters({
         </div>
       </div>
 
-      {metric === "footfall" ? (
+      {metric === "footfall" || metric === "footfall-by-pump" ? (
         <>
           {dateFields}
 

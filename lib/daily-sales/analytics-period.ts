@@ -16,6 +16,7 @@ import { IST_TIMEZONE } from "@/lib/timezone";
 export const ANALYTICS_METRICS = [
   "footfall",
   "footfall-by-price",
+  "footfall-by-pump",
   "sales",
 ] as const;
 export type AnalyticsMetric = (typeof ANALYTICS_METRICS)[number];

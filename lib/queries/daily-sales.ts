@@ -25,9 +25,14 @@ import {
 import {
   formatAmountRangeLabel,
   formatHourLabel,
+  formatPumpLabel,
   type FootfallByPriceBounds,
   type FootfallFilterBounds,
 } from "@/lib/daily-sales/footfall-filters";
+import {
+  buildFootfallTabDataset,
+  type FootfallTabDataset,
+} from "@/lib/daily-sales/footfall-datasets";
 import { getDb } from "@/lib/db";
 import { dailySales, dailySalesUploads, users } from "@/lib/db/schema";
 
@@ -533,13 +538,28 @@ export async function getFootfallByHourOfDay(
   tenantId: string,
   bounds: FootfallFilterBounds
 ): Promise<FootfallHourPoint[]> {
-  const {
-    startDate,
-    endDate,
-    startHour,
-    endHour,
-    product,
-  } = bounds;
+  const dataset = await getFootfallByHourOfDayTabular(tenantId, bounds);
+  const counts = bounds.product
+    ? dataset.byProduct[bounds.product]
+    : dataset.all;
+  return dataset.labels.map((label, index) => {
+    const hour = bounds.startHour + index;
+    return {
+      hour,
+      label,
+      count: counts?.[index] ?? 0,
+    };
+  });
+}
+
+/**
+ * Single query: footfall by hour × product for client-side tab filtering.
+ */
+export async function getFootfallByHourOfDayTabular(
+  tenantId: string,
+  bounds: Omit<FootfallFilterBounds, "product"> & { product?: string }
+): Promise<FootfallTabDataset> {
+  const { startDate, endDate, startHour, endHour } = bounds;
 
   const db = getDb();
   const hourExpr = sql<number>`extract(hour from ${dailySales.startDate})::int`;
@@ -551,30 +571,31 @@ export async function getFootfallByHourOfDay(
     sql`extract(hour from ${dailySales.startDate})::int >= ${startHour}`,
     sql`extract(hour from ${dailySales.startDate})::int <= ${endHour}`,
   ];
-  if (product) {
-    parts.push(eq(dailySales.product, product));
-  }
 
   const rows = await db
     .select({
       hour: hourExpr,
+      product: dailySales.product,
       count: count(),
     })
     .from(dailySales)
     .where(and(...parts))
-    .groupBy(hourExpr)
-    .orderBy(asc(hourExpr));
+    .groupBy(hourExpr, dailySales.product)
+    .orderBy(asc(hourExpr), asc(dailySales.product));
 
-  const totals = new Map(rows.map((row) => [Number(row.hour), Number(row.count)]));
-  const points: FootfallHourPoint[] = [];
+  const labels: string[] = [];
   for (let hour = startHour; hour <= endHour; hour += 1) {
-    points.push({
-      hour,
-      label: formatHourLabel(hour),
-      count: totals.get(hour) ?? 0,
-    });
+    labels.push(formatHourLabel(hour));
   }
-  return points;
+
+  return buildFootfallTabDataset(
+    labels,
+    rows.map((row) => ({
+      label: formatHourLabel(Number(row.hour)),
+      product: row.product,
+      count: Number(row.count),
+    }))
+  );
 }
 
 export type FootfallAmountRangePoint = {
@@ -592,8 +613,29 @@ export async function getFootfallByAmountRanges(
   tenantId: string,
   bounds: FootfallByPriceBounds
 ): Promise<FootfallAmountRangePoint[]> {
-  const { startDate, endDate, ranges, product } = bounds;
-  if (ranges.length === 0) return [];
+  const dataset = await getFootfallByAmountRangesTabular(tenantId, bounds);
+  const counts = bounds.product
+    ? dataset.byProduct[bounds.product]
+    : dataset.all;
+  return bounds.ranges.map((range, index) => ({
+    min: range.min,
+    max: range.max,
+    label: formatAmountRangeLabel(range),
+    count: counts?.[index] ?? 0,
+  }));
+}
+
+/**
+ * Single query: footfall by amount range × product for client-side tab filtering.
+ */
+export async function getFootfallByAmountRangesTabular(
+  tenantId: string,
+  bounds: Omit<FootfallByPriceBounds, "product"> & { product?: string }
+): Promise<FootfallTabDataset> {
+  const { startDate, endDate, ranges } = bounds;
+  if (ranges.length === 0) {
+    return { labels: [], byProduct: {}, all: [] };
+  }
 
   const db = getDb();
   const parts: SQL[] = [
@@ -601,28 +643,111 @@ export async function getFootfallByAmountRanges(
     sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') >= ${startDate}`,
     sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') <= ${endDate}`,
   ];
-  if (product) {
-    parts.push(eq(dailySales.product, product));
-  }
 
-  const selectFields = Object.fromEntries(
+  const rangeFields = Object.fromEntries(
     ranges.map((range, index) => [
       `r${index}`,
       sql<string>`count(*) filter (where ${dailySales.netAmount} >= ${String(range.min)} and ${dailySales.netAmount} <= ${String(range.max)})`,
     ])
   ) as Record<string, SQL<string>>;
 
-  const [row] = await db
-    .select(selectFields)
+  const rows = await db
+    .select({
+      product: dailySales.product,
+      ...rangeFields,
+    })
     .from(dailySales)
-    .where(and(...parts));
+    .where(and(...parts))
+    .groupBy(dailySales.product)
+    .orderBy(asc(dailySales.product));
 
-  return ranges.map((range, index) => ({
-    min: range.min,
-    max: range.max,
-    label: formatAmountRangeLabel(range),
-    count: Number(row?.[`r${index}`] ?? 0),
+  const labels = ranges.map((range) => formatAmountRangeLabel(range));
+  const flat = rows.flatMap((row) => {
+    const counts = row as Record<string, string | number | null>;
+    return ranges.map((range, index) => ({
+      label: formatAmountRangeLabel(range),
+      product: row.product,
+      count: Number(counts[`r${index}`] ?? 0),
+    }));
+  });
+
+  return buildFootfallTabDataset(labels, flat);
+}
+
+export type FootfallPumpPoint = {
+  bayNo: number | null;
+  label: string;
+  count: number;
+};
+
+/**
+ * Footfall by pump (Bay No) across a date range, applying the same daily time
+ * window on each day as the hour-of-day footfall chart.
+ */
+export async function getFootfallByPump(
+  tenantId: string,
+  bounds: FootfallFilterBounds
+): Promise<FootfallPumpPoint[]> {
+  const dataset = await getFootfallByPumpTabular(tenantId, bounds);
+  const counts = bounds.product
+    ? dataset.byProduct[bounds.product]
+    : dataset.all;
+  return dataset.labels.map((label, index) => ({
+    bayNo: null,
+    label,
+    count: counts?.[index] ?? 0,
   }));
+}
+
+/**
+ * Single query: footfall by pump × product for client-side tab filtering.
+ */
+export async function getFootfallByPumpTabular(
+  tenantId: string,
+  bounds: Omit<FootfallFilterBounds, "product"> & { product?: string }
+): Promise<FootfallTabDataset> {
+  const { startDate, endDate, startHour, endHour } = bounds;
+
+  const db = getDb();
+  const parts: SQL[] = [
+    eq(dailySales.tenantId, tenantId),
+    sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') >= ${startDate}`,
+    sql`to_char(${dailySales.startDate}, 'YYYY-MM-DD') <= ${endDate}`,
+    sql`extract(hour from ${dailySales.startDate})::int >= ${startHour}`,
+    sql`extract(hour from ${dailySales.startDate})::int <= ${endHour}`,
+  ];
+
+  const rows = await db
+    .select({
+      bayNo: dailySales.bayNo,
+      product: dailySales.product,
+      count: count(),
+    })
+    .from(dailySales)
+    .where(and(...parts))
+    .groupBy(dailySales.bayNo, dailySales.product)
+    .orderBy(asc(dailySales.bayNo), asc(dailySales.product));
+
+  const labelSet = new Set<string>();
+  for (const row of rows) {
+    labelSet.add(formatPumpLabel(row.bayNo));
+  }
+  const labels = [...labelSet].sort((a, b) => {
+    const aNum = Number(a.replace(/\D/g, "")) || 0;
+    const bNum = Number(b.replace(/\D/g, "")) || 0;
+    if (a === "Unknown") return 1;
+    if (b === "Unknown") return -1;
+    return aNum - bNum;
+  });
+
+  return buildFootfallTabDataset(
+    labels,
+    rows.map((row) => ({
+      label: formatPumpLabel(row.bayNo),
+      product: row.product,
+      count: Number(row.count),
+    }))
+  );
 }
 
 /** Daily totals for amount / net / volume between inclusive datetime bounds (`yyyy-MM-ddTHH:mm`). */

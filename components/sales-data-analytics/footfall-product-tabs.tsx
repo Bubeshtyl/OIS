@@ -1,36 +1,26 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FOOTFALL_ALL_KEY } from "@/lib/daily-sales/footfall-datasets";
 import { cn } from "@/lib/utils";
-
-const ALL_VALUE = "all";
 
 export function FootfallProductTabs({
   products,
   product,
+  onProductChange,
   className,
 }: {
   products: string[];
   product?: string;
+  onProductChange: (next: string) => void;
   className?: string;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const active = product && products.includes(product) ? product : ALL_VALUE;
+  const active = product && products.includes(product) ? product : FOOTFALL_ALL_KEY;
 
   function handleChange(next: string | number | null) {
     if (typeof next !== "string") return;
-
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === ALL_VALUE) {
-      params.delete("product");
-    } else {
-      params.set("product", next);
-    }
-    const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
+    if (next === active) return;
+    onProductChange(next);
   }
 
   return (
@@ -40,7 +30,7 @@ export function FootfallProductTabs({
       className={cn("w-full", className)}
     >
       <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
-        <TabsTrigger value={ALL_VALUE} className="px-3">
+        <TabsTrigger value={FOOTFALL_ALL_KEY} className="px-3">
           All
         </TabsTrigger>
         {products.map((name) => (

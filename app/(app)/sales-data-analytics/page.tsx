@@ -59,7 +59,7 @@ async function AnalyticsChartsGate({
   const product = params.product?.trim() || undefined;
 
   const footfallBounds =
-    metric === "footfall"
+    metric === "footfall" || metric === "footfall-by-pump"
       ? parseFootfallFilterBounds({
           startDate,
           endDate,
@@ -81,7 +81,7 @@ async function AnalyticsChartsGate({
 
   const salesApplied = metric === "sales" && Boolean(start && end);
   const applied =
-    metric === "footfall"
+    metric === "footfall" || metric === "footfall-by-pump"
       ? Boolean(footfallBounds)
       : metric === "footfall-by-price"
         ? Boolean(footfallByPriceBounds)
@@ -126,6 +126,17 @@ export default async function SalesDataAnalyticsPage({
     params.end && DATETIME_RE.test(params.end) ? params.end : undefined;
   const startDate = parseDateParam(params.startDate);
   const endDate = parseDateParam(params.endDate);
+  const chartsKey = [
+    metric,
+    start ?? "",
+    end ?? "",
+    startDate ?? "",
+    endDate ?? "",
+    params.startTime ?? "",
+    params.endTime ?? "",
+    params.ranges ?? "",
+    params.granularity ?? "",
+  ].join("|");
 
   return (
     <div className="space-y-6">
@@ -148,7 +159,7 @@ export default async function SalesDataAnalyticsPage({
         />
       </Suspense>
 
-      <Suspense fallback={<AnalyticsChartsSkeleton />}>
+      <Suspense key={chartsKey} fallback={<AnalyticsChartsSkeleton />}>
         <AnalyticsChartsGate searchParams={searchParams} />
       </Suspense>
     </div>

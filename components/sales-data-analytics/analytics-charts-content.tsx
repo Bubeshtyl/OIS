@@ -1,12 +1,10 @@
 import { Suspense } from "react";
 import {
-  FootfallMetricsChart,
   SalesBreakdownPieChart,
   SalesMetricsChart,
   SalesMetricsLineChart,
 } from "@/components/sales-data-analytics/analytics-charts-dynamic";
-import { FootfallMetricsTable } from "@/components/sales-data-analytics/footfall-metrics-table";
-import { FootfallProductTabs } from "@/components/sales-data-analytics/footfall-product-tabs";
+import { FootfallProductChartPanel } from "@/components/sales-data-analytics/footfall-product-chart-panel";
 import { SalesGranularityTabs } from "@/components/sales-data-analytics/sales-granularity-tabs";
 import {
   Card,
@@ -21,8 +19,9 @@ import {
   getDailySalesMetricsByMopType,
   getDailySalesMetricsByPeriod,
   getDailySalesMetricsByProduct,
-  getFootfallByAmountRanges,
-  getFootfallByHourOfDay,
+  getFootfallByAmountRangesTabular,
+  getFootfallByHourOfDayTabular,
+  getFootfallByPumpTabular,
 } from "@/lib/queries/daily-sales";
 import type {
   FootfallByPriceBounds,
@@ -36,6 +35,13 @@ export function AnalyticsChartsSkeleton() {
       <Skeleton className="h-80 w-full rounded-xl" />
     </div>
   );
+}
+
+function withoutProduct<T extends { product?: string }>(
+  bounds: T
+): Omit<T, "product"> {
+  const { product: _product, ...rest } = bounds;
+  return rest;
 }
 
 export async function AnalyticsChartsContent({
@@ -62,7 +68,8 @@ export async function AnalyticsChartsContent({
   if (!applied) return null;
 
   const needsProducts =
-    (metric === "footfall" && Boolean(footfallBounds)) ||
+    ((metric === "footfall" || metric === "footfall-by-pump") &&
+      Boolean(footfallBounds)) ||
     (metric === "footfall-by-price" && Boolean(footfallByPriceBounds));
 
   const filterOptions = needsProducts
@@ -75,26 +82,30 @@ export async function AnalyticsChartsContent({
       : undefined;
 
   const salesApplied = metric === "sales" && Boolean(start && end);
+  const footfallBase = footfallBounds
+    ? withoutProduct(footfallBounds)
+    : null;
+  const footfallByPriceBase = footfallByPriceBounds
+    ? withoutProduct(footfallByPriceBounds)
+    : null;
 
   const [
-    footfallMetrics,
-    footfallByPriceMetrics,
+    footfallDataset,
+    footfallByPriceDataset,
+    footfallByPumpDataset,
     salesMetrics,
     productBreakdown,
     mopBreakdown,
   ] = await Promise.all([
-    footfallBounds
-      ? getFootfallByHourOfDay(tenantId, {
-          ...footfallBounds,
-          product,
-        })
-      : Promise.resolve([]),
-    footfallByPriceBounds
-      ? getFootfallByAmountRanges(tenantId, {
-          ...footfallByPriceBounds,
-          product,
-        })
-      : Promise.resolve([]),
+    metric === "footfall" && footfallBase
+      ? getFootfallByHourOfDayTabular(tenantId, footfallBase)
+      : Promise.resolve(null),
+    metric === "footfall-by-price" && footfallByPriceBase
+      ? getFootfallByAmountRangesTabular(tenantId, footfallByPriceBase)
+      : Promise.resolve(null),
+    metric === "footfall-by-pump" && footfallBase
+      ? getFootfallByPumpTabular(tenantId, footfallBase)
+      : Promise.resolve(null),
     salesApplied
       ? getDailySalesMetricsByPeriod(tenantId, start!, end!, granularity)
       : Promise.resolve([]),
@@ -106,67 +117,60 @@ export async function AnalyticsChartsContent({
       : Promise.resolve([]),
   ]);
 
-  const footfallChartData = footfallMetrics.map(({ label, count }) => ({
-    label,
-    count,
-  }));
-  const footfallByPriceChartData = footfallByPriceMetrics.map(
-    ({ label, count }) => ({
-      label,
-      count,
-    })
-  );
   const salesChartData = salesMetrics.map(({ label, amount }) => ({
     label,
     amount,
   }));
 
-  if (metric === "footfall") {
-    return (
-      <>
-        <Suspense fallback={null}>
-          <FootfallProductTabs
-            products={filterOptions.products}
-            product={product}
-          />
-        </Suspense>
+  const tabProducts =
+    filterOptions.products.length > 0
+      ? filterOptions.products
+      : Object.keys(
+          footfallDataset?.byProduct ??
+            footfallByPriceDataset?.byProduct ??
+            footfallByPumpDataset?.byProduct ??
+            {}
+        ).sort();
 
-        <Card className="border-0 shadow-sm">
-          <CardHeader>
-            <CardTitle>Footfall</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <FootfallMetricsChart data={footfallChartData} />
-            <FootfallMetricsTable data={footfallChartData} labelHeader="Hour" />
-          </CardContent>
-        </Card>
-      </>
+  if (metric === "footfall" && footfallDataset) {
+    return (
+      <Suspense fallback={null}>
+        <FootfallProductChartPanel
+          title="Footfall"
+          labelHeader="Hour"
+          products={tabProducts}
+          initialProduct={product}
+          dataset={footfallDataset}
+        />
+      </Suspense>
     );
   }
 
-  if (metric === "footfall-by-price") {
+  if (metric === "footfall-by-pump" && footfallByPumpDataset) {
     return (
-      <>
-        <Suspense fallback={null}>
-          <FootfallProductTabs
-            products={filterOptions.products}
-            product={product}
-          />
-        </Suspense>
+      <Suspense fallback={null}>
+        <FootfallProductChartPanel
+          title="Footfall by pump"
+          labelHeader="Pump"
+          products={tabProducts}
+          initialProduct={product}
+          dataset={footfallByPumpDataset}
+        />
+      </Suspense>
+    );
+  }
 
-        <Card className="border-0 shadow-sm">
-          <CardHeader>
-            <CardTitle>Footfall by price</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <FootfallMetricsChart data={footfallByPriceChartData} />
-            <FootfallMetricsTable
-              data={footfallByPriceChartData}
-              labelHeader="Price range"
-            />
-          </CardContent>
-        </Card>
-      </>
+  if (metric === "footfall-by-price" && footfallByPriceDataset) {
+    return (
+      <Suspense fallback={null}>
+        <FootfallProductChartPanel
+          title="Footfall by price"
+          labelHeader="Price range"
+          products={tabProducts}
+          initialProduct={product}
+          dataset={footfallByPriceDataset}
+        />
+      </Suspense>
     );
   }
 
