@@ -8,15 +8,15 @@ import {
   getDailyRsp,
   getLatestNozzleClosingReadings,
   getMachineSlipEntries,
-  getSixAmStatus,
+  type SixAmStatus,
 } from "@/lib/shift-closing/service";
-import { getUpcomingPrerequisites } from "@/lib/shift-closing/upcoming-prerequisites";
+import { UPCOMING_PREREQ_HOUR_IST } from "@/lib/shift-closing/upcoming-prerequisites";
 import {
   getStationLayout,
   type PumpWithNozzles,
 } from "@/lib/station-config/service";
-import { listStaff } from "@/lib/staff/service";
-import { IST_TIMEZONE } from "@/lib/timezone";
+import { listActiveStaffOptions } from "@/lib/staff/service";
+import { IST_TIMEZONE, isAtOrAfterIstHour } from "@/lib/timezone";
 
 function buildSixAmReadingsByNozzleId(
   pumps: PumpWithNozzles[],
@@ -43,33 +43,56 @@ function buildSixAmReadingsByNozzleId(
   return byNozzleId;
 }
 
+function buildSixAmStatus(
+  dateStr: string,
+  rspRow: Awaited<ReturnType<typeof getDailyRsp>>,
+  slipCount: number
+): SixAmStatus {
+  const hasRsp = Boolean(
+    rspRow?.hsdPrice && rspRow?.msPrice && rspRow?.speedPrice
+  );
+  const hasSlipEntry = slipCount > 0;
+  return {
+    hasRsp,
+    hasSlipEntry,
+    isReady: hasRsp && hasSlipEntry,
+    dateStr,
+    rspPrices: rspRow
+      ? {
+          hsd: rspRow.hsdPrice,
+          ms: rspRow.msPrice,
+          speed: rspRow.speedPrice,
+        }
+      : null,
+    slipEntriesCount: slipCount,
+  };
+}
+
 export async function UpcomingShiftClosingContent() {
   const session = await requireTenantSession();
   await requirePermission(session, "shift-closing:read");
   const todayIst = formatInTimeZone(new Date(), IST_TIMEZONE, "yyyy-MM-dd");
   const yesterdayIst = toIstDateString(addDays(parseIstDate(todayIst), -1));
+  // Gate hour is clock-only — no extra DB round-trip.
+  const sixAmGateActive = isAtOrAfterIstHour(UPCOMING_PREREQ_HOUR_IST);
 
   const [
     layout,
-    sixAmStatus,
-    todaySlips,
+    todayRspRow,
     yesterdayRspRow,
-    staff,
-    prerequisites,
+    todaySlips,
+    staffMembers,
     previousClosingByNozzleId,
   ] = await Promise.all([
     getStationLayout(session.tenantId),
-    getSixAmStatus(session.tenantId, todayIst),
-    getMachineSlipEntries(session.tenantId, todayIst),
+    getDailyRsp(session.tenantId, todayIst),
     getDailyRsp(session.tenantId, yesterdayIst),
-    listStaff(session.tenantId),
-    getUpcomingPrerequisites(session.tenantId, { dateStr: todayIst }),
+    getMachineSlipEntries(session.tenantId, todayIst),
+    listActiveStaffOptions(session.tenantId),
     getLatestNozzleClosingReadings(session.tenantId),
   ]);
 
-  const activeStaff = staff
-    .filter((member) => member.isActive)
-    .map((member) => ({ id: member.id, name: member.name }));
+  const sixAmStatus = buildSixAmStatus(todayIst, todayRspRow, todaySlips.length);
 
   const yesterdayRsp =
     yesterdayRspRow?.hsdPrice &&
@@ -96,9 +119,9 @@ export async function UpcomingShiftClosingContent() {
       <ShiftClosingCalculator
         configuredPumps={layout.pumps}
         sixAmStatus={sixAmStatus}
-        staffMembers={activeStaff}
+        staffMembers={staffMembers}
         closingSource="upcoming"
-        sixAmGateActive={prerequisites.requiresCheck}
+        sixAmGateActive={sixAmGateActive}
         yesterdayRsp={yesterdayRsp}
         todaySixAmReadingsByNozzleId={todaySixAmReadingsByNozzleId}
         previousClosingByNozzleId={previousClosingByNozzleId}

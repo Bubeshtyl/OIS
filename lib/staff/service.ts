@@ -158,6 +158,24 @@ export async function listStaff(tenantId: string): Promise<StaffMember[]> {
   return rows.map(toStaffMember);
 }
 
+/** id + name only — for shift-closing staff pickers. */
+export async function listActiveStaffOptions(
+  tenantId: string
+): Promise<Array<{ id: string; name: string }>> {
+  const db = getDb();
+  return db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(
+      and(
+        eq(users.tenantId, tenantId),
+        eq(users.isPlatformAdmin, false),
+        eq(users.isActive, true)
+      )
+    )
+    .orderBy(users.name);
+}
+
 /** Slim staff rows for Roles & Access — skips address/guardian columns. */
 export async function listStaffForAccess(tenantId: string): Promise<StaffMember[]> {
   const db = getDb();

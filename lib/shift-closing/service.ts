@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   dailyRspPrices,
@@ -7,8 +7,6 @@ import {
   interimNozzleReadings,
   interimPaymentCollections,
   shiftClosingLedgerEvents,
-  stationNozzles,
-  stationPumps,
   type DailyRspPrice,
   type MachineSlipEntry,
 } from "@/lib/db/schema";
@@ -28,83 +26,45 @@ export async function getLatestNozzleClosingReadings(
 ): Promise<Record<string, string>> {
   await ensureStationPumpSerialSchema();
   const db = getDb();
-  const byNozzleId: Record<string, string> = {};
 
-  const interimRows = await db
-    .select({
-      nozzleId: interimNozzleReadings.nozzleId,
-      closingReading: interimNozzleReadings.closingReading,
-    })
-    .from(interimNozzleReadings)
-    .innerJoin(
-      interimShiftClosings,
-      eq(interimNozzleReadings.shiftClosingId, interimShiftClosings.id)
-    )
-    .where(
-      and(
-        eq(interimShiftClosings.tenantId, tenantId),
-        isNotNull(interimNozzleReadings.nozzleId)
-      )
-    )
-    .orderBy(
-      desc(interimShiftClosings.shiftDate),
-      desc(interimShiftClosings.createdAt)
-    );
-
-  for (const row of interimRows) {
-    if (!row.nozzleId || byNozzleId[row.nozzleId] != null) continue;
-    byNozzleId[row.nozzleId] = String(row.closingReading);
-  }
-
-  // Fall back to latest 6AM slip when no prior shift close exists yet.
-  const [nozzles, pumps, slips] = await Promise.all([
-    db
-      .select({
-        id: stationNozzles.id,
-        pumpId: stationNozzles.pumpId,
-        nozzleNumber: stationNozzles.nozzleNumber,
-      })
-      .from(stationNozzles)
-      .where(eq(stationNozzles.tenantId, tenantId)),
-    db
-      .select({
-        id: stationPumps.id,
-        serialNumber: stationPumps.serialNumber,
-      })
-      .from(stationPumps)
-      .where(eq(stationPumps.tenantId, tenantId)),
-    db
-      .select({
-        machineNumber: machineSlipEntries.machineNumber,
-        nozzleNumber: machineSlipEntries.nozzleNumber,
-        reading: machineSlipEntries.reading,
-      })
-      .from(machineSlipEntries)
-      .where(eq(machineSlipEntries.tenantId, tenantId))
-      .orderBy(
-        desc(machineSlipEntries.entryDate),
-        desc(machineSlipEntries.createdAt)
-      ),
+  const [interimRows, slipRows] = await Promise.all([
+    db.execute<{ nozzleId: string; closingReading: string }>(sql`
+      SELECT DISTINCT ON (nr.nozzle_id)
+        nr.nozzle_id AS "nozzleId",
+        nr.closing_reading AS "closingReading"
+      FROM interim_nozzle_readings nr
+      INNER JOIN interim_shift_closings sc
+        ON sc.id = nr.shift_closing_id
+      WHERE sc.tenant_id = ${tenantId}
+        AND nr.nozzle_id IS NOT NULL
+      ORDER BY nr.nozzle_id, sc.shift_date DESC, sc.created_at DESC
+    `),
+    db.execute<{ nozzleId: string; reading: string }>(sql`
+      SELECT DISTINCT ON (n.id)
+        n.id AS "nozzleId",
+        s.reading AS reading
+      FROM station_nozzles n
+      INNER JOIN station_pumps p
+        ON p.id = n.pump_id
+      INNER JOIN machine_slip_entries s
+        ON s.tenant_id = n.tenant_id
+        AND s.machine_number = p.serial_number
+        AND s.nozzle_number = n.nozzle_number
+      WHERE n.tenant_id = ${tenantId}
+        AND p.serial_number IS NOT NULL
+        AND p.serial_number <> ''
+      ORDER BY n.id, s.entry_date DESC, s.created_at DESC
+    `),
   ]);
 
-  const serialByPumpId = new Map(
-    pumps.map((p) => [p.id, p.serialNumber?.trim() || ""])
-  );
-  const latestSlipByKey = new Map<string, string>();
-  for (const slip of slips) {
-    const key = `${slip.machineNumber}:${slip.nozzleNumber}`;
-    if (latestSlipByKey.has(key)) continue;
-    latestSlipByKey.set(key, String(slip.reading));
+  const byNozzleId: Record<string, string> = {};
+  for (const row of slipRows) {
+    byNozzleId[row.nozzleId] = String(row.reading);
   }
-
-  for (const nozzle of nozzles) {
-    if (byNozzleId[nozzle.id] != null) continue;
-    const serial = serialByPumpId.get(nozzle.pumpId);
-    if (!serial) continue;
-    const reading = latestSlipByKey.get(`${serial}:${nozzle.nozzleNumber}`);
-    if (reading != null) byNozzleId[nozzle.id] = reading;
+  // Interim/Upcoming close wins over 6AM slip.
+  for (const row of interimRows) {
+    byNozzleId[row.nozzleId] = String(row.closingReading);
   }
-
   return byNozzleId;
 }
 
