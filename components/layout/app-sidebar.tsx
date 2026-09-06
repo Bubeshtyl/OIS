@@ -34,6 +34,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   Sidebar,
   SidebarContent,
@@ -420,6 +421,7 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="icon">
+      <TooltipProvider delay={400}>
       <SidebarHeader className="p-0 px-4 pt-5 group-data-[collapsible=icon]:px-3 group-data-[collapsible=icon]:pt-4">
         <SidebarNavLink href="/" onClick={closeMobileSidebar} className="outline-none">
           <AppLogo variant="sidebar" />
@@ -493,6 +495,7 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
+      </TooltipProvider>
     </Sidebar>
   );
 }

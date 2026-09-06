@@ -164,6 +164,23 @@ function Sidebar({
 }) {
   const { isMobile, state, open, setOpen, openMobile, setOpenMobile } =
     useSidebar()
+  const rootRef = React.useRef<HTMLDivElement>(null)
+  const hoveringRef = React.useRef(false)
+
+  // Keep data-collapsible in sync without hover calling setOpen.
+  // If React re-renders mid-hover (e.g. badge poll), re-apply the visual expand.
+  // Leave data-state as React `state` so peer inset margins don't jump on hover.
+  React.useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!root || collapsible !== "icon") return
+    if (hoveringRef.current && !open) {
+      root.dataset.collapsible = ""
+      root.dataset.hoverExpand = "true"
+      return
+    }
+    root.dataset.collapsible = open ? "" : collapsible
+    delete root.dataset.hoverExpand
+  }, [open, collapsible, state])
 
   // Hover expands (mouse). Touch expands and stays open until outside tap.
   React.useEffect(() => {
@@ -181,6 +198,30 @@ function Sidebar({
     document.addEventListener("pointerdown", onPointerDown, true)
     return () => document.removeEventListener("pointerdown", onPointerDown, true)
   }, [isMobile, collapsible, open, setOpen])
+
+  function handleHoverExpandEnter(event: React.PointerEvent<HTMLDivElement>) {
+    if (collapsible !== "icon") return
+    if (event.pointerType !== "mouse") return
+    if (open) return
+    hoveringRef.current = true
+    const root = rootRef.current
+    if (!root) return
+    // DOM-only: labels/width via data attrs — no setOpen, no app re-render.
+    // data-hover-expand keeps the layout gap at icon width (overlay expand).
+    root.dataset.collapsible = ""
+    root.dataset.hoverExpand = "true"
+  }
+
+  function handleHoverExpandLeave(event: React.PointerEvent<HTMLDivElement>) {
+    if (collapsible !== "icon") return
+    if (event.pointerType !== "mouse") return
+    hoveringRef.current = false
+    if (open) return
+    const root = rootRef.current
+    if (!root) return
+    root.dataset.collapsible = "icon"
+    delete root.dataset.hoverExpand
+  }
 
   if (collapsible === "none") {
     return (
@@ -225,12 +266,15 @@ function Sidebar({
 
   return (
     <div
+      ref={rootRef}
       className="group peer hidden text-sidebar-foreground md:block"
       data-state={state}
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      onPointerEnter={handleHoverExpandEnter}
+      onPointerLeave={handleHoverExpandLeave}
     >
       {/* This is what handles the sidebar gap on desktop */}
       <div
@@ -239,8 +283,10 @@ function Sidebar({
           "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
+          // Hover expand overlays content — keep icon gap so main doesn't reflow.
+          "group-data-[hover-expand=true]:w-(--sidebar-width-icon)",
           variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
+            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))] group-data-[hover-expand=true]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)"
         )}
       />
@@ -260,7 +306,7 @@ function Sidebar({
           props.onPointerDown?.(event)
           if (event.defaultPrevented) return
           if (collapsible !== "icon") return
-          // Touch/pen only — mouse hover must not call setOpen (re-renders whole app = bad INP).
+          // Touch/pen pins open via React state; mouse uses CSS/DOM hover expand above.
           if (event.pointerType === "mouse") return
           setOpen(true)
         }}
@@ -572,6 +618,7 @@ function SidebarMenuButton({
       <TooltipContent
         side="right"
         align="center"
+        // React state stays collapsed during DOM hover-expand; delay + labels cover that case.
         hidden={state !== "collapsed" || isMobile}
         {...tooltip}
       />
