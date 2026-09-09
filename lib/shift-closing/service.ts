@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   dailyRspPrices,
@@ -98,6 +98,76 @@ export async function getDailyRsp(
     .limit(1);
 
   return row || null;
+}
+
+/** Most recent RSP row strictly before `beforeDate` (yyyy-MM-dd). */
+export async function getLatestDailyRspBefore(
+  tenantId: string,
+  beforeDate: string
+): Promise<DailyRspPrice | null> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(dailyRspPrices)
+    .where(
+      and(
+        eq(dailyRspPrices.tenantId, tenantId),
+        lt(dailyRspPrices.priceDate, beforeDate)
+      )
+    )
+    .orderBy(desc(dailyRspPrices.priceDate))
+    .limit(1);
+
+  return row || null;
+}
+
+/**
+ * Copy the latest prior RSP onto `priceDate`.
+ * One parallel pair of indexed lookups, then the same insert + ledger write as a normal save.
+ */
+export async function copyLatestDailyRsp(
+  tenantId: string,
+  userId: string,
+  priceDate: string
+) {
+  const [previous, existing] = await Promise.all([
+    getLatestDailyRspBefore(tenantId, priceDate),
+    getDailyRsp(tenantId, priceDate),
+  ]);
+
+  if (existing) {
+    throw new EditRequiresApprovalError(
+      `RSP for ${priceDate} already exists. Request an edit from the RSP Ledger.`
+    );
+  }
+
+  if (!previous) {
+    throw new Error("No previous RSP entry found to copy.");
+  }
+
+  const db = getDb();
+  const [row] = await db
+    .insert(dailyRspPrices)
+    .values({
+      tenantId,
+      priceDate,
+      hsdPrice: previous.hsdPrice,
+      msPrice: previous.msPrice,
+      speedPrice: previous.speedPrice,
+      recordedBy: userId,
+      updatedAt: new Date(),
+    })
+    .returning();
+
+  await logShiftClosingCreated(
+    tenantId,
+    userId,
+    "daily_rsp",
+    row.id,
+    `RSP copied from ${previous.priceDate} for ${priceDate}`
+  );
+
+  return { row, sourceDate: previous.priceDate };
 }
 
 export async function saveDailyRsp(

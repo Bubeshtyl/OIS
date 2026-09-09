@@ -874,16 +874,16 @@ export function ShiftClosingCalculator({
 
       {/* Denominations Dialog */}
       <Dialog open={isDenominationsOpen} onOpenChange={setIsDenominationsOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[min(100%,21rem)] max-w-[21rem] gap-3 p-3 sm:max-w-[21rem]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
               <Banknote className="size-4 text-emerald-600" />
               Cash Denominations - {currentPumpData.name}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-2.5 py-2">
-            <div className="grid grid-cols-1 gap-2">
+          <div className="space-y-2 py-1">
+            <div className="grid grid-cols-1 gap-1.5">
               <DenominationRow
                 multiplier={500}
                 value={currentPumpData.payment.cash.d500}
@@ -921,29 +921,27 @@ export function ShiftClosingCalculator({
                 disabled={collectionsDisabled}
               />
               {/* Coins */}
-              <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 p-2 text-xs">
-                <span className="font-semibold text-foreground min-w-[100px]">
+              <div className="grid grid-cols-[5.75rem_5.25rem_1fr] items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+                <span className="text-lg font-extrabold text-foreground">
                   Coins (₹)
                 </span>
-                <div className="flex-1 max-w-[120px]">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="any"
-                    disabled={collectionsDisabled}
-                    value={currentPumpData.payment.cash.coins}
-                    onChange={(e) => updateDenominationField("coins", e.target.value)}
-                    className="h-8 text-center text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                </div>
-                <span className="w-20 text-right font-bold text-foreground tabular-nums">
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={collectionsDisabled}
+                  value={currentPumpData.payment.cash.coins}
+                  onChange={(e) => updateDenominationField("coins", e.target.value)}
+                  className="h-11 w-full text-center text-lg font-extrabold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-right text-lg font-extrabold text-foreground tabular-nums">
                   ₹ {(Number(currentPumpData.payment.cash.coins) || 0).toLocaleString("en-IN")}
                 </span>
               </div>
             </div>
 
             {/* Denomination Total */}
-            <div className="flex items-center justify-between rounded-lg border-2 border-emerald-500/40 bg-emerald-50/60 p-3 mt-3 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+            <div className="mt-2 flex items-center justify-between rounded-lg border-2 border-emerald-500/40 bg-emerald-50/60 px-3 py-2.5 dark:border-emerald-900/60 dark:bg-emerald-950/30">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
                 Total Cash
               </span>
@@ -952,7 +950,7 @@ export function ShiftClosingCalculator({
               </span>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-1 flex justify-end">
               <DialogClose
                 className="group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 bg-primary text-primary-foreground hover:bg-primary/80 gap-1.5 h-9 w-full px-6 text-xs font-semibold cursor-pointer"
               >
@@ -1551,23 +1549,21 @@ function DenominationRow({
   const total = count * multiplier;
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 p-2 text-xs">
-      <div className="flex items-center gap-2 min-w-[100px] font-semibold text-foreground">
-        <span className="font-bold text-emerald-700 dark:text-emerald-400">₹{multiplier}</span>
+    <div className="grid grid-cols-[5.75rem_5.25rem_1fr] items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+      <div className="flex items-center gap-1 text-lg font-extrabold text-foreground">
+        <span className="text-emerald-700 dark:text-emerald-400">₹{multiplier}</span>
         <span className="text-muted-foreground">×</span>
       </div>
-      <div className="flex-1 max-w-[120px]">
-        <Input
-          type="number"
-          min="0"
-          step="1"
-          disabled={disabled}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-8 text-center text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        />
-      </div>
-      <span className="w-20 text-right font-bold text-foreground tabular-nums">
+      <Input
+        type="number"
+        min="0"
+        step="1"
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-11 w-full text-center text-lg font-extrabold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <span className="text-right text-lg font-extrabold text-foreground tabular-nums">
         ₹ {total.toLocaleString("en-IN")}
       </span>
     </div>

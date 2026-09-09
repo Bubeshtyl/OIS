@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Copy,
   ExternalLink,
   Loader2,
   RotateCcw,
@@ -28,6 +29,7 @@ import {
   fetchSixAmDataForDateAction,
   saveDailyRspAction,
   saveMachineSlipEntriesAction,
+  saveRspAsYesterdayAction,
 } from "@/lib/actions/six-am";
 import type { MachineSlipGroup } from "@/lib/station-config/service";
 
@@ -247,6 +249,32 @@ function RspSection({
     toast.info("Reset fuel price inputs.");
   }
 
+  function handleSaveAsYesterday() {
+    if (hasRecordedRsp) {
+      toast.error(
+        "RSP for this date is already recorded. Request edits from the RSP Ledger."
+      );
+      return;
+    }
+
+    startSavingRsp(async () => {
+      const res = await saveRspAsYesterdayAction({ priceDate: selectedDate });
+
+      if (res.success) {
+        const saved = res.data as
+          | { hsdPrice: string; msPrice: string; speedPrice: string }
+          | undefined;
+        const hsd = saved?.hsdPrice ?? "";
+        const ms = saved?.msPrice ?? "";
+        const speed = saved?.speedPrice ?? "";
+        toast.success(res.message || "RSP copied from previous day.");
+        onRspSaved({ hsd, ms, speed });
+      } else {
+        toast.error(res.error || "Failed to copy previous RSP prices.");
+      }
+    });
+  }
+
   return (
     <Card className="border shadow-xs">
       <CardHeader className="p-4 pb-2">
@@ -314,6 +342,22 @@ function RspSection({
                   <CheckCircle2 className="mr-1.5 size-3.5" />
                 )}
                 Save RSP
+              </Button>
+
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={isSavingRsp || isLoadingDate}
+                onClick={handleSaveAsYesterday}
+                className="h-9 w-full px-5 text-xs font-semibold sm:w-auto"
+              >
+                {isSavingRsp ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                ) : (
+                  <Copy className="mr-1.5 size-3.5" />
+                )}
+                Save as yesterday
               </Button>
 
               <Button

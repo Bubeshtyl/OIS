@@ -6,6 +6,7 @@ import { requireTenantSession } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/rbac";
 import {
   getDailyRsp,
+  copyLatestDailyRsp,
   getMachineSlipEntries,
   saveDailyRsp,
   saveMachineSlipEntries,
@@ -77,6 +78,44 @@ export async function saveDailyRspAction(input: {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to save RSP prices.",
+    };
+  }
+}
+
+/** Copy the most recent prior RSP onto `priceDate` (e.g. yesterday → today). */
+export async function saveRspAsYesterdayAction(input: {
+  priceDate: string;
+}): Promise<SixAmActionState> {
+  try {
+    const session = await requireTenantSession();
+    if (!(await hasPermission(session, "shift-closing:read"))) {
+      return { success: false, error: "Permission denied." };
+    }
+
+    if (!input.priceDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.priceDate)) {
+      return { success: false, error: "Invalid date format." };
+    }
+
+    const { row, sourceDate } = await copyLatestDailyRsp(
+      session.tenantId,
+      session.userId,
+      input.priceDate
+    );
+    revalidateShiftClosingPaths();
+
+    return {
+      success: true,
+      message: `RSP copied from ${sourceDate} and saved for ${input.priceDate}.`,
+      data: row,
+    };
+  } catch (err: unknown) {
+    console.error("saveRspAsYesterdayAction error:", err);
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to copy previous RSP prices.",
     };
   }
 }
