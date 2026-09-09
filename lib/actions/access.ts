@@ -14,56 +14,44 @@ import {
   createTenantRole,
   deleteTenantRole,
   getPermissionsForRoleIds,
-  isSystemAdminForSession,
-  isSystemAdminRole,
+  isPrimeForSession,
   listRolesForTenant,
   replaceRolePermissions,
   requireTenantSession,
 } from "@/lib/auth/permissions";
-import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
 import { getDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import {
-  countActiveAdmins,
-  getStaffById,
-  isAdminStaff,
-  listStaffForAccess,
-} from "@/lib/staff/service";
+import { getStaffById, listStaffForAccess } from "@/lib/staff/service";
+import { isReservedPrimeName } from "@/lib/auth/role-defaults";
 
 export type AccessRole = { id: string; name: string };
 
 export async function getAccessConfiguration() {
   const session = await requireTenantSession();
-  if (!(await isSystemAdminForSession(session))) {
+  if (!(await isPrimeForSession(session))) {
     return null;
   }
 
   const staffPromise = listStaffForAccess(session.tenantId);
-  const tenantRoles = await listRolesForTenant(session.tenantId);
-
-  const editableRoles = tenantRoles.filter(
-    (role) => !(role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME)
+  const tenantRoles = (await listRolesForTenant(session.tenantId)).filter(
+    (role) => !isReservedPrimeName(role.name)
   );
 
-  // Overlap staff fetch with permissions — don't wait for both before either.
   const [staff, permissionsByRoleId] = await Promise.all([
     staffPromise,
-    getPermissionsForRoleIds(editableRoles.map((role) => role.id)),
+    getPermissionsForRoleIds(tenantRoles.map((role) => role.id)),
   ]);
 
   return {
     catalog: getGrantableNavCatalog(),
-    roles: editableRoles.map(({ id, name }) => ({ id, name })) satisfies AccessRole[],
+    roles: tenantRoles.map(({ id, name }) => ({ id, name })) satisfies AccessRole[],
     assignableRoles: tenantRoles.map(({ id, name }) => ({
       id,
       name,
     })) satisfies AccessRole[],
     permissionsByRoleId,
     staff,
-    adminRoleId:
-      tenantRoles.find(
-        (role) => role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME
-      )?.id ?? null,
+    adminRoleId: null as string | null,
   };
 }
 
@@ -72,7 +60,7 @@ export async function saveRoleAccessAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireTenantSession();
-  if (!(await isSystemAdminRole(session.roleId))) {
+  if (!(await isPrimeForSession(session))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -84,13 +72,6 @@ export async function saveRoleAccessAction(
 
   if (!(await assertTenantRole(session.tenantId, roleId))) {
     return { success: false, error: "Invalid role." };
-  }
-
-  if (await isSystemAdminRole(roleId)) {
-    return {
-      success: false,
-      error: "The Admin role always has full access.",
-    };
   }
 
   const catalog = getGrantableNavCatalog();
@@ -116,13 +97,19 @@ export async function createRoleAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireTenantSession();
-  if (!(await isSystemAdminRole(session.roleId))) {
+  if (!(await isPrimeForSession(session))) {
     return { success: false, error: "You do not have permission." };
   }
 
   const name = String(formData.get("name") || "").trim();
   if (!name) {
     return { success: false, error: "Role name is required." };
+  }
+  if (isReservedPrimeName(name)) {
+    return {
+      success: false,
+      error: "Prime is reserved and cannot be created as a role.",
+    };
   }
 
   try {
@@ -142,7 +129,7 @@ export async function saveStaffAccessAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireTenantSession();
-  if (!(await isSystemAdminRole(session.roleId))) {
+  if (!(await isPrimeForSession(session))) {
     return { success: false, error: "You do not have permission." };
   }
 
@@ -162,29 +149,15 @@ export async function saveStaffAccessAction(
   if (!staff) {
     return { success: false, error: "Staff not found." };
   }
+  if (staff.isPrime || isReservedPrimeName(staff.username)) {
+    return {
+      success: false,
+      error: "Prime users do not use roles.",
+    };
+  }
 
   if (!(await assertTenantRole(session.tenantId, roleId))) {
     return { success: false, error: "Invalid role." };
-  }
-
-  const assigningAdmin = await isSystemAdminRole(roleId);
-  if (assigningAdmin && !(await isSystemAdminRole(session.roleId))) {
-    return {
-      success: false,
-      error: "Only an Admin can assign the Admin role.",
-    };
-  }
-
-  if (
-    isAdminStaff(staff) &&
-    !assigningAdmin &&
-    staff.isActive &&
-    (await countActiveAdmins(session.tenantId, staff.id)) === 0
-  ) {
-    return {
-      success: false,
-      error: "Keep at least one active Admin.",
-    };
   }
 
   const db = getDb();
@@ -193,16 +166,14 @@ export async function saveStaffAccessAction(
     .set({ roleId })
     .where(and(eq(users.id, staffId), eq(users.tenantId, session.tenantId)));
 
-  if (!assigningAdmin) {
-    const catalog = getGrantableNavCatalog();
-    const selectedHrefs = new Set(formData.getAll("routes").map(String));
-    const permissions: Permission[] = [];
-    for (const item of catalog) {
-      if (!selectedHrefs.has(item.href)) continue;
-      permissions.push(...permissionsGrantedByNavItem(item));
-    }
-    await replaceRolePermissions(roleId, permissions);
+  const catalog = getGrantableNavCatalog();
+  const selectedHrefs = new Set(formData.getAll("routes").map(String));
+  const permissions: Permission[] = [];
+  for (const item of catalog) {
+    if (!selectedHrefs.has(item.href)) continue;
+    permissions.push(...permissionsGrantedByNavItem(item));
   }
+  await replaceRolePermissions(roleId, permissions);
 
   revalidateAccessPages();
 
@@ -214,7 +185,7 @@ export async function saveStaffAccessAction(
 
 export async function deleteRoleAction(roleId: string): Promise<ActionState> {
   const session = await requireTenantSession();
-  if (!(await isSystemAdminRole(session.roleId))) {
+  if (!(await isPrimeForSession(session))) {
     return { success: false, error: "You do not have permission." };
   }
 

@@ -12,11 +12,10 @@ import { oilProducts, roles, users } from "@/lib/db/schema";
 import { hasPermission } from "@/lib/auth/rbac";
 import {
   assertTenantRole,
-  isSystemAdminRole,
   listRolesForTenant,
   requireTenantSession,
 } from "@/lib/auth/permissions";
-import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
+import { isReservedPrimeName } from "@/lib/auth/role-defaults";
 import type { ActionState } from "@/lib/actions/inventory";
 
 const productSchema = z
@@ -208,23 +207,32 @@ export async function saveUserAction(
     return { success: false, error: "Invalid role." };
   }
 
-  if (
-    (await isSystemAdminRole(parsed.data.roleId)) &&
-    !(await isSystemAdminRole(session.roleId))
-  ) {
+  const username = parsed.data.username.toLowerCase();
+  if (isReservedPrimeName(username) || isReservedPrimeName(parsed.data.name)) {
     return {
       success: false,
-      error: "Only an Admin can assign the Admin role.",
+      error: "Prime is reserved. Only Platform can provision the Prime user.",
     };
   }
 
   const db = getDb();
+
+  // Never allow assigning a role named Prime if one somehow exists.
+  const rolesForTenant = await listRolesForTenant(session.tenantId);
+  const selectedRole = rolesForTenant.find((r) => r.id === parsed.data.roleId);
+  if (selectedRole && isReservedPrimeName(selectedRole.name)) {
+    return {
+      success: false,
+      error: "Prime is reserved and cannot be assigned as a role.",
+    };
+  }
 
   if (parsed.data.id) {
     const [existing] = await db
       .select({
         tenantId: users.tenantId,
         isPlatformAdmin: users.isPlatformAdmin,
+        isPrime: users.isPrime,
       })
       .from(users)
       .where(eq(users.id, parsed.data.id))
@@ -233,6 +241,7 @@ export async function saveUserAction(
     if (
       !existing ||
       existing.isPlatformAdmin ||
+      existing.isPrime ||
       existing.tenantId !== session.tenantId
     ) {
       return { success: false, error: "User not found." };
@@ -246,7 +255,7 @@ export async function saveUserAction(
       passwordHash?: string;
     } = {
       name: parsed.data.name,
-      username: parsed.data.username.toLowerCase(),
+      username,
       roleId: parsed.data.roleId,
       isActive: parsed.data.isActive,
     };
@@ -261,9 +270,10 @@ export async function saveUserAction(
       tenantId: session.tenantId,
       roleId: parsed.data.roleId,
       name: parsed.data.name,
-      username: parsed.data.username.toLowerCase(),
+      username,
       isActive: parsed.data.isActive,
       isPlatformAdmin: false,
+      isPrime: false,
       passwordHash: await bcrypt.hash(parsed.data.password!, 10),
     });
   }
@@ -292,25 +302,25 @@ export async function getAllUsers() {
     })
     .from(users)
     .leftJoin(roles, eq(users.roleId, roles.id))
-    .where(eq(users.tenantId, session.tenantId))
+    .where(
+      and(
+        eq(users.tenantId, session.tenantId),
+        eq(users.isPlatformAdmin, false),
+        eq(users.isPrime, false)
+      )
+    )
     .orderBy(users.name);
 }
 
-/** Role choices for the Add/Edit User form — hides the Admin role unless the
- * current user is themselves an Admin. */
+/** Role choices for the Add/Edit User form. */
 export async function getUserRoleOptions() {
   const session = await requireTenantSession();
   if (!(await hasPermission(session, "users:manage"))) {
     return [];
   }
 
-  const canAssignAdmin = await isSystemAdminRole(session.roleId);
   const tenantRoles = await listRolesForTenant(session.tenantId);
-
   return tenantRoles
-    .filter(
-      (role) =>
-        canAssignAdmin || !(role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME)
-    )
+    .filter((role) => !isReservedPrimeName(role.name))
     .map(({ id, name }) => ({ id, name }));
 }

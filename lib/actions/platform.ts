@@ -2,12 +2,18 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/actions/inventory";
 import { requirePlatformAdmin } from "@/lib/auth/permissions";
+import { ADMIN_PERMISSIONS } from "@/lib/auth/role-defaults";
+import { getDefaultPathSync } from "@/lib/auth/rbac";
+import { getSession, saveSession } from "@/lib/auth/session";
+import type { SessionData } from "@/lib/auth/session-config";
 import {
-  createTenantWithAdmin,
+  createTenantWithPrime,
+  getTenantForAssume,
   listTenantsWithHealth,
-  resetTenantAdminPassword,
+  resetTenantPrimePassword,
   setTenantActive,
   updateStationProfile,
 } from "@/lib/tenants/service";
@@ -28,8 +34,8 @@ const createTenantSchema = z.object({
   state: z.string().min(1, "State is required."),
   pincode: z.string().min(4, "Pincode is required."),
   phone: z.string().optional().or(z.literal("")),
-  adminName: z.string().min(1, "Admin name is required."),
-  adminUsername: z
+  primeName: z.string().min(1, "Prime name is required."),
+  primeUsername: z
     .string()
     .min(3)
     .max(32)
@@ -37,7 +43,7 @@ const createTenantSchema = z.object({
       /^[a-zA-Z0-9_]+$/,
       "Username can only contain letters, numbers, and underscores."
     ),
-  adminPassword: z.string().min(6, "Password must be at least 6 characters."),
+  primePassword: z.string().min(6, "Password must be at least 6 characters."),
 });
 
 export async function getPlatformTenants() {
@@ -64,9 +70,9 @@ export async function createTenantAction(
     state: formData.get("state"),
     pincode: formData.get("pincode"),
     phone: formData.get("phone") || "",
-    adminName: formData.get("adminName"),
-    adminUsername: formData.get("adminUsername"),
-    adminPassword: formData.get("adminPassword"),
+    primeName: formData.get("primeName") ?? formData.get("adminName"),
+    primeUsername: formData.get("primeUsername") ?? formData.get("adminUsername"),
+    primePassword: formData.get("primePassword") ?? formData.get("adminPassword"),
   });
 
   if (!parsed.success) {
@@ -77,7 +83,7 @@ export async function createTenantAction(
   }
 
   try {
-    const result = await createTenantWithAdmin({
+    const result = await createTenantWithPrime({
       name: parsed.data.name,
       slug: parsed.data.slug || undefined,
       addressLine1: parsed.data.addressLine1,
@@ -86,14 +92,14 @@ export async function createTenantAction(
       state: parsed.data.state,
       pincode: parsed.data.pincode,
       phone: parsed.data.phone || undefined,
-      adminName: parsed.data.adminName,
-      adminUsername: parsed.data.adminUsername,
-      adminPassword: parsed.data.adminPassword,
+      primeName: parsed.data.primeName,
+      primeUsername: parsed.data.primeUsername,
+      primePassword: parsed.data.primePassword,
     });
     revalidatePath("/platform");
     return {
       success: true,
-      message: `Station "${result.tenant.name}" created (${result.tenant.slug}). Admin login: ${result.adminUser.username}`,
+      message: `Station "${result.tenant.name}" created (${result.tenant.slug}). Prime login: ${result.primeUser.username}`,
     };
   } catch (error) {
     return {
@@ -217,7 +223,7 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(6, "Password must be at least 6 characters."),
 });
 
-export async function resetTenantAdminPasswordAction(
+export async function resetTenantPrimePasswordAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
@@ -240,14 +246,14 @@ export async function resetTenantAdminPasswordAction(
   }
 
   try {
-    const admin = await resetTenantAdminPassword(
+    const prime = await resetTenantPrimePassword(
       parsed.data.tenantId,
       parsed.data.newPassword
     );
     revalidatePath("/platform");
     return {
       success: true,
-      message: `Password reset for Admin "${admin.username}".`,
+      message: `Password reset for Prime "${prime.username}".`,
     };
   } catch (error) {
     return {
@@ -256,4 +262,77 @@ export async function resetTenantAdminPasswordAction(
         error instanceof Error ? error.message : "Failed to reset password.",
     };
   }
+}
+
+/** @deprecated Use resetTenantPrimePasswordAction */
+export async function resetTenantAdminPasswordAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  return resetTenantPrimePasswordAction(_prev, formData);
+}
+
+export async function assumeTenantPrimeAction(
+  tenantId: string
+): Promise<ActionState> {
+  try {
+    await requirePlatformAdmin();
+  } catch {
+    return { success: false, error: "You do not have permission." };
+  }
+
+  const parsed = z.string().uuid().safeParse(tenantId);
+  if (!parsed.success) {
+    return { success: false, error: "Invalid station." };
+  }
+
+  const tenant = await getTenantForAssume(parsed.data);
+  if (!tenant) {
+    return { success: false, error: "Station not found." };
+  }
+  if (!tenant.isActive) {
+    return { success: false, error: "Cannot enter a suspended station." };
+  }
+
+  const session = await getSession();
+  const next: SessionData = {
+    ...session,
+    tenantId: tenant.id,
+    roleId: null,
+    roleName: "Prime",
+    isAssumingPrime: true,
+    isPrime: false,
+    assumedTenantName: tenant.name,
+    permissions: [...ADMIN_PERMISSIONS],
+    tenantOnboardingComplete: tenant.onboardingComplete,
+    tenantIsActive: tenant.isActive,
+    isSystemAdmin: true,
+    isLoggedIn: true,
+    isPlatformAdmin: true,
+  };
+  await saveSession(next);
+  redirect(getDefaultPathSync(next) ?? "/");
+}
+
+export async function exitAssumePrimeAction(): Promise<ActionState> {
+  const session = await getSession();
+  if (!session.isLoggedIn || !session.isPlatformAdmin) {
+    return { success: false, error: "You do not have permission." };
+  }
+
+  const next: SessionData = {
+    ...session,
+    tenantId: null,
+    roleId: null,
+    roleName: null,
+    isAssumingPrime: false,
+    isPrime: false,
+    assumedTenantName: null,
+    permissions: [],
+    tenantOnboardingComplete: undefined,
+    tenantIsActive: undefined,
+    isSystemAdmin: false,
+  };
+  await saveSession(next);
+  redirect("/platform");
 }

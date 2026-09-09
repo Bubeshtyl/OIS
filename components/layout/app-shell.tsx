@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AssumePrimeBanner } from "@/components/layout/assume-prime-banner";
 import type { SessionData } from "@/lib/auth/session-config";
 import type { ShiftClosingPendingBadgeCounts } from "@/lib/shift-closing/ledger";
 import type { NavItem } from "@/lib/auth/rbac";
@@ -37,6 +38,11 @@ export function AppShell({
   canUsePush?: boolean;
   children: React.ReactNode;
 }) {
+  const assuming =
+    session.isAssumingPrime && session.assumedTenantName
+      ? session.assumedTenantName
+      : null;
+
   return (
     <SidebarProvider
       defaultOpen={false}
@@ -56,6 +62,7 @@ export function AppShell({
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
+          {assuming ? <AssumePrimeBanner tenantName={assuming} /> : null}
         </header>
         <MainContent>{children}</MainContent>
       </SidebarInset>

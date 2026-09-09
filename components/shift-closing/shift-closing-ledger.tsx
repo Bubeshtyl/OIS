@@ -438,7 +438,7 @@ export function ShiftClosingLedger({
                 {isSubmittingSlip ? (
                   <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                 ) : null}
-                Submit for approval
+                {isAdmin ? "Apply changes" : "Submit for approval"}
               </Button>
             </form>
           ) : null}
@@ -660,7 +660,7 @@ export function ShiftClosingLedger({
                 {isSubmittingInterim ? (
                   <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                 ) : null}
-                Submit for approval
+                {isAdmin ? "Apply changes" : "Submit for approval"}
               </Button>
             </form>
           ) : null}

@@ -143,6 +143,8 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   teamId: uuid("team_id").references(() => teams.id),
   isPlatformAdmin: boolean("is_platform_admin").default(false).notNull(),
+  /** Tenant bootstrap owner — full access, no role. One per station. */
+  isPrime: boolean("is_prime").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   joiningDate: date("joining_date"),

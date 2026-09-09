@@ -7,7 +7,7 @@ import { getNavItems, getNavItemsSync } from "@/lib/auth/rbac";
 import { destroySession, getSession } from "@/lib/auth/session";
 import {
   hasCachedPermission,
-  isSystemAdminFromSession,
+  isPrimeFromSession,
   tenantAccessFromSession,
 } from "@/lib/auth/session-access";
 
@@ -44,7 +44,10 @@ async function AuthenticatedAppShell({
   }
 
   const cachedAccess = tenantAccessFromSession(session);
-  if (session.tenantId && !session.isPlatformAdmin) {
+  if (
+    session.tenantId &&
+    !(session.isPlatformAdmin && !session.isAssumingPrime)
+  ) {
     if (cachedAccess && !cachedAccess.isActive) {
       await destroySession();
       redirect("/login");
@@ -62,7 +65,7 @@ async function AuthenticatedAppShell({
 
   const canUsePush =
     hasCachedPermission(session, "shift-closing:read") ?? false;
-  const isAdmin = isSystemAdminFromSession(session) ?? false;
+  const isAdmin = isPrimeFromSession(session) ?? false;
 
   return (
     <AppShell

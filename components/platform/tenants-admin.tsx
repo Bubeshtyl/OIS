@@ -4,8 +4,9 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  assumeTenantPrimeAction,
   createTenantAction,
-  resetTenantAdminPasswordAction,
+  resetTenantPrimePasswordAction,
   setTenantActiveAction,
   updateTenantAction,
 } from "@/lib/actions/platform";
@@ -180,11 +181,11 @@ function EditTenantDialog({ tenant }: { tenant: TenantHealthRow }) {
   );
 }
 
-function ResetAdminPasswordDialog({ tenant }: { tenant: TenantHealthRow }) {
+function ResetPrimePasswordDialog({ tenant }: { tenant: TenantHealthRow }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(
-    resetTenantAdminPasswordAction,
+    resetTenantPrimePasswordAction,
     initialState
   );
 
@@ -197,6 +198,8 @@ function ResetAdminPasswordDialog({ tenant }: { tenant: TenantHealthRow }) {
     if (state.error) toast.error(state.error);
   }, [state, router]);
 
+  const primeUsername = tenant.primeUsername ?? tenant.adminUsername;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
@@ -206,7 +209,7 @@ function ResetAdminPasswordDialog({ tenant }: { tenant: TenantHealthRow }) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Reset Admin password</DialogTitle>
+          <DialogTitle>Reset Prime password</DialogTitle>
         </DialogHeader>
         {open ? (
           <form
@@ -217,16 +220,19 @@ function ResetAdminPasswordDialog({ tenant }: { tenant: TenantHealthRow }) {
           >
             <input type="hidden" name="tenantId" value={tenant.id} />
             <p className="text-sm text-muted-foreground">
-              Station: <span className="font-medium text-foreground">{tenant.name}</span>
-              {tenant.adminUsername ? (
+              Station:{" "}
+              <span className="font-medium text-foreground">{tenant.name}</span>
+              {primeUsername ? (
                 <>
-                  {" · "}Admin:{" "}
+                  {" · "}Account:{" "}
+                  <span className="font-medium text-foreground">Prime</span>
+                  {" · "}Username:{" "}
                   <span className="font-medium text-foreground">
-                    {tenant.adminUsername}
+                    {primeUsername}
                   </span>
                 </>
               ) : (
-                <span className="text-destructive"> · No Admin user found</span>
+                <span className="text-destructive"> · No Prime user found</span>
               )}
             </p>
             <div className="space-y-2">
@@ -238,12 +244,12 @@ function ResetAdminPasswordDialog({ tenant }: { tenant: TenantHealthRow }) {
                 required
                 minLength={6}
                 autoComplete="new-password"
-                disabled={!tenant.adminUsername}
+                disabled={!primeUsername}
               />
             </div>
             <Button
               type="submit"
-              disabled={pending || !tenant.adminUsername}
+              disabled={pending || !primeUsername}
               className="min-h-11"
             >
               {pending ? "Resetting…" : "Reset password"}
@@ -252,6 +258,34 @@ function ResetAdminPasswordDialog({ tenant }: { tenant: TenantHealthRow }) {
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EnterAsPrimeButton({ tenant }: { tenant: TenantHealthRow }) {
+  const [pending, startTransition] = useTransition();
+
+  if (!tenant.isActive) return null;
+
+  function onEnter() {
+    if (!window.confirm(`Enter "${tenant.name}" as Prime?`)) return;
+    startTransition(async () => {
+      const result = await assumeTenantPrimeAction(tenant.id);
+      if (result && !result.success) {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      disabled={pending}
+      onClick={onEnter}
+    >
+      {pending ? "…" : "Enter as Prime"}
+    </Button>
   );
 }
 
@@ -319,7 +353,7 @@ export function PlatformTenantsAdmin({
           <CardTitle>Create station</CardTitle>
           <CardDescription>
             Each station is a billable unit. Names may repeat — address is
-            required. Creates the Admin role and first Admin user.
+            required. Creates the Prime bootstrap user (no role).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -375,18 +409,24 @@ export function PlatformTenantsAdmin({
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="adminName">Admin name</Label>
-              <Input id="adminName" name="adminName" required />
+              <Label htmlFor="primeName">Prime name</Label>
+              <Input id="primeName" name="primeName" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="adminUsername">Admin username</Label>
-              <Input id="adminUsername" name="adminUsername" required />
+              <Label htmlFor="primeUsername">Prime username</Label>
+              <Input
+                id="primeUsername"
+                name="primeUsername"
+                required
+                defaultValue="prime"
+                placeholder="prime"
+              />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="adminPassword">Admin password</Label>
+              <Label htmlFor="primePassword">Prime password</Label>
               <Input
-                id="adminPassword"
-                name="adminPassword"
+                id="primePassword"
+                name="primePassword"
                 type="password"
                 required
                 minLength={6}
@@ -462,8 +502,9 @@ export function PlatformTenantsAdmin({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <EnterAsPrimeButton tenant={tenant} />
                           <EditTenantDialog tenant={tenant} />
-                          <ResetAdminPasswordDialog tenant={tenant} />
+                          <ResetPrimePasswordDialog tenant={tenant} />
                           <SuspendToggleButton tenant={tenant} />
                         </div>
                       </TableCell>

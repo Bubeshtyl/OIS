@@ -2,15 +2,14 @@ import bcrypt from "bcryptjs";
 import { config } from "dotenv";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "../lib/db";
-import { oilProducts, roles, tenants, users } from "../lib/db/schema";
-import { SYSTEM_ADMIN_ROLE_NAME } from "../lib/auth/role-defaults";
+import { oilProducts, tenants, users } from "../lib/db/schema";
 
 config({ path: ".env.local" });
 config({ path: ".env" });
 
 async function seed() {
   const db = getDb();
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  const passwordHash = await bcrypt.hash("prime123", 10);
   const slug = process.env.SEED_TENANT_SLUG?.trim();
 
   const [tenant] = slug
@@ -33,41 +32,48 @@ async function seed() {
     );
   }
 
-  const [adminRole] = await db
-    .select({ id: roles.id })
-    .from(roles)
-    .where(
-      and(eq(roles.tenantId, tenant.id), eq(roles.name, SYSTEM_ADMIN_ROLE_NAME))
-    )
-    .limit(1);
-
-  if (!adminRole) {
-    throw new Error(
-      `Admin role not found for station "${tenant.name}". Recreate the station from Platform.`
-    );
-  }
-
-  const existingAdmin = await db
+  const existingPrime = await db
     .select()
     .from(users)
-    .where(eq(users.username, "admin"))
+    .where(and(eq(users.tenantId, tenant.id), eq(users.isPrime, true)))
     .limit(1);
 
-  if (existingAdmin.length === 0) {
-    await db.insert(users).values({
-      tenantId: tenant.id,
-      roleId: adminRole.id,
-      name: "Admin",
-      username: "admin",
-      passwordHash,
-      isPlatformAdmin: false,
-      isActive: true,
-    });
-    console.log(
-      `Created admin user for ${tenant.name} (${tenant.slug}): admin / admin123`
-    );
+  if (existingPrime.length === 0) {
+    const existingAdminUsername = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, "prime"))
+      .limit(1);
+
+    if (existingAdminUsername.length === 0) {
+      await db.insert(users).values({
+        tenantId: tenant.id,
+        roleId: null,
+        name: "Prime",
+        username: "prime",
+        passwordHash,
+        isPlatformAdmin: false,
+        isPrime: true,
+        isActive: true,
+      });
+      console.log(
+        `Created Prime user for ${tenant.name} (${tenant.slug}): prime / prime123`
+      );
+    } else {
+      await db
+        .update(users)
+        .set({
+          isPrime: true,
+          roleId: null,
+          tenantId: tenant.id,
+        })
+        .where(eq(users.id, existingAdminUsername[0]!.id));
+      console.log(
+        `Promoted existing 'prime' user to Prime for ${tenant.name}.`
+      );
+    }
   } else {
-    console.log("Admin user already exists, skipping.");
+    console.log("Prime user already exists, skipping.");
   }
 
   const sampleProducts = [
@@ -122,19 +128,19 @@ async function seed() {
 
     if (!existing) {
       await db.insert(oilProducts).values({
-        ...product,
         tenantId: tenant.id,
+        ...product,
         isActive: true,
       });
-      console.log(`Created product: ${product.name}`);
     }
   }
 
-  console.log(`Seed complete for ${tenant.name}.`);
-  process.exit(0);
+  console.log("Seed complete.");
 }
 
-seed().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+seed()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

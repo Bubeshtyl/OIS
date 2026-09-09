@@ -419,9 +419,12 @@ export function AccessAdmin({
   adminRoleId: string | null;
 }) {
   const [active, setActive] = useState(roles[0]?.id ?? "");
-  const activeRoleId = roles.some((role) => role.id === active)
-    ? active
-    : (roles[0]?.id ?? "");
+  const activeRole =
+    roles.find((role) => role.id === active) ?? roles[0] ?? null;
+  const roleItems = roles.map((role) => ({
+    value: role.id,
+    label: role.name,
+  }));
 
   return (
     <Tabs defaultValue="staff" className="space-y-6">
@@ -443,33 +446,43 @@ export function AccessAdmin({
       <TabsContent value="roles" className="mt-4 space-y-6">
         <CreateRoleForm />
 
-        {roles.length === 0 ? (
+        {roles.length === 0 || !activeRole ? (
           <p className="text-sm text-muted-foreground">
             No custom roles yet.
           </p>
         ) : (
-          <Tabs value={activeRoleId} onValueChange={setActive}>
-            <TabsList>
-              {roles.map((role) => (
-                <TabsTrigger key={role.id} value={role.id}>
-                  {role.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {roles.map((role) => (
-              <TabsContent key={role.id} value={role.id} className="mt-4">
-                <RoleAccessForm
-                  role={role}
-                  catalog={catalog}
-                  granted={permissionsByRoleId[role.id] ?? []}
-                  onDeleted={() => {
-                    const next = roles.find((r) => r.id !== role.id);
-                    setActive(next?.id ?? "");
-                  }}
-                />
-              </TabsContent>
-            ))}
-          </Tabs>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="role-select">Role</Label>
+              <Select
+                value={activeRole.id}
+                onValueChange={(value) => value && setActive(value)}
+                items={roleItems}
+              >
+                <SelectTrigger id="role-select" className="w-full min-h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <RoleAccessForm
+              key={activeRole.id}
+              role={activeRole}
+              catalog={catalog}
+              granted={permissionsByRoleId[activeRole.id] ?? []}
+              onDeleted={() => {
+                const next = roles.find((r) => r.id !== activeRole.id);
+                setActive(next?.id ?? "");
+              }}
+            />
+          </div>
         )}
       </TabsContent>
     </Tabs>

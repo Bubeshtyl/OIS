@@ -14,7 +14,7 @@ Petrol station oil inventory app for tracking supplier receipts, depot-to-manage
 
 | Username | Password | Role |
 |----------|----------|------|
-| admin | admin123 | ADMIN |
+| prime | prime123 | Prime (seed) |
 
 Change the admin password after first login in production.
 
@@ -78,7 +78,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run build` | Production build |
 | `npm run db:push` | Push Drizzle schema to Supabase |
 | `npm run db:generate` | Generate SQL migrations |
-| `npm run db:seed` | Seed admin user + sample products |
+| `npm run db:seed` | Seed Prime user + sample products |
 | `npm run db:reconcile` | Recompute stock_balance from ledger |
 
 ## Stock Count

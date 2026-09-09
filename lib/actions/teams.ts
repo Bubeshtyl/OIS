@@ -9,7 +9,7 @@ import {
   ensureTenantRoleByName,
   requireTenantSession,
 } from "@/lib/auth/permissions";
-import { LEGACY_ROLE_PERMISSIONS, SYSTEM_MANAGER_ROLE_NAME } from "@/lib/auth/role-defaults";
+import { LEGACY_ROLE_PERMISSIONS, SYSTEM_MANAGER_ROLE_NAME, isReservedPrimeName } from "@/lib/auth/role-defaults";
 import { getUserRoleOptions } from "@/lib/actions/admin";
 import { getDb } from "@/lib/db";
 import { teams, users } from "@/lib/db/schema";
@@ -75,6 +75,16 @@ export async function saveTeamAction(
     };
   }
 
+  if (
+    isReservedPrimeName(parsed.data.managerUsername) ||
+    isReservedPrimeName(parsed.data.managerName)
+  ) {
+    return {
+      success: false,
+      error: "Prime is reserved. Only Platform can provision the Prime user.",
+    };
+  }
+
   const tenantId = session.tenantId;
   const managerRoleId = await ensureTenantRoleByName(
     tenantId,
@@ -117,6 +127,20 @@ export async function saveTeamAction(
       };
 
       if (parsed.data.managerUserId) {
+        const [existingManager] = await tx
+          .select({ isPrime: users.isPrime })
+          .from(users)
+          .where(
+            and(
+              eq(users.id, parsed.data.managerUserId),
+              eq(users.tenantId, tenantId)
+            )
+          )
+          .limit(1);
+        if (existingManager?.isPrime) {
+          throw new Error("Prime users are managed from Platform only.");
+        }
+
         const update: {
           name: string;
           username: string;
@@ -143,6 +167,8 @@ export async function saveTeamAction(
       } else {
         await tx.insert(users).values({
           ...managerValues,
+          isPrime: false,
+          isPlatformAdmin: false,
           passwordHash: await bcrypt.hash(parsed.data.managerPassword!, 10),
         });
       }

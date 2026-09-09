@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { AccessAdmin } from "@/components/admin/access-admin";
 import { getAccessConfiguration } from "@/lib/actions/access";
 import { getDefaultPath, getDefaultPathSync } from "@/lib/auth/rbac";
-import { isSystemAdminFromSession } from "@/lib/auth/session-access";
+import { isPrimeFromSession } from "@/lib/auth/session-access";
 import { getSession } from "@/lib/auth/session";
 
 export async function AccessAdminContent() {
@@ -11,8 +11,8 @@ export async function AccessAdminContent() {
     redirect("/login");
   }
 
-  const cachedAdmin = isSystemAdminFromSession(session);
-  if (cachedAdmin === false) {
+  const cachedPrime = isPrimeFromSession(session);
+  if (cachedPrime === false) {
     redirect(getDefaultPathSync(session) ?? "/");
   }
 

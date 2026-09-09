@@ -74,3 +74,10 @@ export const LEGACY_ROLE_PERMISSIONS: Record<
 export const SYSTEM_ADMIN_ROLE_NAME = "Admin";
 export const SYSTEM_MANAGER_ROLE_NAME = "Manager";
 export const SYSTEM_ACCOUNTS_ROLE_NAME = "Accounts";
+
+/** Reserved — only platform-provisioned bootstrap account. */
+export const PRIME_ROLE_NAME = "Prime";
+
+export function isReservedPrimeName(value: string | null | undefined): boolean {
+  return value?.trim().toLowerCase() === "prime";
+}

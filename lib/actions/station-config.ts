@@ -9,7 +9,7 @@ import {
   stationPumps,
 } from "@/lib/db/schema";
 import {
-  isSystemAdminRole,
+  isPrimeForSession,
   requireTenantSession,
 } from "@/lib/auth/permissions";
 import {
@@ -27,7 +27,7 @@ export async function createFuelProductAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -68,7 +68,7 @@ export async function updateFuelProductAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -108,7 +108,7 @@ export async function deleteFuelProductAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -135,7 +135,7 @@ export async function createPumpAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -179,7 +179,7 @@ export async function updatePumpAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -222,7 +222,7 @@ export async function deletePumpAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -249,7 +249,7 @@ export async function createNozzleAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -293,7 +293,7 @@ export async function updateNozzleAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -336,7 +336,7 @@ export async function deleteNozzleAction(
 ): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 
@@ -360,7 +360,7 @@ export async function deleteNozzleAction(
 export async function resetDefaultStationLayoutAction(): Promise<ActionState> {
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only station Admins can modify configuration." };
     }
 

@@ -1,9 +1,10 @@
 import {
   getPermissionsForRoleId,
   getTenantAccessState,
-  isSystemAdminRole,
+  isPrimeForSession,
 } from "@/lib/auth/permissions";
 import { sessionHasCachedPermissions } from "@/lib/auth/session-access";
+import { ADMIN_PERMISSIONS } from "@/lib/auth/role-defaults";
 import type { SessionData } from "@/lib/auth/session-config";
 
 /** One-time DB fetch for sessions created before permissions were cached in the cookie. */
@@ -12,18 +13,38 @@ export async function hydrateSessionIfNeeded(
 ): Promise<SessionData> {
   if (
     !session.isLoggedIn ||
-    session.isPlatformAdmin ||
+    (session.isPlatformAdmin && !session.isAssumingPrime) ||
     sessionHasCachedPermissions(session) ||
-    !session.tenantId ||
-    !session.roleId
+    !session.tenantId
   ) {
     return session;
   }
 
-  const [permissions, access, isAdmin] = await Promise.all([
+  if (session.isPrime || session.isAssumingPrime) {
+    const [access, isPrime] = await Promise.all([
+      getTenantAccessState(session.tenantId),
+      session.isAssumingPrime
+        ? Promise.resolve(true)
+        : isPrimeForSession(session),
+    ]);
+    return {
+      ...session,
+      permissions: [...ADMIN_PERMISSIONS],
+      tenantOnboardingComplete: access.onboardingComplete,
+      tenantIsActive: access.isActive,
+      isPrime: session.isAssumingPrime ? false : isPrime,
+      isSystemAdmin: true,
+    };
+  }
+
+  if (!session.roleId) {
+    return session;
+  }
+
+  const [permissions, access, isPrime] = await Promise.all([
     getPermissionsForRoleId(session.roleId),
     getTenantAccessState(session.tenantId),
-    isSystemAdminRole(session.roleId),
+    isPrimeForSession(session),
   ]);
 
   return {
@@ -31,6 +52,7 @@ export async function hydrateSessionIfNeeded(
     permissions,
     tenantOnboardingComplete: access.onboardingComplete,
     tenantIsActive: access.isActive,
-    isSystemAdmin: isAdmin,
+    isPrime,
+    isSystemAdmin: isPrime,
   };
 }

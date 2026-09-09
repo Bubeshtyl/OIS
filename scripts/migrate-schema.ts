@@ -1557,6 +1557,47 @@ async function migrateToMultiTenant(db: Db) {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS guardian_phone text
   `);
 
+  // Prime user: bootstrap owner per tenant (replaces system Admin privilege)
+  await db.execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_prime boolean NOT NULL DEFAULT false
+  `);
+
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS users_one_prime_per_tenant_idx
+      ON users (tenant_id)
+      WHERE is_prime = true AND tenant_id IS NOT NULL
+  `);
+
+  // Backfill: earliest system Admin user per tenant → Prime (no role)
+  await db.execute(sql`
+    WITH first_admin AS (
+      SELECT DISTINCT ON (u.tenant_id)
+        u.id AS user_id,
+        u.tenant_id,
+        r.id AS role_id
+      FROM users u
+      INNER JOIN roles r ON r.id = u.role_id
+      WHERE u.is_platform_admin = false
+        AND u.tenant_id IS NOT NULL
+        AND r.is_system = true
+        AND r.name = 'Admin'
+      ORDER BY u.tenant_id, u.created_at ASC
+    )
+    UPDATE users u
+    SET is_prime = true,
+        role_id = NULL
+    FROM first_admin fa
+    WHERE u.id = fa.user_id
+      AND u.is_prime = false
+  `);
+
+  // Demote former system Admin roles to normal editable roles
+  await db.execute(sql`
+    UPDATE roles
+    SET is_system = false
+    WHERE is_system = true AND name = 'Admin'
+  `);
+
   console.log("Multi-tenant migration applied.");
 }
 

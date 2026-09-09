@@ -5,7 +5,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { ActionState } from "@/lib/actions/inventory";
 import { revalidateStaffPages } from "@/lib/actions/revalidate";
-import { requireTenantSession, isSystemAdminRole } from "@/lib/auth/permissions";
+import { requireTenantSession, isPrimeForSession } from "@/lib/auth/permissions";
+import { isReservedPrimeName } from "@/lib/auth/role-defaults";
 import { hasPermission } from "@/lib/auth/rbac";
 import { getDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -146,6 +147,12 @@ export async function saveStaffAction(
   }
 
   const username = parsed.data.username.toLowerCase();
+  if (isReservedPrimeName(username) || isReservedPrimeName(parsed.data.name)) {
+    return {
+      success: false,
+      error: "Prime is reserved. Only Platform can provision the Prime user.",
+    };
+  }
   const existingUsernameId = await findUserIdByUsername(username);
   if (existingUsernameId && existingUsernameId !== parsed.data.id) {
     return { success: false, error: "That username is already taken." };
@@ -159,9 +166,16 @@ export async function saveStaffAction(
       return { success: false, error: "Staff not found." };
     }
 
+    if (existing.isPrime) {
+      return {
+        success: false,
+        error: "Prime users are managed from Platform only.",
+      };
+    }
+
     if (
       isAdminStaff(existing) &&
-      !(await isSystemAdminRole(session.roleId))
+      !(await isPrimeForSession(session))
     ) {
       return { success: false, error: "You do not have permission." };
     }
@@ -178,7 +192,7 @@ export async function saveStaffAction(
     ) {
       return {
         success: false,
-        error: "Keep at least one active Admin.",
+        error: "Keep at least one active Prime user.",
       };
     }
 
@@ -209,6 +223,7 @@ export async function saveStaffAction(
       username,
       isActive: parsed.data.isActive,
       isPlatformAdmin: false,
+      isPrime: false,
       passwordHash: await bcrypt.hash(parsed.data.password!, 10),
       ...profileValues(parsed.data),
     });
@@ -237,9 +252,16 @@ export async function setStaffActiveAction(
     return { success: false, error: "Staff not found." };
   }
 
+  if (existing.isPrime) {
+    return {
+      success: false,
+      error: "Prime users are managed from Platform only.",
+    };
+  }
+
   if (
     isAdminStaff(existing) &&
-    !(await isSystemAdminRole(session.roleId))
+    !(await isPrimeForSession(session))
   ) {
     return { success: false, error: "You do not have permission." };
   }
@@ -256,7 +278,7 @@ export async function setStaffActiveAction(
   ) {
     return {
       success: false,
-      error: "Keep at least one active Admin.",
+      error: "Keep at least one active Prime user.",
     };
   }
 

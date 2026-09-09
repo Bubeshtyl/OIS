@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db";
 import { roles, tenants, users } from "@/lib/db/schema";
 import { getPermissionsForRoleId } from "@/lib/auth/permissions";
 import { getDefaultPathSync } from "@/lib/auth/rbac";
-import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
+import { ADMIN_PERMISSIONS } from "@/lib/auth/role-defaults";
 import type { SessionData } from "@/lib/auth/session-config";
 import { destroySession, saveSession } from "@/lib/auth/session";
 
@@ -39,11 +39,12 @@ export async function loginAction(
         tenantId: users.tenantId,
         roleId: users.roleId,
         isPlatformAdmin: users.isPlatformAdmin,
+        isPrime: users.isPrime,
         isActive: users.isActive,
         roleName: roles.name,
-        roleIsSystem: roles.isSystem,
         tenantIsActive: tenants.isActive,
         tenantOnboardingComplete: tenants.onboardingComplete,
+        tenantName: tenants.name,
       })
       .from(users)
       .leftJoin(roles, eq(users.roleId, roles.id))
@@ -60,25 +61,40 @@ export async function loginAction(
       return { success: false, error: "Invalid username or password." };
     }
 
-    if (!user.isPlatformAdmin && (!user.tenantId || !user.roleId)) {
+    if (
+      !user.isPlatformAdmin &&
+      !user.isPrime &&
+      (!user.tenantId || !user.roleId)
+    ) {
       return {
         success: false,
         error: "User is not assigned to a tenant role. Contact your admin.",
       };
     }
 
-    if (!user.isPlatformAdmin && user.tenantIsActive === false) {
+    if (user.isPrime && !user.tenantId) {
+      return {
+        success: false,
+        error: "Prime user is not assigned to a station. Contact support.",
+      };
+    }
+
+    if (
+      !user.isPlatformAdmin &&
+      user.tenantIsActive === false
+    ) {
       return {
         success: false,
         error: "This station is suspended. Contact support.",
       };
     }
 
-    // Permissions + last-login write in parallel after password check.
     const [permissions] = await Promise.all([
       user.isPlatformAdmin
         ? Promise.resolve([] as Awaited<ReturnType<typeof getPermissionsForRoleId>>)
-        : getPermissionsForRoleId(user.roleId),
+        : user.isPrime
+          ? Promise.resolve([...ADMIN_PERMISSIONS])
+          : getPermissionsForRoleId(user.roleId),
       db
         .update(users)
         .set({ lastLoginAt: new Date() })
@@ -90,16 +106,17 @@ export async function loginAction(
       username: user.username,
       name: user.name,
       tenantId: user.tenantId,
-      roleId: user.roleId,
-      roleName: user.roleName,
+      roleId: user.isPrime ? null : user.roleId,
+      roleName: user.isPrime ? "Prime" : user.roleName,
       isPlatformAdmin: user.isPlatformAdmin,
+      isPrime: user.isPrime,
+      isAssumingPrime: false,
+      assumedTenantName: null,
       isLoggedIn: true,
       permissions,
       tenantOnboardingComplete: user.tenantOnboardingComplete ?? false,
       tenantIsActive: user.tenantIsActive ?? true,
-      isSystemAdmin: Boolean(
-        user.roleIsSystem && user.roleName === SYSTEM_ADMIN_ROLE_NAME
-      ),
+      isSystemAdmin: user.isPrime,
     };
 
     await saveSession(sessionPayload);

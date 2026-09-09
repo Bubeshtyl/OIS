@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/actions/inventory";
 import {
-  isSystemAdminRole,
+  isPrimeForSession,
   requireTenantSession,
 } from "@/lib/auth/permissions";
 import { stationProfileSchema } from "@/lib/tenants/station-profile-schema";
@@ -15,7 +15,7 @@ import {
 
 export async function getOnboardingTenant() {
   const session = await requireTenantSession();
-  if (!(await isSystemAdminRole(session.roleId))) {
+  if (!(await isPrimeForSession(session))) {
     return null;
   }
   return getTenantById(session.tenantId);
@@ -28,7 +28,7 @@ export async function completeOnboardingAction(
   let tenantId: string;
   try {
     const session = await requireTenantSession();
-    if (!(await isSystemAdminRole(session.roleId))) {
+    if (!(await isPrimeForSession(session))) {
       return { success: false, error: "Only the station Admin can complete onboarding." };
     }
     tenantId = session.tenantId;

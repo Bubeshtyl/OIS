@@ -6,7 +6,7 @@ import {
 } from "@/lib/auth/permissions";
 import {
   hasCachedPermission,
-  isSystemAdminFromSession,
+  isPrimeSession,
   sessionHasCachedPermissions,
   tenantAccessFromSession,
 } from "@/lib/auth/session-access";
@@ -326,7 +326,7 @@ function resolveTenantAccess(session: SessionData) {
 }
 
 export function getDefaultPathSync(session: SessionData): string | null {
-  if (session.isPlatformAdmin) return "/platform";
+  if (session.isPlatformAdmin && !session.isAssumingPrime) return "/platform";
   const access = tenantAccessFromSession(session);
   if (access) {
     return access.onboardingComplete ? "/" : "/onboarding";
@@ -348,7 +348,7 @@ export function canAccessRouteSync(
   session: SessionData,
   pathname: string
 ): boolean | null {
-  if (session.isPlatformAdmin) {
+  if (session.isPlatformAdmin && !session.isAssumingPrime) {
     return (
       pathname === "/platform" ||
       pathname.startsWith("/platform/") ||
@@ -356,17 +356,19 @@ export function canAccessRouteSync(
     );
   }
 
+  // Assuming superuser may return to platform; real tenants may not.
   if (pathname === "/platform" || pathname.startsWith("/platform/")) {
-    return false;
+    return Boolean(session.isAssumingPrime);
   }
 
   const access = tenantAccessFromSession(session);
+  const prime = isPrimeSession(session);
   if (session.tenantId) {
     if (access?.isActive === false) return false;
     if (!access) return null;
 
     if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
-      if (!session.roleId) return false;
+      if (!prime && !session.roleId) return false;
       return !access.onboardingComplete;
     }
 
@@ -379,6 +381,7 @@ export function canAccessRouteSync(
   }
 
   if (pathname === "/") return true;
+  if (prime) return true;
   if (!sessionHasCachedPermissions(session)) return null;
 
   const routePermissions = buildRoutePermissions();
@@ -403,7 +406,7 @@ export function canAccessRouteSync(
 }
 
 export function getNavItemsSync(session: SessionData): NavItem[] | null {
-  if (session.isPlatformAdmin) {
+  if (session.isPlatformAdmin && !session.isAssumingPrime) {
     return [
       {
         href: "/platform",
@@ -416,6 +419,20 @@ export function getNavItemsSync(session: SessionData): NavItem[] | null {
   const access = tenantAccessFromSession(session);
   if (session.tenantId && access && !access.onboardingComplete) {
     return [];
+  }
+
+  if (isPrimeSession(session)) {
+    const catalog = getNavCatalog();
+    return catalog.map(
+      ({ href, label, icon, group, subgroup, subgroupKey }) => ({
+        href,
+        label,
+        icon,
+        group,
+        subgroup,
+        subgroupKey,
+      })
+    );
   }
 
   if (!sessionHasCachedPermissions(session)) {
@@ -444,7 +461,7 @@ export async function canAccessRoute(
   const cached = canAccessRouteSync(session, pathname);
   if (cached !== null) return cached;
 
-  if (session.isPlatformAdmin) {
+  if (session.isPlatformAdmin && !session.isAssumingPrime) {
     return (
       pathname === "/platform" ||
       pathname.startsWith("/platform/") ||
@@ -453,7 +470,7 @@ export async function canAccessRoute(
   }
 
   if (pathname === "/platform" || pathname.startsWith("/platform/")) {
-    return false;
+    return Boolean(session.isAssumingPrime);
   }
 
   if (session.tenantId) {
@@ -463,7 +480,7 @@ export async function canAccessRoute(
     }
 
     if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
-      if (!session.roleId) return false;
+      if (!isPrimeSession(session) && !session.roleId) return false;
       return !access.onboardingComplete;
     }
 
@@ -478,6 +495,7 @@ export async function canAccessRoute(
   }
 
   if (pathname === "/") return true;
+  if (isPrimeSession(session)) return true;
 
   const routePermissions = buildRoutePermissions();
   const routes = Object.keys(routePermissions).sort(
@@ -503,7 +521,7 @@ export async function canAccessRoute(
 }
 
 export const getNavItems = cache(async (session: SessionData): Promise<NavItem[]> => {
-  if (session.isPlatformAdmin) {
+  if (session.isPlatformAdmin && !session.isAssumingPrime) {
     return [
       {
         href: "/platform",
@@ -519,6 +537,19 @@ export const getNavItems = cache(async (session: SessionData): Promise<NavItem[]
   }
 
   const catalog = getNavCatalog();
+  if (isPrimeSession(session)) {
+    return catalog.map(
+      ({ href, label, icon, group, subgroup, subgroupKey }) => ({
+        href,
+        label,
+        icon,
+        group,
+        subgroup,
+        subgroupKey,
+      })
+    );
+  }
+
   const permissions = sessionHasCachedPermissions(session)
     ? session.permissions
     : await getPermissionsForRoleId(session.roleId);

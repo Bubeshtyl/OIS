@@ -11,9 +11,17 @@ import {
 async function maybeHydrateAndSave(session: SessionData) {
   if (
     !session.isLoggedIn ||
-    session.isPlatformAdmin ||
+    (session.isPlatformAdmin && !session.isAssumingPrime) ||
     sessionHasCachedPermissions(session) ||
-    !session.tenantId ||
+    !session.tenantId
+  ) {
+    return session;
+  }
+
+  // Prime / assuming can hydrate without roleId; normal users need a role.
+  if (
+    !session.isPrime &&
+    !session.isAssumingPrime &&
     !session.roleId
   ) {
     return session;
@@ -40,6 +48,10 @@ export async function getSession() {
   if (!session.isLoggedIn) {
     return { ...defaultSession, ...session };
   }
+
+  // Older cookies may omit newer boolean fields.
+  if (session.isPrime === undefined) session.isPrime = false;
+  if (session.isAssumingPrime === undefined) session.isAssumingPrime = false;
 
   return maybeHydrateAndSave(session);
 }

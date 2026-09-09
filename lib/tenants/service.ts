@@ -3,16 +3,10 @@ import { and, asc, count, eq, max, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   dailySalesUploads,
-  rolePermissions,
-  roles,
   tenants,
   ticketSettings,
   users,
 } from "@/lib/db/schema";
-import {
-  ADMIN_PERMISSIONS,
-  SYSTEM_ADMIN_ROLE_NAME,
-} from "@/lib/auth/role-defaults";
 
 function slugify(input: string) {
   return input
@@ -70,7 +64,9 @@ export type TenantHealthRow = {
   userCount: number;
   lastLoginAt: Date | null;
   lastUploadAt: Date | null;
+  /** @deprecated Use primeUsername */
   adminUsername: string | null;
+  primeUsername: string | null;
 };
 
 export async function listTenantsWithHealth(): Promise<TenantHealthRow[]> {
@@ -113,13 +109,11 @@ export async function listTenantsWithHealth(): Promise<TenantHealthRow[]> {
       userCount: sql<number>`coalesce(${userStats.userCount}, 0)`.mapWith(Number),
       lastLoginAt: userStats.lastLoginAt,
       lastUploadAt: uploadStats.lastUploadAt,
-      adminUsername: sql<string | null>`(
+      primeUsername: sql<string | null>`(
         SELECT u.username
         FROM users u
-        INNER JOIN roles r ON r.id = u.role_id
         WHERE u.tenant_id = ${tenants.id}
-          AND r.name = ${SYSTEM_ADMIN_ROLE_NAME}
-          AND r.is_system = true
+          AND u.is_prime = true
           AND u.is_platform_admin = false
         ORDER BY u.created_at ASC
         LIMIT 1
@@ -130,7 +124,10 @@ export async function listTenantsWithHealth(): Promise<TenantHealthRow[]> {
     .leftJoin(uploadStats, eq(uploadStats.tenantId, tenants.id))
     .orderBy(asc(tenants.name));
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    adminUsername: row.primeUsername,
+  }));
 }
 
 export async function setTenantActive(tenantId: string, isActive: boolean) {
@@ -146,44 +143,55 @@ export async function setTenantActive(tenantId: string, isActive: boolean) {
   return updated;
 }
 
-export async function getTenantAdminUser(tenantId: string) {
+export async function getTenantPrimeUser(tenantId: string) {
   const db = getDb();
-  const [admin] = await db
+  const [prime] = await db
     .select({
       id: users.id,
       username: users.username,
       name: users.name,
     })
     .from(users)
-    .innerJoin(roles, eq(users.roleId, roles.id))
     .where(
       and(
         eq(users.tenantId, tenantId),
-        eq(roles.name, SYSTEM_ADMIN_ROLE_NAME),
-        eq(roles.isSystem, true),
+        eq(users.isPrime, true),
         eq(users.isPlatformAdmin, false)
       )
     )
     .orderBy(asc(users.createdAt))
     .limit(1);
-  return admin ?? null;
+  return prime ?? null;
 }
 
-export async function resetTenantAdminPassword(
+/** @deprecated Use getTenantPrimeUser */
+export async function getTenantAdminUser(tenantId: string) {
+  return getTenantPrimeUser(tenantId);
+}
+
+export async function resetTenantPrimePassword(
   tenantId: string,
   newPassword: string
 ) {
-  const admin = await getTenantAdminUser(tenantId);
-  if (!admin) {
-    throw new Error("No Admin user found for this station.");
+  const prime = await getTenantPrimeUser(tenantId);
+  if (!prime) {
+    throw new Error("No Prime user found for this station.");
   }
   const passwordHash = await bcrypt.hash(newPassword, 10);
   const db = getDb();
   await db
     .update(users)
     .set({ passwordHash })
-    .where(eq(users.id, admin.id));
-  return admin;
+    .where(eq(users.id, prime.id));
+  return prime;
+}
+
+/** @deprecated Use resetTenantPrimePassword */
+export async function resetTenantAdminPassword(
+  tenantId: string,
+  newPassword: string
+) {
+  return resetTenantPrimePassword(tenantId, newPassword);
 }
 
 export async function isTenantActive(tenantId: string): Promise<boolean> {
@@ -196,12 +204,27 @@ export async function isTenantActive(tenantId: string): Promise<boolean> {
   return tenant?.isActive ?? false;
 }
 
-export async function createTenantWithAdmin(input: {
+export async function getTenantForAssume(tenantId: string) {
+  const db = getDb();
+  const [tenant] = await db
+    .select({
+      id: tenants.id,
+      name: tenants.name,
+      isActive: tenants.isActive,
+      onboardingComplete: tenants.onboardingComplete,
+    })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  return tenant ?? null;
+}
+
+export async function createTenantWithPrime(input: {
   name: string;
   slug?: string;
-  adminName: string;
-  adminUsername: string;
-  adminPassword: string;
+  primeName: string;
+  primeUsername: string;
+  primePassword: string;
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
@@ -227,11 +250,10 @@ export async function createTenantWithAdmin(input: {
     }
     slug = normalized;
   } else {
-    // Names may repeat across stations; auto-suffix the slug when needed.
     slug = await allocateUniqueSlug(input.name);
   }
 
-  const username = input.adminUsername.trim().toLowerCase();
+  const username = input.primeUsername.trim().toLowerCase();
   const [existingUser] = await db
     .select({ id: users.id })
     .from(users)
@@ -241,7 +263,7 @@ export async function createTenantWithAdmin(input: {
     throw new Error("That username is already taken.");
   }
 
-  const passwordHash = await bcrypt.hash(input.adminPassword, 10);
+  const passwordHash = await bcrypt.hash(input.primePassword, 10);
 
   return db.transaction(async (tx) => {
     const [tenant] = await tx
@@ -260,37 +282,22 @@ export async function createTenantWithAdmin(input: {
       })
       .returning();
 
-    const [adminRole] = await tx
-      .insert(roles)
-      .values({
-        tenantId: tenant.id,
-        name: SYSTEM_ADMIN_ROLE_NAME,
-        isSystem: true,
-      })
-      .returning();
-
-    await tx.insert(rolePermissions).values(
-      ADMIN_PERMISSIONS.map((permission) => ({
-        roleId: adminRole.id,
-        permission,
-      }))
-    );
-
     await tx.insert(ticketSettings).values({
       tenantId: tenant.id,
       prefix: "JCK",
       paddingWidth: 6,
     });
 
-    const [adminUser] = await tx
+    const [primeUser] = await tx
       .insert(users)
       .values({
         tenantId: tenant.id,
-        roleId: adminRole.id,
-        name: input.adminName.trim(),
+        roleId: null,
+        name: input.primeName.trim(),
         username,
         passwordHash,
         isPlatformAdmin: false,
+        isPrime: true,
         isActive: true,
       })
       .returning({
@@ -299,8 +306,42 @@ export async function createTenantWithAdmin(input: {
         name: users.name,
       });
 
-    return { tenant, adminRole, adminUser };
+    return { tenant, primeUser };
   });
+}
+
+/** @deprecated Use createTenantWithPrime */
+export async function createTenantWithAdmin(input: {
+  name: string;
+  slug?: string;
+  adminName: string;
+  adminUsername: string;
+  adminPassword: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  phone?: string;
+}) {
+  const result = await createTenantWithPrime({
+    name: input.name,
+    slug: input.slug,
+    primeName: input.adminName,
+    primeUsername: input.adminUsername,
+    primePassword: input.adminPassword,
+    addressLine1: input.addressLine1,
+    addressLine2: input.addressLine2,
+    city: input.city,
+    state: input.state,
+    pincode: input.pincode,
+    phone: input.phone,
+  });
+  return {
+    tenant: result.tenant,
+    adminUser: result.primeUser,
+    primeUser: result.primeUser,
+  };
 }
 
 export async function updateStationProfile(

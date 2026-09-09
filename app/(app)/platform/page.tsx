@@ -17,7 +17,7 @@ export default async function PlatformPage() {
     <div className="space-y-6">
       <PageHeader
         title="Platform"
-        subtitle="Create stations, reset Admin passwords, suspend access, and check basic health."
+        subtitle="Create stations, reset Prime passwords, suspend access, enter as Prime, and check basic health."
       />
       <PlatformTenantsAdmin tenants={tenants} />
     </div>

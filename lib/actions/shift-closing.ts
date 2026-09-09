@@ -10,6 +10,7 @@ import { hasPermission } from "@/lib/auth/rbac";
 import type { ShiftClosingEntityType } from "@/lib/db/schema";
 import {
   approveEditRequest,
+  applyPrimeLedgerEdit,
   cancelEditRequest,
   countPendingEditRequests,
   createEditRequest,
@@ -389,6 +390,20 @@ export async function submitShiftClosingEditRequestAction(input: {
       };
     }
 
+    if (await isSystemAdminForSession(session)) {
+      await applyPrimeLedgerEdit(session.tenantId, session.userId, {
+        entityType: parsed.data.entityType,
+        entityId: parsed.data.entityId,
+        proposedData: input.proposedData,
+        note: parsed.data.note,
+      });
+      revalidateShiftClosingPaths();
+      return {
+        success: true,
+        message: "Ledger updated.",
+      };
+    }
+
     await createEditRequest(session.tenantId, session.userId, {
       entityType: parsed.data.entityType,
       entityId: parsed.data.entityId,
@@ -399,7 +414,7 @@ export async function submitShiftClosingEditRequestAction(input: {
     revalidateShiftClosingPaths();
     return {
       success: true,
-      message: "Edit request submitted for admin approval.",
+      message: "Edit request submitted for approval.",
     };
   } catch (err: unknown) {
     console.error("submitShiftClosingEditRequestAction error:", err);
@@ -418,7 +433,7 @@ export async function approveShiftClosingEditAction(
   try {
     const session = await requireTenantSession();
     if (!(await isSystemAdminForSession(session))) {
-      return { success: false, error: "Only admins can approve edits." };
+      return { success: false, error: "Only Prime can approve edits." };
     }
 
     await approveEditRequest(
@@ -446,7 +461,7 @@ export async function rejectShiftClosingEditAction(
   try {
     const session = await requireTenantSession();
     if (!(await isSystemAdminForSession(session))) {
-      return { success: false, error: "Only admins can reject edits." };
+      return { success: false, error: "Only Prime can reject edits." };
     }
 
     await rejectEditRequest(

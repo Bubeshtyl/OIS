@@ -1,13 +1,13 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { roles, users } from "@/lib/db/schema";
-import { SYSTEM_ADMIN_ROLE_NAME } from "@/lib/auth/role-defaults";
 
 export type StaffMember = {
   id: string;
   name: string;
   username: string;
   isActive: boolean;
+  isPrime: boolean;
   roleId: string | null;
   roleName: string | null;
   joiningDate: string | null;
@@ -30,6 +30,7 @@ const staffColumns = {
   name: users.name,
   username: users.username,
   isActive: users.isActive,
+  isPrime: users.isPrime,
   roleId: users.roleId,
   roleName: roles.name,
   joiningDate: users.joiningDate,
@@ -107,6 +108,7 @@ function toStaffMember(row: {
   name: string;
   username: string;
   isActive: boolean;
+  isPrime: boolean;
   roleId: string | null;
   roleName: string | null;
   joiningDate: string | null;
@@ -128,8 +130,9 @@ function toStaffMember(row: {
     name: row.name,
     username: row.username,
     isActive: row.isActive,
+    isPrime: row.isPrime,
     roleId: row.roleId,
-    roleName: row.roleName ?? null,
+    roleName: row.isPrime ? "Prime" : (row.roleName ?? null),
     joiningDate: row.joiningDate,
     primaryPhone: row.primaryPhone,
     secondaryPhone: row.secondaryPhone,
@@ -152,7 +155,13 @@ export async function listStaff(tenantId: string): Promise<StaffMember[]> {
     .select(staffColumns)
     .from(users)
     .leftJoin(roles, eq(users.roleId, roles.id))
-    .where(and(eq(users.tenantId, tenantId), eq(users.isPlatformAdmin, false)))
+    .where(
+      and(
+        eq(users.tenantId, tenantId),
+        eq(users.isPlatformAdmin, false),
+        eq(users.isPrime, false)
+      )
+    )
     .orderBy(users.name);
 
   return rows.map(toStaffMember);
@@ -185,12 +194,19 @@ export async function listStaffForAccess(tenantId: string): Promise<StaffMember[
       name: users.name,
       username: users.username,
       isActive: users.isActive,
+      isPrime: users.isPrime,
       roleId: users.roleId,
       roleName: roles.name,
     })
     .from(users)
     .leftJoin(roles, eq(users.roleId, roles.id))
-    .where(and(eq(users.tenantId, tenantId), eq(users.isPlatformAdmin, false)))
+    .where(
+      and(
+        eq(users.tenantId, tenantId),
+        eq(users.isPlatformAdmin, false),
+        eq(users.isPrime, false)
+      )
+    )
     .orderBy(users.name);
 
   return rows.map((row) =>
@@ -242,15 +258,23 @@ export async function findUserIdByUsername(username: string) {
   return row?.id ?? null;
 }
 
+export async function countActivePrimes(
+  tenantId: string,
+  exceptUserId?: string
+): Promise<number> {
+  const rows = await listActivePrimeUserIds(tenantId, exceptUserId);
+  return rows.length;
+}
+
+/** @deprecated Use countActivePrimes */
 export async function countActiveAdmins(
   tenantId: string,
   exceptUserId?: string
 ): Promise<number> {
-  const rows = await listActiveAdminUserIds(tenantId, exceptUserId);
-  return rows.length;
+  return countActivePrimes(tenantId, exceptUserId);
 }
 
-export async function listActiveAdminUserIds(
+export async function listActivePrimeUserIds(
   tenantId: string,
   exceptUserId?: string
 ): Promise<string[]> {
@@ -258,14 +282,12 @@ export async function listActiveAdminUserIds(
   const rows = await db
     .select({ id: users.id })
     .from(users)
-    .innerJoin(roles, eq(users.roleId, roles.id))
     .where(
       and(
         eq(users.tenantId, tenantId),
         eq(users.isActive, true),
         eq(users.isPlatformAdmin, false),
-        eq(roles.name, SYSTEM_ADMIN_ROLE_NAME),
-        eq(roles.isSystem, true)
+        eq(users.isPrime, true)
       )
     );
 
@@ -274,11 +296,23 @@ export async function listActiveAdminUserIds(
     .filter((id) => id !== exceptUserId);
 }
 
+/** @deprecated Use listActivePrimeUserIds */
+export async function listActiveAdminUserIds(
+  tenantId: string,
+  exceptUserId?: string
+): Promise<string[]> {
+  return listActivePrimeUserIds(tenantId, exceptUserId);
+}
+
+export function isPrimeStaff(staff: { isPrime?: boolean | null }) {
+  return Boolean(staff.isPrime);
+}
+
+/** @deprecated Use isPrimeStaff */
 export function isAdminStaff(staff: {
-  roleName: string | null;
-  roleIsSystem: boolean | null;
+  isPrime?: boolean | null;
+  roleName?: string | null;
+  roleIsSystem?: boolean | null;
 }) {
-  return Boolean(
-    staff.roleIsSystem && staff.roleName === SYSTEM_ADMIN_ROLE_NAME
-  );
+  return isPrimeStaff(staff);
 }

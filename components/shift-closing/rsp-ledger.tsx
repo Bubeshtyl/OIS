@@ -146,7 +146,11 @@ export function RspLedger({
       </div>
 
       {editRow ? (
-        <RspEditDialog row={editRow} onClose={() => setEditRow(null)} />
+        <RspEditDialog
+          row={editRow}
+          isAdmin={isAdmin}
+          onClose={() => setEditRow(null)}
+        />
       ) : null}
     </div>
   );
@@ -154,9 +158,11 @@ export function RspLedger({
 
 function RspEditDialog({
   row,
+  isAdmin,
   onClose,
 }: {
   row: RspRow;
+  isAdmin: boolean;
   onClose: () => void;
 }) {
   const [editPrices, setEditPrices] = useState({
@@ -195,11 +201,14 @@ function RspEditDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Request RSP Edit</DialogTitle>
+          <DialogTitle>{isAdmin ? "Edit RSP" : "Request RSP Edit"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleEditSubmit} className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Changes for {formatDate(row.priceDate)} require admin approval.
+            Changes for {formatDate(row.priceDate)}
+            {isAdmin
+              ? " will be applied immediately."
+              : " require approval."}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
@@ -258,7 +267,7 @@ function RspEditDialog({
             {isSubmittingEdit ? (
               <Loader2 className="mr-1.5 size-3.5 animate-spin" />
             ) : null}
-            Submit for approval
+            {isAdmin ? "Apply changes" : "Submit for approval"}
           </Button>
         </form>
       </DialogContent>

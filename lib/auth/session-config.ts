@@ -9,11 +9,21 @@ export interface SessionData {
   roleId: string | null;
   roleName: string | null;
   isPlatformAdmin: boolean;
+  /** Real Prime user for this tenant (DB flag). */
+  isPrime: boolean;
+  /**
+   * Platform superuser currently acting as Prime for `tenantId`.
+   * When set, `isPlatformAdmin` stays true.
+   */
+  isAssumingPrime: boolean;
+  /** Display name of the station while assuming (banner). */
+  assumedTenantName?: string | null;
   isLoggedIn: boolean;
   /** Cached at login to avoid DB round trips on every request. */
   permissions?: Permission[];
   tenantOnboardingComplete?: boolean;
   tenantIsActive?: boolean;
+  /** @deprecated Prefer isPrime / isAssumingPrime. Kept for older cookies. */
   isSystemAdmin?: boolean;
 }
 
@@ -25,6 +35,9 @@ export const defaultSession: SessionData = {
   roleId: null,
   roleName: null,
   isPlatformAdmin: false,
+  isPrime: false,
+  isAssumingPrime: false,
+  assumedTenantName: null,
   isLoggedIn: false,
 };
 

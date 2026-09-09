@@ -831,6 +831,67 @@ export async function createEditRequest(
   });
 }
 
+/** Prime (or assuming Prime) applies a ledger change immediately — no approval. */
+export async function applyPrimeLedgerEdit(
+  tenantId: string,
+  primeUserId: string,
+  input: {
+    entityType: ShiftClosingEntityType;
+    entityId: string;
+    proposedData: ShiftClosingProposedData;
+    note?: string;
+  }
+) {
+  const db = getDb();
+  const current = await getEntityCurrentData(
+    tenantId,
+    input.entityType,
+    input.entityId
+  );
+  if (!current) {
+    throw new Error("Ledger entry not found.");
+  }
+
+  const [pending] = await db
+    .select({ id: shiftClosingEditRequests.id })
+    .from(shiftClosingEditRequests)
+    .where(
+      and(
+        eq(shiftClosingEditRequests.tenantId, tenantId),
+        eq(shiftClosingEditRequests.entityType, input.entityType),
+        eq(shiftClosingEditRequests.entityId, input.entityId),
+        eq(shiftClosingEditRequests.status, "pending")
+      )
+    )
+    .limit(1);
+
+  if (pending) {
+    throw new Error(
+      "A pending edit request already exists for this entry. Approve or reject it first."
+    );
+  }
+
+  return db.transaction(async (tx) => {
+    await applyApprovedEdit(
+      tx,
+      tenantId,
+      primeUserId,
+      input.entityType,
+      input.entityId,
+      input.proposedData
+    );
+
+    await recordLedgerEvent(tx, {
+      tenantId,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      eventType: "edit_approved",
+      createdBy: primeUserId,
+      detail: input.note?.trim() || "Prime direct edit",
+    });
+  });
+}
+
 export async function approveEditRequest(
   tenantId: string,
   adminUserId: string,

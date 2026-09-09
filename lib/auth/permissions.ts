@@ -2,16 +2,14 @@ import { cache } from "react";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { rolePermissions, roles, tenants, users } from "@/lib/db/schema";
-import {
-  ADMIN_PERMISSIONS,
-  SYSTEM_ADMIN_ROLE_NAME,
-  type Permission,
-} from "@/lib/auth/role-defaults";
+import type { Permission } from "@/lib/auth/role-defaults";
+import { isReservedPrimeName } from "@/lib/auth/role-defaults";
 import type { SessionData } from "@/lib/auth/session-config";
 import { getSession, requireSession } from "@/lib/auth/session";
 import {
   hasCachedPermission,
-  isSystemAdminFromSession,
+  isPrimeFromSession,
+  isPrimeSession,
   tenantAccessFromSession,
 } from "@/lib/auth/session-access";
 
@@ -20,22 +18,6 @@ export const getPermissionsForRoleId = cache(
     if (!roleId) return [];
 
     const db = getDb();
-    const [role] = await db
-      .select({
-        id: roles.id,
-        name: roles.name,
-        isSystem: roles.isSystem,
-      })
-      .from(roles)
-      .where(eq(roles.id, roleId))
-      .limit(1);
-
-    if (!role) return [];
-
-    if (role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME) {
-      return [...ADMIN_PERMISSIONS];
-    }
-
     const rows = await db
       .select({ permission: rolePermissions.permission })
       .from(rolePermissions)
@@ -51,39 +33,21 @@ export const getPermissionsForRoleIds = cache(
     if (unique.length === 0) return {};
 
     const db = getDb();
-    const roleRows = await db
-      .select({
-        id: roles.id,
-        name: roles.name,
-        isSystem: roles.isSystem,
-      })
-      .from(roles)
-      .where(inArray(roles.id, unique));
-
     const result: Record<string, Permission[]> = {};
-    const needsPermQuery: string[] = [];
-
-    for (const role of roleRows) {
-      if (role.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME) {
-        result[role.id] = [...ADMIN_PERMISSIONS];
-      } else {
-        needsPermQuery.push(role.id);
-        result[role.id] = [];
-      }
+    for (const id of unique) {
+      result[id] = [];
     }
 
-    if (needsPermQuery.length > 0) {
-      const rows = await db
-        .select({
-          roleId: rolePermissions.roleId,
-          permission: rolePermissions.permission,
-        })
-        .from(rolePermissions)
-        .where(inArray(rolePermissions.roleId, needsPermQuery));
+    const rows = await db
+      .select({
+        roleId: rolePermissions.roleId,
+        permission: rolePermissions.permission,
+      })
+      .from(rolePermissions)
+      .where(inArray(rolePermissions.roleId, unique));
 
-      for (const row of rows) {
-        result[row.roleId]?.push(row.permission as Permission);
-      }
+    for (const row of rows) {
+      result[row.roleId]?.push(row.permission as Permission);
     }
 
     return result;
@@ -111,7 +75,8 @@ export async function sessionHasPermission(
   session: SessionData,
   permission: Permission
 ): Promise<boolean> {
-  if (session.isPlatformAdmin) return false;
+  if (isPrimeSession(session)) return true;
+  if (session.isPlatformAdmin && !session.isAssumingPrime) return false;
   if (!session.roleId) return false;
 
   const cached = hasCachedPermission(session, permission);
@@ -123,12 +88,22 @@ export async function sessionHasPermission(
 
 export type TenantSession = SessionData & {
   tenantId: string;
-  roleId: string;
 };
 
 export async function requireTenantSession(): Promise<TenantSession> {
   const session = await requireSession();
-  if (session.isPlatformAdmin || !session.tenantId || !session.roleId) {
+
+  if (!session.tenantId) {
+    throw new Error("Unauthorized");
+  }
+
+  // Pure platform admin (not assuming) stays on /platform only.
+  if (session.isPlatformAdmin && !session.isAssumingPrime) {
+    throw new Error("Unauthorized");
+  }
+
+  const actingAsPrime = isPrimeSession(session);
+  if (!actingAsPrime && !session.roleId) {
     throw new Error("Unauthorized");
   }
 
@@ -150,6 +125,15 @@ export async function requireTenantSession(): Promise<TenantSession> {
 export async function requirePlatformAdmin(): Promise<SessionData> {
   const session = await requireSession();
   if (!session.isPlatformAdmin) {
+    throw new Error("Unauthorized");
+  }
+  return session;
+}
+
+/** Require Prime powers (real Prime or assuming). */
+export async function requirePrimeSession(): Promise<TenantSession> {
+  const session = await requireTenantSession();
+  if (!isPrimeSession(session)) {
     throw new Error("Unauthorized");
   }
   return session;
@@ -185,28 +169,39 @@ export async function getTenantOnboardingComplete(
   return access.onboardingComplete;
 }
 
-export const isSystemAdminRole = cache(
-  async (roleId: string | null | undefined): Promise<boolean> => {
-    if (!roleId) return false;
-    const db = getDb();
-    const [role] = await db
-      .select({ isSystem: roles.isSystem, name: roles.name })
-      .from(roles)
-      .where(eq(roles.id, roleId))
-      .limit(1);
-    return Boolean(role?.isSystem && role.name === SYSTEM_ADMIN_ROLE_NAME);
-  }
-);
+export async function isPrimeForSession(
+  session: SessionData
+): Promise<boolean> {
+  const cached = isPrimeFromSession(session);
+  if (cached !== null) return cached;
 
+  if (session.isAssumingPrime) return true;
+  if (!session.userId) return false;
+
+  const db = getDb();
+  const [user] = await db
+    .select({ isPrime: users.isPrime })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  return Boolean(user?.isPrime);
+}
+
+/** @deprecated Use isPrimeForSession. */
 export async function isSystemAdminForSession(
   session: SessionData
 ): Promise<boolean> {
-  const cached = isSystemAdminFromSession(session);
-  if (cached !== null) return cached;
-  return isSystemAdminRole(session.roleId);
+  return isPrimeForSession(session);
 }
 
-/** All roles configured for a tenant, including the fixed system Admin role. */
+/** @deprecated Admin is no longer a privileged system role. */
+export const isSystemAdminRole = cache(
+  async (_roleId: string | null | undefined): Promise<boolean> => {
+    return false;
+  }
+);
+
+/** All roles configured for a tenant. */
 export async function listRolesForTenant(tenantId: string) {
   const db = getDb();
   return db
@@ -257,8 +252,8 @@ export async function createTenantRole(
   if (!trimmed) {
     throw new Error("Role name is required.");
   }
-  if (trimmed.toLowerCase() === SYSTEM_ADMIN_ROLE_NAME.toLowerCase()) {
-    throw new Error("Admin is a reserved role name.");
+  if (trimmed.toLowerCase() === "prime" || isReservedPrimeName(trimmed)) {
+    throw new Error("Prime is reserved and cannot be created as a role.");
   }
 
   const db = getDb();
@@ -299,7 +294,7 @@ export async function deleteTenantRole(
   if (!role) {
     throw new Error("Role not found.");
   }
-  if (role.isSystem || role.name === SYSTEM_ADMIN_ROLE_NAME) {
+  if (role.isSystem) {
     throw new Error("System roles cannot be deleted.");
   }
 
@@ -332,12 +327,13 @@ export async function assertTenantRole(
 /** Soft check used by pages that return empty instead of throwing. */
 export async function getOptionalTenantSession() {
   const session = await getSession();
-  if (
-    !session.isLoggedIn ||
-    session.isPlatformAdmin ||
-    !session.tenantId ||
-    !session.roleId
-  ) {
+  if (!session.isLoggedIn || !session.tenantId) {
+    return null;
+  }
+  if (session.isPlatformAdmin && !session.isAssumingPrime) {
+    return null;
+  }
+  if (!isPrimeSession(session) && !session.roleId) {
     return null;
   }
   return session as TenantSession;
